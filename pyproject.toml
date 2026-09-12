@@ -1,0 +1,26 @@
+[project]
+name = "llm-classification-finetuning"
+version = "0.1.0"
+description = "Training pipeline for the Kaggle LLM Classification Finetuning competition"
+readme = "README.md"
+authors = [
+    { name = "CIA", email = "2ndaryuan@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "kagglehub>=1.0.2",
+    "pandas>=3.0.5",
+    "pyarrow>=25.0.1",
+    "python-dotenv>=1.2.3",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.1",
+]
+
+[project.scripts]
+data = "llm_classification_finetuning.data.cli:main"
+preprocess = "llm_classification_finetuning.preprocess.cli:main"
+init = "llm_classification_finetuning.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"

@@ -1,0 +1,13 @@
+"""Domain exceptions for data preparation."""
+
+
+class DataPreparationError(Exception):
+    """Base exception for expected data-preparation failures."""
+
+
+class ConfigurationError(DataPreparationError):
+    """Raised when the application configuration is invalid."""
+
+
+class DownloadError(DataPreparationError):
+    """Raised when competition data cannot be obtained safely."""

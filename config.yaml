@@ -1,0 +1,8 @@
+data:
+  competition: llm-classification-finetuning
+  raw_dir: data/raw
+  processed_path: data/processed/train_folds.parquet
+
+cross_validation:
+  n_splits: 5
+  random_state: 42
