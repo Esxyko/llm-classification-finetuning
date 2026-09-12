@@ -11,3 +11,7 @@ class ConfigurationError(DataPreparationError):
 
 class DownloadError(DataPreparationError):
     """Raised when competition data cannot be obtained safely."""
+
+
+class ResultSynthesisError(DataPreparationError):
+    """Raised when fold predictions cannot be synthesized safely."""

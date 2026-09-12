@@ -47,6 +47,7 @@ The generated dataset is written to `data/processed/train_folds.parquet`.
 | `uv run init` | Download missing data, then preprocess the training set |
 | `uv run data` | Download only the missing Kaggle files |
 | `uv run preprocess` | Rebuild the processed dataset from an existing `train.csv` |
+| `uv run result [SUBFOLDER]` | Synthesize k-fold prediction CSVs into comprehensive reports |
 
 Run commands from the project root. They read [`config.yaml`](config.yaml), which
 controls data paths, the fold count, and the random seed. Relative paths are
@@ -73,6 +74,33 @@ The output preserves the source columns and adds:
 Source rows and their swapped copies remain in the same fold. Augmentation
 doubles the row count but retains each source `id`, so duplicate IDs are expected.
 Re-running the pipeline skips existing raw files and rebuilds the processed file.
+
+## Comprehensive results
+
+Place one competition-format validation CSV per fold in a direct subfolder of
+`results/`. Each file must contain the augmented fold rows in the same order as
+they appear in `data/processed/train_folds.parquet`. Filenames do not need to
+identify their folds because the command validates and infers fold membership
+from the complete ID sequence.
+
+Run the result command with a specific subfolder:
+
+```shell
+uv run result my-training-run
+```
+
+If the subfolder is omitted, the command selects the most recently modified
+direct child of `results/`, excluding `comprehensive`. It writes these files to
+`results/comprehensive/`, replacing the directory's previous contents only
+after the new report has been generated successfully:
+
+| File | Contents |
+| --- | --- |
+| `confusion_matrix.png` | Raw 3×3 counts after translating swapped predictions back to the original A/B orientation |
+| `records.xlsx` | One row per source ID with its fold, canonical expected label, original/translated actual-label pair, 0–2 incorrect count, and pair-averaged log loss |
+
+The workbook is filterable, and its `AVG` row uses Excel's `SUBTOTAL` formula so
+the displayed average loss follows the currently visible records.
 
 ## Troubleshooting
 

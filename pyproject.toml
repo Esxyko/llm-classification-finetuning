@@ -9,17 +9,20 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "kagglehub>=1.0.2",
+    "matplotlib>=3.11.2",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
+    "xlsxwriter>=3.2.9",
 ]
 
 [project.scripts]
 data = "llm_classification_finetuning.data.cli:main"
 preprocess = "llm_classification_finetuning.preprocess.cli:main"
 init = "llm_classification_finetuning.cli:main"
+result = "llm_classification_finetuning.result.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.1,<0.13.0"]
