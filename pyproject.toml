@@ -15,6 +15,8 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
     "xlsxwriter>=3.2.9",
 ]
 
@@ -23,6 +25,15 @@ data = "llm_classification_finetuning.data.cli:main"
 preprocess = "llm_classification_finetuning.preprocess.cli:main"
 init = "llm_classification_finetuning.cli:main"
 result = "llm_classification_finetuning.result.cli:main"
+baseline = "llm_classification_finetuning.baseline.cli:main"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [build-system]
 requires = ["uv_build>=0.12.1,<0.13.0"]

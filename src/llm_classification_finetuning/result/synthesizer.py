@@ -145,6 +145,7 @@ class ResultSynthesizer:
     """Coordinate result discovery, validation, reduction, and publishing."""
 
     OUTPUT_DIR_NAME = "comprehensive"
+    RESERVED_SOURCE_DIR_NAMES = (OUTPUT_DIR_NAME, "test")
     WORKBOOK_NAME = "records.xlsx"
     CONFUSION_MATRIX_NAME = "confusion_matrix.png"
     REQUIRED_COLUMNS = (
@@ -213,11 +214,12 @@ class ResultSynthesizer:
                 or candidate_path.is_absolute()
                 or len(candidate_path.parts) != 1
                 or candidate_path.name != candidate_name
-                or candidate_name.casefold() == self.OUTPUT_DIR_NAME.casefold()
+                or candidate_name.casefold()
+                in {name.casefold() for name in self.RESERVED_SOURCE_DIR_NAMES}
             ):
                 raise ResultSynthesisError(
-                    "SUBFOLDER must name a direct child of results and cannot be "
-                    f"'{self.OUTPUT_DIR_NAME}'."
+                    "SUBFOLDER must name a cross-validation result directory and "
+                    "cannot be a reserved output directory."
                 )
             source_dir = (self._results_root / candidate_name).resolve()
             if source_dir.parent != self._results_root or not source_dir.is_dir():
@@ -228,7 +230,8 @@ class ResultSynthesizer:
             path
             for path in self._results_root.iterdir()
             if path.is_dir()
-            and path.name.casefold() != self.OUTPUT_DIR_NAME.casefold()
+            and path.name.casefold()
+            not in {name.casefold() for name in self.RESERVED_SOURCE_DIR_NAMES}
             and not path.name.casefold().startswith(
                 f".{self.OUTPUT_DIR_NAME.casefold()}-"
             )

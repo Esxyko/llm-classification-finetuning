@@ -6,3 +6,22 @@ data:
 cross_validation:
   n_splits: 5
   random_state: 42
+
+gpu:
+  device: cuda:0
+  precision: bf16
+  attention_implementation: sdpa
+  allow_tf32: true
+
+baseline:
+  model_name: Qwen/Qwen3-1.7B
+  max_length: 1024
+  extraction_batch_size: 1
+  training_batch_size: 256
+  hidden_size: 512
+  dropout: 0.1
+  epochs: 2
+  learning_rate: 0.001
+  weight_decay: 0.01
+  random_state: 42
+  dataloader_workers: 0

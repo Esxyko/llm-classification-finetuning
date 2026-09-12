@@ -16,7 +16,7 @@ class ConfusionMatrixWriter:
     CLASS_NAMES = ("0 (model A)", "1 (model B)", "2 (tie)")
 
     def write(self, matrix: np.ndarray, output_path: Path) -> None:
-        """Write raw matrix counts to a compact annotated heatmap."""
+        """Write counts and expected-class percentages to an annotated heatmap."""
         os.environ.setdefault(
             "MPLCONFIGDIR",
             str(output_path.parent / ".matplotlib"),
@@ -24,7 +24,7 @@ class ConfusionMatrixWriter:
         from matplotlib.backends.backend_agg import FigureCanvasAgg
         from matplotlib.figure import Figure
 
-        figure = Figure(figsize=(6.4, 5.4), dpi=150)
+        figure = Figure(figsize=(6.8, 5.4), dpi=150)
         canvas = FigureCanvasAgg(figure)
         axes = figure.subplots()
         image = axes.imshow(matrix, interpolation="nearest", cmap="Blues")
@@ -40,21 +40,29 @@ class ConfusionMatrixWriter:
             yticklabels=self.CLASS_NAMES,
         )
 
+        row_totals = matrix.sum(axis=1, keepdims=True)
+        percentages = np.divide(
+            matrix,
+            row_totals,
+            out=np.zeros_like(matrix, dtype=np.float64),
+            where=row_totals != 0,
+        )
         threshold = float(matrix.max()) / 2 if matrix.size else 0.0
         for expected_label in range(3):
             for actual_label in range(3):
                 count = int(matrix[expected_label, actual_label])
+                percentage = float(percentages[expected_label, actual_label]) * 100.0
                 axes.text(
                     actual_label,
                     expected_label,
-                    f"{count:,}",
+                    f"{count:,}\n{percentage:.1f}%",
                     ha="center",
                     va="center",
                     color="white" if count > threshold else "#172033",
                     fontweight="bold",
                 )
 
-        figure.tight_layout()
+        figure.subplots_adjust(left=0.24, right=0.88, bottom=0.16, top=0.88)
         canvas.print_png(output_path)
         figure.clear()
 

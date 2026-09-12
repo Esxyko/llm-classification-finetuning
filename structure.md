@@ -4,10 +4,13 @@
 
 - `.env`: Gitignored local Kaggle credentials loaded by the CLI.
 - `.env.example`: Safe, tracked template for configuring Kaggle credentials.
-- `config.yaml`: Runtime configuration for data locations and cross-validation.
+- `config.yaml`: Runtime configuration for data locations, cross-validation,
+  single-GPU resources, and baseline hyperparameters.
 - `pyproject.toml` and `uv.lock`: Package metadata and locked dependencies.
 - `data/`: Ignored local storage for downloaded raw files and generated outputs.
-- `results/`: Per-run fold predictions and regenerated comprehensive reports.
+- `results/`: Per-run fold predictions, test submissions, and comprehensive
+  reports.
+- `models/`: Ignored generated baseline classifier-head checkpoints.
 - `tests/`: Result-synthesis unit and integration coverage.
 
 ## Package responsibilities
@@ -24,6 +27,17 @@
   - `cli.py`: Defines the standalone fold and augmentation preprocessing CLI.
   - `folds.py`: Derives labels and canonical prompt groups, assigns stratified
     group folds, applies A/B augmentation, and writes the Parquet artifact.
+- `baseline/`: Owns the frozen-Qwen pairwise classification baseline.
+  - `data.py`: Validates processed folds and competition test inputs and
+    serializes aligned conversations.
+  - `model.py`: Defines shared-backbone pooling and the pairwise MLP head.
+  - `cache.py` and `extractor.py`: Extract, validate, and persist canonical pooled
+    embeddings for training or test data.
+  - `trainer.py`: Trains fold-specific heads or one head on all folded rows.
+  - `checkpoint.py` and `predictor.py`: Persist compatible head parameters and
+    run no-gradient test inference.
+  - `pipeline.py` and `cli.py`: Coordinate cross-validation, full-data builds,
+    test inference, and atomic datetime-named result publication.
 - `result/`: Owns validation and synthesis of cross-validation predictions.
   - `cli.py`: Defines the standalone comprehensive-result CLI.
   - `synthesizer.py`: Discovers fold CSVs, validates them against processed
