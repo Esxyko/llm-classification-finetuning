@@ -6,23 +6,27 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from ..config import BaselineConfig
-from ..errors import BaselineError
+from ...config import ModelConfig
+from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
 from .checkpoint import LoadedHeadCheckpoint
 from .model import PairwiseClassificationHead
 
 
-class BaselinePredictor:
+class ModelPredictor:
     """Load a compatible classifier head and predict cached test embeddings."""
 
     def __init__(
         self,
-        config: BaselineConfig,
+        config: ModelConfig,
         device: torch.device,
+        selector: str,
+        config_key: str,
     ) -> None:
         self._config = config
         self._device = device
+        self._selector = selector
+        self._config_key = config_key
 
     def predict(
         self,
@@ -31,9 +35,9 @@ class BaselinePredictor:
     ) -> np.ndarray:
         """Return A-win, B-win, and tie probabilities in embedding order."""
         if embeddings.hidden_size != checkpoint.backbone_hidden_size:
-            raise BaselineError(
-                "Test embedding size does not match the saved baseline checkpoint. "
-                "Rebuild the model with 'uv run baseline --build'."
+            raise ModelExecutionError(
+                "Test embedding size does not match the saved model checkpoint. "
+                f"Rebuild it with 'uv run model {self._selector} --build'."
             )
         head = PairwiseClassificationHead(
             backbone_hidden_size=checkpoint.backbone_hidden_size,
@@ -43,8 +47,8 @@ class BaselinePredictor:
         try:
             head.load_state_dict(checkpoint.state_dict, strict=True)
         except RuntimeError as error:
-            raise BaselineError(
-                f"Saved baseline head parameters are invalid: {error}"
+            raise ModelExecutionError(
+                f"Saved model head parameters are invalid: {error}"
             ) from error
 
         loader = DataLoader(
@@ -76,14 +80,16 @@ class BaselinePredictor:
                         torch.softmax(logits, dim=-1).to(device="cpu").numpy()
                     )
         except torch.cuda.OutOfMemoryError as error:
-            raise BaselineError(
-                "GPU memory was exhausted during baseline test inference. Lower "
-                "baseline.training_batch_size in config.yaml."
+            raise ModelExecutionError(
+                "GPU memory was exhausted during model test inference. Lower "
+                f"{self._config_key}.training_batch_size in config.yaml."
             ) from error
 
         if not probabilities:
-            raise BaselineError("Baseline test inference produced no predictions.")
+            raise ModelExecutionError("Model test inference produced no predictions.")
         predictions = np.concatenate(probabilities, axis=0)
         if not np.isfinite(predictions).all():
-            raise BaselineError("Baseline test inference produced non-finite values.")
+            raise ModelExecutionError(
+                "Model test inference produced non-finite values."
+            )
         return predictions

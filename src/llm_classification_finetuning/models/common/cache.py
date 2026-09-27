@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
-from ..errors import BaselineError
+from ...errors import ModelExecutionError
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +48,7 @@ class EmbeddingCache:
     def __init__(
         self,
         processed_path: Path,
-        artifact_stem: str = "baseline_embeddings",
+        artifact_stem: str,
     ) -> None:
         self._tensor_path = processed_path.parent / f"{artifact_stem}.pt"
         self._metadata_path = processed_path.parent / f"{artifact_stem}.json"
@@ -108,7 +108,7 @@ class EmbeddingCache:
             self._tensor_path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 dir=self._tensor_path.parent,
-                prefix=".baseline-embeddings-",
+                prefix=f".{self._tensor_path.stem}-",
                 suffix=".tmp.pt",
                 delete=False,
             ) as temporary_file:
@@ -132,7 +132,7 @@ class EmbeddingCache:
                 mode="w",
                 encoding="utf-8",
                 dir=self._metadata_path.parent,
-                prefix=".baseline-embeddings-",
+                prefix=f".{self._metadata_path.stem}-",
                 suffix=".tmp.json",
                 delete=False,
             ) as temporary_file:
@@ -145,7 +145,7 @@ class EmbeddingCache:
             os.replace(metadata_temporary, self._metadata_path)
             metadata_temporary = None
         except Exception as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Could not write embedding cache {self._tensor_path}: {error}"
             ) from error
         finally:

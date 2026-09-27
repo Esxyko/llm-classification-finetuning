@@ -41,8 +41,8 @@ class GPUConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class BaselineConfig:
-    """Hyperparameters for the frozen-backbone pairwise baseline."""
+class ModelConfig:
+    """Hyperparameters for one frozen-backbone pairwise model."""
 
     model_name: str
     max_length: int
@@ -64,7 +64,8 @@ class AppConfig:
     data: DataConfig
     cross_validation: CrossValidationConfig
     gpu: GPUConfig
-    baseline: BaselineConfig
+    qwen3_1_7b: ModelConfig
+    qwen3_4b: ModelConfig
 
     @classmethod
     def load(cls, config_path: Path) -> AppConfig:
@@ -90,7 +91,7 @@ class AppConfig:
         root = _require_mapping(raw_config, "configuration root")
         _reject_unknown_keys(
             root,
-            {"data", "cross_validation", "gpu", "baseline"},
+            {"data", "cross_validation", "gpu", "qwen3_1_7b", "qwen3_4b"},
             "configuration root",
         )
 
@@ -114,24 +115,8 @@ class AppConfig:
             {"devices", "precision", "attention_implementation", "allow_tf32"},
             "gpu",
         )
-        baseline_section = _require_mapping(root.get("baseline"), "baseline")
-        _reject_unknown_keys(
-            baseline_section,
-            {
-                "model_name",
-                "max_length",
-                "extraction_batch_size",
-                "training_batch_size",
-                "hidden_size",
-                "dropout",
-                "epochs",
-                "learning_rate",
-                "weight_decay",
-                "random_state",
-                "dataloader_workers",
-            },
-            "baseline",
-        )
+        qwen3_1_7b = _load_model_config(root, "qwen3_1_7b")
+        qwen3_4b = _load_model_config(root, "qwen3_4b")
 
         competition = _require_non_empty_string(
             data_section.get("competition"), "data.competition"
@@ -197,52 +182,6 @@ class AppConfig:
         )
         allow_tf32 = _require_boolean(gpu_section.get("allow_tf32"), "gpu.allow_tf32")
 
-        model_name = _require_non_empty_string(
-            baseline_section.get("model_name"), "baseline.model_name"
-        )
-        max_length = _require_positive_integer(
-            baseline_section.get("max_length"), "baseline.max_length"
-        )
-        extraction_batch_size = _require_positive_integer(
-            baseline_section.get("extraction_batch_size"),
-            "baseline.extraction_batch_size",
-        )
-        training_batch_size = _require_positive_integer(
-            baseline_section.get("training_batch_size"),
-            "baseline.training_batch_size",
-        )
-        hidden_size = _require_positive_integer(
-            baseline_section.get("hidden_size"), "baseline.hidden_size"
-        )
-        dropout = _require_float(baseline_section.get("dropout"), "baseline.dropout")
-        if not 0.0 <= dropout < 1.0:
-            raise ConfigurationError("baseline.dropout must be in [0, 1).")
-
-        epochs = _require_positive_integer(
-            baseline_section.get("epochs"), "baseline.epochs"
-        )
-        learning_rate = _require_float(
-            baseline_section.get("learning_rate"), "baseline.learning_rate"
-        )
-        if learning_rate <= 0.0:
-            raise ConfigurationError("baseline.learning_rate must be greater than 0.")
-
-        weight_decay = _require_float(
-            baseline_section.get("weight_decay"), "baseline.weight_decay"
-        )
-        if weight_decay < 0.0:
-            raise ConfigurationError("baseline.weight_decay cannot be negative.")
-
-        baseline_random_state = _require_integer(
-            baseline_section.get("random_state"), "baseline.random_state"
-        )
-        dataloader_workers = _require_integer(
-            baseline_section.get("dataloader_workers"),
-            "baseline.dataloader_workers",
-        )
-        if dataloader_workers < 0:
-            raise ConfigurationError("baseline.dataloader_workers cannot be negative.")
-
         return cls(
             data=DataConfig(
                 competition=competition,
@@ -259,20 +198,79 @@ class AppConfig:
                 attention_implementation=attention_implementation,
                 allow_tf32=allow_tf32,
             ),
-            baseline=BaselineConfig(
-                model_name=model_name,
-                max_length=max_length,
-                extraction_batch_size=extraction_batch_size,
-                training_batch_size=training_batch_size,
-                hidden_size=hidden_size,
-                dropout=dropout,
-                epochs=epochs,
-                learning_rate=learning_rate,
-                weight_decay=weight_decay,
-                random_state=baseline_random_state,
-                dataloader_workers=dataloader_workers,
-            ),
+            qwen3_1_7b=qwen3_1_7b,
+            qwen3_4b=qwen3_4b,
         )
+
+
+def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfig:
+    section = _require_mapping(root.get(section_name), section_name)
+    allowed_keys = {
+        "model_name",
+        "max_length",
+        "extraction_batch_size",
+        "training_batch_size",
+        "hidden_size",
+        "dropout",
+        "epochs",
+        "learning_rate",
+        "weight_decay",
+        "random_state",
+        "dataloader_workers",
+    }
+    _reject_unknown_keys(section, allowed_keys, section_name)
+
+    def field(name: str) -> str:
+        return f"{section_name}.{name}"
+
+    dropout = _require_float(section.get("dropout"), field("dropout"))
+    if not 0.0 <= dropout < 1.0:
+        raise ConfigurationError(f"{field('dropout')} must be in [0, 1).")
+    learning_rate = _require_float(
+        section.get("learning_rate"), field("learning_rate")
+    )
+    if learning_rate <= 0.0:
+        raise ConfigurationError(
+            f"{field('learning_rate')} must be greater than 0."
+        )
+    weight_decay = _require_float(
+        section.get("weight_decay"), field("weight_decay")
+    )
+    if weight_decay < 0.0:
+        raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
+    dataloader_workers = _require_integer(
+        section.get("dataloader_workers"), field("dataloader_workers")
+    )
+    if dataloader_workers < 0:
+        raise ConfigurationError(
+            f"{field('dataloader_workers')} cannot be negative."
+        )
+
+    return ModelConfig(
+        model_name=_require_non_empty_string(
+            section.get("model_name"), field("model_name")
+        ),
+        max_length=_require_positive_integer(
+            section.get("max_length"), field("max_length")
+        ),
+        extraction_batch_size=_require_positive_integer(
+            section.get("extraction_batch_size"), field("extraction_batch_size")
+        ),
+        training_batch_size=_require_positive_integer(
+            section.get("training_batch_size"), field("training_batch_size")
+        ),
+        hidden_size=_require_positive_integer(
+            section.get("hidden_size"), field("hidden_size")
+        ),
+        dropout=dropout,
+        epochs=_require_positive_integer(section.get("epochs"), field("epochs")),
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        random_state=_require_integer(
+            section.get("random_state"), field("random_state")
+        ),
+        dataloader_workers=dataloader_workers,
+    )
 
 
 def _require_mapping(value: Any, field_name: str) -> Mapping[str, Any]:

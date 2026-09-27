@@ -1,4 +1,4 @@
-"""Persist and validate trained baseline classifier-head parameters."""
+"""Persist and validate trained model classifier-head parameters."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
-from ..errors import BaselineError
+from ...errors import ModelExecutionError
 from .model import PairwiseClassificationHead
 
 
@@ -38,11 +38,12 @@ class LoadedHeadCheckpoint:
     backbone_hidden_size: int
 
 
-class BaselineCheckpointStore:
-    """Atomically replace and strictly load one baseline head checkpoint."""
+class ModelCheckpointStore:
+    """Atomically replace and strictly load one model head checkpoint."""
 
-    def __init__(self, checkpoint_path: Path) -> None:
+    def __init__(self, checkpoint_path: Path, selector: str) -> None:
         self._checkpoint_path = checkpoint_path.resolve()
+        self._selector = selector
 
     @property
     def path(self) -> Path:
@@ -86,8 +87,8 @@ class BaselineCheckpointStore:
             os.replace(temporary_path, self._checkpoint_path)
             temporary_path = None
         except Exception as error:
-            raise BaselineError(
-                f"Could not write baseline checkpoint {self._checkpoint_path}: {error}"
+            raise ModelExecutionError(
+                f"Could not write model checkpoint {self._checkpoint_path}: {error}"
             ) from error
         finally:
             if temporary_path is not None:
@@ -102,9 +103,9 @@ class BaselineCheckpointStore:
     ) -> LoadedHeadCheckpoint:
         """Load a checkpoint and reject incompatible or invalid contents."""
         if not self._checkpoint_path.is_file():
-            raise BaselineError(
-                f"Baseline checkpoint not found: {self._checkpoint_path}. "
-                "Run 'uv run baseline --build' first."
+            raise ModelExecutionError(
+                f"Model checkpoint not found: {self._checkpoint_path}. "
+                f"Run 'uv run model {self._selector} --build' first."
             )
         try:
             checkpoint = torch.load(
@@ -126,9 +127,10 @@ class BaselineCheckpointStore:
             ]
             if mismatches:
                 fields = ", ".join(mismatches)
-                raise BaselineError(
-                    "Baseline checkpoint is incompatible with the current "
-                    f"configuration ({fields}). Run 'uv run baseline --build'."
+                raise ModelExecutionError(
+                    "Model checkpoint is incompatible with the current "
+                    f"configuration ({fields}). Run "
+                    f"'uv run model {self._selector} --build'."
                 )
 
             backbone_hidden_size = metadata.get("backbone_hidden_size")
@@ -149,9 +151,9 @@ class BaselineCheckpointStore:
                 state_dict=state_dict,
                 backbone_hidden_size=backbone_hidden_size,
             )
-        except BaselineError:
+        except ModelExecutionError:
             raise
         except Exception as error:
-            raise BaselineError(
-                f"Could not load baseline checkpoint {self._checkpoint_path}: {error}"
+            raise ModelExecutionError(
+                f"Could not load model checkpoint {self._checkpoint_path}: {error}"
             ) from error

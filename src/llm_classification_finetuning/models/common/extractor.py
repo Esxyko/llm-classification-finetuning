@@ -8,8 +8,8 @@ from collections.abc import Sequence
 import torch
 from transformers import AutoTokenizer
 
-from ..config import BaselineConfig, GPUConfig
-from ..errors import BaselineError
+from ...config import GPUConfig, ModelConfig
+from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
 from .data import PairwiseText
 from .hardware import GPUEnvironment
@@ -22,48 +22,50 @@ class QwenEmbeddingExtractor:
     def __init__(
         self,
         gpu_config: GPUConfig,
-        baseline_config: BaselineConfig,
+        model_config: ModelConfig,
         devices: tuple[torch.device, ...],
     ) -> None:
         self._devices = devices
-        self._config = baseline_config
+        self._config = model_config
         dtype = GPUEnvironment.PRECISION_DTYPES[gpu_config.precision]
 
         try:
-            self._tokenizer = AutoTokenizer.from_pretrained(baseline_config.model_name)
+            self._tokenizer = AutoTokenizer.from_pretrained(model_config.model_name)
             self._tokenizer.padding_side = "right"
             self._tokenizer.truncation_side = "right"
             if self._tokenizer.pad_token_id is None:
                 if self._tokenizer.eos_token_id is None:
-                    raise BaselineError(
+                    raise ModelExecutionError(
                         "The configured tokenizer has neither a pad token nor an EOS token."
                     )
                 self._tokenizer.pad_token = self._tokenizer.eos_token
 
             self._model = PairwiseQwenClassifier(
-                model_name=baseline_config.model_name,
-                classifier_hidden_size=baseline_config.hidden_size,
-                dropout=baseline_config.dropout,
+                model_name=model_config.model_name,
+                classifier_hidden_size=model_config.hidden_size,
+                dropout=model_config.dropout,
                 devices=self._devices,
                 dtype=dtype,
                 attention_implementation=gpu_config.attention_implementation,
             )
         except torch.cuda.OutOfMemoryError as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 "CUDA ran out of memory while loading the Qwen backbone. Close other "
                 "GPU workloads or select a lower-precision gpu.precision setting."
             ) from error
-        except BaselineError:
+        except ModelExecutionError:
             raise
         except Exception as error:
-            raise BaselineError(
-                f"Could not load {baseline_config.model_name}: {error}"
+            raise ModelExecutionError(
+                f"Could not load {model_config.model_name}: {error}"
             ) from error
 
     def extract(self, records: Sequence[PairwiseText]) -> CachedEmbeddings:
         """Return float16 CPU embeddings in canonical record order."""
         if not records:
-            raise BaselineError("No canonical records are available for extraction.")
+            raise ModelExecutionError(
+                "No canonical records are available for extraction."
+            )
 
         ids: list[int] = []
         h_a_batches: list[torch.Tensor] = []
@@ -108,14 +110,14 @@ class QwenEmbeddingExtractor:
                         f"Extracted embedding batch {batch_number:,}/{total_batches:,}."
                     )
         except torch.cuda.OutOfMemoryError as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 "CUDA ran out of memory during embedding extraction. Lower "
-                "baseline.extraction_batch_size or baseline.max_length."
+                "the selected model's extraction_batch_size or max_length."
             ) from error
-        except BaselineError:
+        except ModelExecutionError:
             raise
         except Exception as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Could not extract Qwen embeddings: {error}"
             ) from error
 

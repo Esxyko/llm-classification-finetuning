@@ -13,8 +13,8 @@ from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 
-from ..config import BaselineConfig
-from ..errors import BaselineError
+from ...config import ModelConfig
+from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
 from .model import PairwiseClassificationHead
 
@@ -67,7 +67,7 @@ class PairwiseEmbeddingDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         try:
             positions = [id_to_position[int(row_id)] for row_id in reference["id"]]
         except KeyError as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"No cached embedding exists for processed ID {error.args[0]}."
             ) from error
 
@@ -95,18 +95,20 @@ class PairwiseEmbeddingDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         return h_a, h_b, self._labels[index]
 
 
-class BaselineCrossValidator:
+class ModelCrossValidator:
     """Train pairwise heads for cross-validation or a full-data build."""
 
     def __init__(
         self,
-        config: BaselineConfig,
+        config: ModelConfig,
         n_splits: int,
         device: torch.device,
+        config_key: str,
     ) -> None:
         self._config = config
         self._n_splits = n_splits
         self._device = device
+        self._config_key = config_key
         self._criterion = CrossEntropyLoss()
 
     def train(
@@ -120,7 +122,7 @@ class BaselineCrossValidator:
             training_reference = reference.loc[reference["fold"].ne(fold)]
             validation_reference = reference.loc[reference["fold"].eq(fold)]
             if training_reference.empty or validation_reference.empty:
-                raise BaselineError(
+                raise ModelExecutionError(
                     f"Fold {fold} has an empty training or validation set."
                 )
             results.append(
@@ -140,7 +142,7 @@ class BaselineCrossValidator:
     ) -> FullTrainingResult:
         """Train one head on every original and augmented fold row."""
         if reference.empty:
-            raise BaselineError("Full-data baseline training received no rows.")
+            raise ModelExecutionError("Full-data model training received no rows.")
         seed = self._config.random_state
         self._seed_everything(seed)
         training_loader = self._create_loader(
@@ -162,9 +164,9 @@ class BaselineCrossValidator:
                     f"train_loss={training_loss:.6f}"
                 )
         except torch.cuda.OutOfMemoryError as error:
-            raise BaselineError(
-                "GPU memory was exhausted while training the baseline head. Lower "
-                "baseline.training_batch_size in config.yaml."
+            raise ModelExecutionError(
+                "GPU memory was exhausted while training the model head. Lower "
+                f"{self._config_key}.training_batch_size in config.yaml."
             ) from error
 
         return FullTrainingResult(
@@ -221,13 +223,15 @@ class BaselineCrossValidator:
                     f"validation_loss={metrics.validation_loss:.6f}"
                 )
         except torch.cuda.OutOfMemoryError as error:
-            raise BaselineError(
-                "GPU memory was exhausted while training the baseline head. Lower "
-                "baseline.training_batch_size in config.yaml."
+            raise ModelExecutionError(
+                "GPU memory was exhausted while training the model head. Lower "
+                f"{self._config_key}.training_batch_size in config.yaml."
             ) from error
 
         if final_probabilities is None:
-            raise BaselineError(f"Fold {fold} did not produce validation predictions.")
+            raise ModelExecutionError(
+                f"Fold {fold} did not produce validation predictions."
+            )
         return FoldTrainingResult(
             fold=fold,
             ids=validation_reference["id"].to_numpy(dtype=np.int64, copy=True),
@@ -281,7 +285,7 @@ class BaselineCrossValidator:
             loss_total += float(loss.detach()) * rows
             rows_total += rows
         if rows_total == 0:
-            raise BaselineError("Baseline training loader produced no rows.")
+            raise ModelExecutionError("Model training loader produced no rows.")
         return loss_total / rows_total
 
     def _create_loader(

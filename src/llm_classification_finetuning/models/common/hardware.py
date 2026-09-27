@@ -6,8 +6,8 @@ from typing import ClassVar
 
 import torch
 
-from ..config import GPUConfig
-from ..errors import BaselineError
+from ...config import GPUConfig
+from ...errors import ModelExecutionError
 
 
 class GPUEnvironment:
@@ -30,8 +30,8 @@ class GPUEnvironment:
     def configure(self) -> tuple[torch.device, ...]:
         """Validate and configure the requested CUDA devices."""
         if not torch.cuda.is_available():
-            raise BaselineError(
-                "CUDA is not available. The baseline requires configured CUDA GPUs."
+            raise ModelExecutionError(
+                "CUDA is not available. Model execution requires configured CUDA GPUs."
             )
 
         devices = tuple(torch.device(value) for value in self._config.devices)
@@ -43,7 +43,7 @@ class GPUEnvironment:
         ]
         if unavailable:
             configured = ", ".join(unavailable)
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Configured GPU(s) {configured} are unavailable; found "
                 f"{available_devices} CUDA device(s)."
             )
@@ -54,7 +54,7 @@ class GPUEnvironment:
                 self._config.precision == "bf16"
                 and not torch.cuda.is_bf16_supported()
             ):
-                raise BaselineError(
+                raise ModelExecutionError(
                     f"Configured GPU {device} does not support bf16. Set "
                     "gpu.precision to fp16 or fp32."
                 )

@@ -25,7 +25,7 @@ data = "llm_classification_finetuning.data.cli:main"
 preprocess = "llm_classification_finetuning.preprocess.cli:main"
 init = "llm_classification_finetuning.cli:main"
 result = "llm_classification_finetuning.result.cli:main"
-baseline = "llm_classification_finetuning.baseline.cli:main"
+model = "llm_classification_finetuning.models.cli:main"
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }

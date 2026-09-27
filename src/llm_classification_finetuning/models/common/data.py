@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 import numpy as np
 import pandas as pd
 
-from ..errors import BaselineError
+from ...errors import ModelExecutionError
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +24,7 @@ class PairwiseText:
 
 
 @dataclass(frozen=True, slots=True)
-class BaselineData:
+class ModelData:
     """Validated augmented references and canonical model inputs."""
 
     reference: pd.DataFrame
@@ -33,7 +33,7 @@ class BaselineData:
 
 
 @dataclass(frozen=True, slots=True)
-class BaselineTestData:
+class ModelTestData:
     """Validated competition test records and submission IDs."""
 
     ids: tuple[int, ...]
@@ -59,15 +59,17 @@ class ConversationSerializer:
         response_b = self._load_array(response_b_value, row_id, "response_b")
 
         if not prompts:
-            raise BaselineError(f"Row {row_id} contains an empty prompt conversation.")
+            raise ModelExecutionError(
+                f"Row {row_id} contains an empty prompt conversation."
+            )
         if len(prompts) != len(response_a) or len(prompts) != len(response_b):
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Row {row_id} has misaligned prompt and response turn counts."
             )
 
         for turn, prompt in enumerate(prompts):
             if not isinstance(prompt, str):
-                raise BaselineError(
+                raise ModelExecutionError(
                     f"Row {row_id} prompt turn {turn} must be a string."
                 )
 
@@ -78,15 +80,17 @@ class ConversationSerializer:
     @staticmethod
     def _load_array(value: str, row_id: int, column: str) -> list[Any]:
         if not isinstance(value, str):
-            raise BaselineError(f"Row {row_id} {column} must be JSON text.")
+            raise ModelExecutionError(f"Row {row_id} {column} must be JSON text.")
         try:
             parsed = json.loads(value)
         except (TypeError, json.JSONDecodeError) as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Row {row_id} {column} is not a valid JSON array: {error}"
             ) from error
         if not isinstance(parsed, list):
-            raise BaselineError(f"Row {row_id} {column} must be a JSON array.")
+            raise ModelExecutionError(
+                f"Row {row_id} {column} must be a JSON array."
+            )
         return parsed
 
     @staticmethod
@@ -99,15 +103,15 @@ class ConversationSerializer:
         turns: list[str] = []
         for turn, (prompt, response) in enumerate(zip(prompts, responses, strict=True)):
             if response is not None and not isinstance(response, str):
-                raise BaselineError(
+                raise ModelExecutionError(
                     f"Row {row_id} {column} turn {turn} must be a string or null."
                 )
             turns.append(f"{prompt}\n{response or ''}")
         return "\n\n".join(turns)
 
 
-class BaselineDataRepository:
-    """Read and validate the processed fold artifact for baseline training."""
+class ModelDataRepository:
+    """Read and validate the processed fold artifact for model training."""
 
     REQUIRED_COLUMNS = (
         "id",
@@ -130,10 +134,10 @@ class BaselineDataRepository:
         """Return the cache-relevant conversation format identifier."""
         return self._serializer.FORMAT_VERSION
 
-    def load(self) -> BaselineData:
+    def load(self) -> ModelData:
         """Return validated references, canonical texts, and a file fingerprint."""
         if not self._processed_path.is_file():
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Processed fold data not found: {self._processed_path}. "
                 "Run 'uv run init' first."
             )
@@ -143,7 +147,7 @@ class BaselineDataRepository:
                 columns=list(self.REQUIRED_COLUMNS),
             )
         except Exception as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Could not read processed fold data {self._processed_path}: {error}"
             ) from error
 
@@ -159,7 +163,7 @@ class BaselineDataRepository:
             for row in canonical.itertuples(index=False)
         )
         fingerprint = _sha256(self._processed_path)
-        return BaselineData(
+        return ModelData(
             reference=data.loc[:, ["id", "label", "fold", "is_swapped"]]
             .copy()
             .reset_index(drop=True),
@@ -169,18 +173,20 @@ class BaselineDataRepository:
 
     def _validate_reference(self, data: pd.DataFrame) -> None:
         if data.empty:
-            raise BaselineError("Processed fold data contains no rows.")
+            raise ModelExecutionError("Processed fold data contains no rows.")
         if data.loc[:, list(self.REQUIRED_COLUMNS)].isna().any().any():
-            raise BaselineError("Processed fold data contains missing required values.")
+            raise ModelExecutionError(
+                "Processed fold data contains missing required values."
+            )
         if not data["label"].isin((0, 1, 2)).all():
-            raise BaselineError("Processed labels must be 0, 1, or 2.")
+            raise ModelExecutionError("Processed labels must be 0, 1, or 2.")
         if not data["is_swapped"].isin((True, False)).all():
-            raise BaselineError("Processed is_swapped values must be boolean.")
+            raise ModelExecutionError("Processed is_swapped values must be boolean.")
 
         expected_folds = set(range(self._n_splits))
         actual_folds = {int(value) for value in data["fold"].unique()}
         if actual_folds != expected_folds:
-            raise BaselineError(
+            raise ModelExecutionError(
                 "Processed fold data must contain exactly the configured folds "
                 f"0 through {self._n_splits - 1}."
             )
@@ -197,7 +203,7 @@ class BaselineDataRepository:
             | pairs["originals"].ne(1)
             | pairs["swapped"].ne(1)
         ).any():
-            raise BaselineError(
+            raise ModelExecutionError(
                 "Each ID must have one original and one swapped row in one fold."
             )
 
@@ -206,10 +212,12 @@ class BaselineDataRepository:
         swapped = swapped.loc[originals.index]
         translated = swapped["label"].map(self.SWAPPED_LABELS)
         if not translated.astype("int64").eq(originals["label"].astype("int64")).all():
-            raise BaselineError("Swapped labels do not match their canonical labels.")
+            raise ModelExecutionError(
+                "Swapped labels do not match their canonical labels."
+            )
 
 
-class BaselineTestDataRepository:
+class ModelTestDataRepository:
     """Read and validate competition test and submission-template records."""
 
     TEST_COLUMNS = ("id", "prompt", "response_a", "response_b")
@@ -230,7 +238,7 @@ class BaselineTestDataRepository:
         """Return the cache-relevant conversation format identifier."""
         return self._serializer.FORMAT_VERSION
 
-    def load(self) -> BaselineTestData:
+    def load(self) -> ModelTestData:
         """Return validated test texts in sample-submission order."""
         test = self._read_csv(self._test_path, "competition test data")
         submission = self._read_csv(
@@ -244,12 +252,14 @@ class BaselineTestDataRepository:
             self._submission_path,
         )
         if test.loc[:, list(self.TEST_COLUMNS)].isna().any().any():
-            raise BaselineError("Competition test data contains missing values.")
+            raise ModelExecutionError(
+                "Competition test data contains missing values."
+            )
 
         test_ids = self._validated_ids(test, self._test_path)
         submission_ids = self._validated_ids(submission, self._submission_path)
         if not np.array_equal(test_ids, submission_ids):
-            raise BaselineError(
+            raise ModelExecutionError(
                 "test.csv and sample_submission.csv IDs must match in the same order."
             )
 
@@ -262,7 +272,7 @@ class BaselineTestDataRepository:
             )
             for row in test.itertuples(index=False)
         )
-        return BaselineTestData(
+        return ModelTestData(
             ids=tuple(int(row_id) for row_id in test_ids),
             canonical_texts=canonical_texts,
             fingerprint=_sha256(self._test_path),
@@ -271,13 +281,13 @@ class BaselineTestDataRepository:
     @staticmethod
     def _read_csv(path: Path, description: str) -> pd.DataFrame:
         if not path.is_file():
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"{description.capitalize()} not found: {path}. Run 'uv run data' first."
             )
         try:
             return pd.read_csv(path)
         except Exception as error:
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"Could not read {description} {path}: {error}"
             ) from error
 
@@ -289,11 +299,11 @@ class BaselineTestDataRepository:
     ) -> None:
         if tuple(data.columns) != expected:
             columns = ", ".join(expected)
-            raise BaselineError(
+            raise ModelExecutionError(
                 f"{path.name} must contain exactly these columns in order: {columns}."
             )
         if data.empty:
-            raise BaselineError(f"{path.name} contains no rows.")
+            raise ModelExecutionError(f"{path.name} contains no rows.")
 
     @staticmethod
     def _validated_ids(data: pd.DataFrame, path: Path) -> np.ndarray:
@@ -302,15 +312,17 @@ class BaselineTestDataRepository:
                 dtype=np.float64
             )
         except (TypeError, ValueError) as error:
-            raise BaselineError(f"{path.name} IDs must be numeric integers.") from error
+            raise ModelExecutionError(
+                f"{path.name} IDs must be numeric integers."
+            ) from error
         if (
             not np.isfinite(numeric_ids).all()
             or not np.equal(numeric_ids, np.floor(numeric_ids)).all()
         ):
-            raise BaselineError(f"{path.name} IDs must be finite integers.")
+            raise ModelExecutionError(f"{path.name} IDs must be finite integers.")
         integer_ids = numeric_ids.astype(np.int64)
         if pd.Series(integer_ids).duplicated().any():
-            raise BaselineError(f"{path.name} IDs must be unique.")
+            raise ModelExecutionError(f"{path.name} IDs must be unique.")
         return integer_ids
 
 
@@ -321,5 +333,5 @@ def _sha256(path: Path) -> str:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 digest.update(chunk)
     except OSError as error:
-        raise BaselineError(f"Could not fingerprint {path}: {error}") from error
+        raise ModelExecutionError(f"Could not fingerprint {path}: {error}") from error
     return digest.hexdigest()

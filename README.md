@@ -1,6 +1,6 @@
 # LLM Classification Finetuning
 
-Prepare leakage-safe training folds, run a frozen-Qwen pairwise baseline, and
+Prepare leakage-safe training folds, run frozen-Qwen pairwise models, and
 generate reports or submissions for Kaggle's
 [LLM Classification Finetuning competition](https://www.kaggle.com/competitions/llm-classification-finetuning).
 
@@ -9,8 +9,8 @@ generate reports or submissions for Kaggle's
 - Python 3.14 or newer
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
 - A Kaggle account with the competition rules accepted
-- One CUDA GPU to run the baseline (data preparation and report generation do not
-  require it)
+- The configured CUDA GPUs to run a model (data preparation and report generation
+  do not require them)
 
 ## Quick start
 
@@ -53,12 +53,14 @@ Run these commands from the project root.
 | `uv run init` | Downloads missing raw files and prepares training data | `data/processed/train_folds.parquet` |
 | `uv run data` | Downloads missing Kaggle files only | `data/raw/*.csv` |
 | `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_folds.parquet` |
-| `uv run baseline` | Runs cross-validation | `results/baseline-*/` |
-| `uv run baseline --build` | Trains one head on all prepared rows | `models/baseline/head.pt` |
-| `uv run baseline --test` | Creates a submission with the saved head | `results/test/baseline-*/submission.csv` |
+| `uv run model qwen3-1.7b` | Runs Qwen3-1.7B cross-validation | `results/qwen3-1.7b-*/` |
+| `uv run model qwen3-4b` | Runs Qwen3-4B cross-validation | `results/qwen3-4b-*/` |
+| `uv run model MODEL --build` | Trains the selected model's head on all prepared rows | `models/MODEL_SLUG/head.pt` |
+| `uv run model MODEL --test` | Creates a submission with the selected model's saved head | `results/test/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
-Add `--refresh-cache` to any `baseline` mode to rebuild that mode's embeddings.
+Set `MODEL` to `qwen3-1.7b` or `qwen3-4b`. Add `--refresh-cache` to any model
+mode to rebuild that model and mode's embeddings.
 `--build` and `--test` are mutually exclusive; without either flag, the command
 runs cross-validation.
 
@@ -86,23 +88,24 @@ Original and swapped rows share an `id`, `group_id`, and fold, so duplicate IDs
 are expected. Re-running preparation preserves existing raw files and replaces
 the processed file.
 
-## Run the baseline
+## Run a model
 
 Prepare the data first, then run cross-validation:
 
 ```shell
-uv run baseline
+uv run model qwen3-1.7b
 ```
 
-The frozen `Qwen/Qwen3-1.7B` backbone produces cached embeddings; only the
-pairwise MLP head is trained. A validation run writes one competition-format CSV
-per fold plus `metrics.json` to a timestamped `results/baseline-*/` directory.
+Use `qwen3-4b` instead to run the same workflow with `Qwen/Qwen3-4B`. The frozen
+backbone produces cached embeddings; only the pairwise MLP head is trained. A
+validation run writes one competition-format CSV per fold plus `metrics.json`
+to a timestamped model-named results directory.
 
 To train a production head on all prepared rows and generate a submission:
 
 ```shell
-uv run baseline --build
-uv run baseline --test
+uv run model qwen3-1.7b --build
+uv run model qwen3-1.7b --test
 ```
 
 Build mode replaces the saved classifier head and compatibility metadata. Test
@@ -110,16 +113,17 @@ mode validates `test.csv` against `sample_submission.csv`, loads that head, and
 writes a timestamped submission. The Qwen backbone is not stored in the
 checkpoint.
 
-Training and test embeddings use separate caches in `data/processed/`. A cache
-is reused only when its data, model, sequence length, serialization, precision,
-attention implementation, and TF32 settings still match.
+Each model's training and test embeddings use separate model-named caches in
+`data/processed/`. A cache is reused only when its data, model, sequence length,
+serialization, precision, attention implementation, and TF32 settings still
+match. Legacy `baseline_*` caches are left untouched and are not reused.
 
 The checked-in defaults target two 16 GB NVIDIA T4 GPUs. Frozen Qwen replicas
 split the flattened response branches across `cuda:0` and `cuda:1`; classifier
 head training runs on the first configured device. T4 requires `fp16`, and the
 default 16,384-token cap keeps one branch within each GPU's memory budget. If
-extraction runs out of memory, reduce `baseline.extraction_batch_size` or
-`baseline.max_length` in `config.yaml`.
+extraction runs out of memory, reduce the selected model section's
+`extraction_batch_size` or `max_length` in `config.yaml`.
 
 ## Generate validation reports
 
@@ -132,7 +136,7 @@ uv run result
 Or select a direct subfolder of `results/`:
 
 ```shell
-uv run result baseline-YYYYMMDD-HHMMSS
+uv run result qwen3-1.7b-YYYYMMDD-HHMMSS
 ```
 
 Without an argument, the command selects the most recently modified result
@@ -169,7 +173,8 @@ resolved from that file's directory.
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count and random seed |
 | `gpu` | CUDA devices, precision, attention implementation, and TF32 |
-| `baseline` | Model, sequence length, batch sizes, MLP, and optimizer settings |
+| `qwen3_1_7b` | Qwen3-1.7B model, sequence length, batches, MLP, and optimizer |
+| `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, and optimizer |
 
 ## Troubleshooting
 
@@ -181,4 +186,4 @@ resolved from that file's directory.
 - **CUDA or precision is unsupported:** Select an available `cuda:N` device and
   use `fp16` or `fp32` if the GPU does not support `bf16`.
 - **Embedding extraction runs out of memory:** Reduce
-  `baseline.extraction_batch_size` or `baseline.max_length`.
+  `extraction_batch_size` or `max_length` in the selected model's section.

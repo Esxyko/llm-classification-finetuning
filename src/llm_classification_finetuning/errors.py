@@ -17,5 +17,5 @@ class ResultSynthesisError(DataPreparationError):
     """Raised when fold predictions cannot be synthesized safely."""
 
 
-class BaselineError(DataPreparationError):
-    """Raised when baseline embedding extraction or training cannot complete."""
+class ModelExecutionError(DataPreparationError):
+    """Raised when model embedding extraction or training cannot complete."""
