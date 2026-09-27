@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
 
 from ..config import AppConfig
 from ..errors import DataPreparationError
-from . import MODEL_REGISTRY
+from . import MODEL_REGISTRY, ModelRegistration
 from .common import (
     ModelBuildResult,
     ModelMode,
@@ -20,6 +21,7 @@ from .common import (
 from .common.pipeline import ModelExecutionResult
 
 CONFIG_PATH = Path("config.yaml")
+ALL_MODELS = "ALL"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,8 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "model",
-        choices=tuple(MODEL_REGISTRY),
-        help="Model profile to execute.",
+        choices=(*MODEL_REGISTRY, ALL_MODELS),
+        help="Model profile to execute, or ALL to run every profile sequentially.",
     )
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument(
@@ -42,12 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
     modes.add_argument(
         "--test",
         action="store_true",
-        help="Load the selected model's saved head and generate a test submission.",
+        help="Load each selected model's saved head and generate a test submission.",
     )
     parser.add_argument(
         "--refresh-cache",
         action="store_true",
-        help="Ignore the selected mode's compatible embedding cache and rebuild it.",
+        help="Rebuild the selected mode's embedding cache for each selected model.",
     )
     return parser
 
@@ -55,24 +57,81 @@ def build_parser() -> argparse.ArgumentParser:
 def run(arguments: Sequence[str] | None = None) -> int:
     """Run the selected model mode and return a process exit code."""
     parsed_arguments = build_parser().parse_args(arguments)
-    registration = MODEL_REGISTRY[parsed_arguments.model]
-    profile = registration.profile
     try:
         config_path = CONFIG_PATH.resolve()
         config = AppConfig.load(config_path)
-        result = registration.pipeline_type(
+        mode = _selected_mode(parsed_arguments)
+        if parsed_arguments.model == ALL_MODELS:
+            return _run_all_models(
+                config=config,
+                project_root=config_path.parent,
+                mode=mode,
+                refresh_cache=parsed_arguments.refresh_cache,
+            )
+
+        registration = MODEL_REGISTRY[parsed_arguments.model]
+        result = _run_registered_model(
+            registration=registration,
             config=config,
             project_root=config_path.parent,
-            profile=profile,
-        ).run(
-            mode=_selected_mode(parsed_arguments),
+            mode=mode,
             refresh_cache=parsed_arguments.refresh_cache,
         )
-        _print_result(profile.selector, result)
+        _print_result(registration.profile.selector, result)
         return 0
     except DataPreparationError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
+
+
+def _run_registered_model(
+    *,
+    registration: ModelRegistration,
+    config: AppConfig,
+    project_root: Path,
+    mode: ModelMode,
+    refresh_cache: bool,
+) -> ModelExecutionResult:
+    return registration.pipeline_type(
+        config=config,
+        project_root=project_root,
+        profile=registration.profile,
+    ).run(mode=mode, refresh_cache=refresh_cache)
+
+
+def _run_all_models(
+    *,
+    config: AppConfig,
+    project_root: Path,
+    mode: ModelMode,
+    refresh_cache: bool,
+) -> int:
+    """Run every registered model, preserving registry order after failures."""
+    failed_models: list[str] = []
+    for selector, registration in MODEL_REGISTRY.items():
+        print(f"Running model: {selector}", flush=True)
+        try:
+            result = _run_registered_model(
+                registration=registration,
+                config=config,
+                project_root=project_root,
+                mode=mode,
+                refresh_cache=refresh_cache,
+            )
+            _print_result(selector, result)
+        except DataPreparationError as error:
+            print(f"Error running {selector}: {error}", file=sys.stderr)
+            failed_models.append(selector)
+        except Exception as error:
+            print(f"Error running {selector}:", file=sys.stderr)
+            traceback.print_exception(error)
+            failed_models.append(selector)
+
+    completed = len(MODEL_REGISTRY) - len(failed_models)
+    print(f"Completed {completed}/{len(MODEL_REGISTRY)} models.")
+    if failed_models:
+        print(f"Failed models: {', '.join(failed_models)}", file=sys.stderr)
+    return int(bool(failed_models))
 
 
 def _selected_mode(arguments: argparse.Namespace) -> ModelMode:

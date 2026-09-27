@@ -56,14 +56,18 @@ Run these commands from the project root.
 | `uv run model qwen3-1.7b` | Runs Qwen3-1.7B cross-validation | `results/qwen3-1.7b-*/` |
 | `uv run model qwen3-1.7b-mono-input` | Runs structured mono-input Qwen3-1.7B cross-validation | `results/qwen3-1.7b-mono-input-*/` |
 | `uv run model qwen3-4b` | Runs Qwen3-4B cross-validation | `results/qwen3-4b-*/` |
+| `uv run model ALL` | Runs cross-validation for every registered model sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the selected model's head on its training rows | `models/MODEL_SLUG/head.pt` |
 | `uv run model MODEL --test` | Creates a submission with the selected model's saved head | `results/test/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
-Set `MODEL` to `qwen3-1.7b`, `qwen3-1.7b-mono-input`, or `qwen3-4b`. Add
-`--refresh-cache` to any model mode to rebuild that model and mode's embeddings.
+Set `MODEL` to `qwen3-1.7b`, `qwen3-1.7b-mono-input`, `qwen3-4b`, or exact
+uppercase `ALL`. Add `--refresh-cache` to any model mode to rebuild that model
+and mode's embeddings.
 `--build` and `--test` are mutually exclusive; without either flag, the command
-runs cross-validation.
+runs cross-validation. `ALL` follows model registry order and accepts the same
+`--build`, `--test`, and `--refresh-cache` options. If one model fails, the
+remaining models still run; the command exits with status `1` if any failed.
 
 ## Prepare training data
 
