@@ -114,10 +114,12 @@ Training and test embeddings use separate caches in `data/processed/`. A cache
 is reused only when its data, model, sequence length, serialization, precision,
 attention implementation, and TF32 settings still match.
 
-The checked-in defaults target one 8 GB CUDA GPU. If extraction runs out of
-memory, reduce `baseline.extraction_batch_size` or `baseline.max_length` in
-`config.yaml`. The baseline supports one `cuda:N` device, not CPU or multi-GPU
-training.
+The checked-in defaults target two 16 GB NVIDIA T4 GPUs. Frozen Qwen replicas
+split the flattened response branches across `cuda:0` and `cuda:1`; classifier
+head training runs on the first configured device. T4 requires `fp16`, and the
+default 16,384-token cap keeps one branch within each GPU's memory budget. If
+extraction runs out of memory, reduce `baseline.extraction_batch_size` or
+`baseline.max_length` in `config.yaml`.
 
 ## Generate validation reports
 
@@ -166,7 +168,7 @@ resolved from that file's directory.
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count and random seed |
-| `gpu` | CUDA device, precision, attention implementation, and TF32 |
+| `gpu` | CUDA devices, precision, attention implementation, and TF32 |
 | `baseline` | Model, sequence length, batch sizes, MLP, and optimizer settings |
 
 ## Troubleshooting

@@ -56,8 +56,8 @@ and print summaries. Business logic belongs below the CLI layer.
     publishes its artifacts.
   - `data.py`: Validates training/test inputs and serializes aligned conversation
     branches.
-  - `hardware.py`: Validates and configures the single-CUDA-device runtime.
-  - `extractor.py`: Produces frozen-Qwen pooled embeddings.
+  - `hardware.py`: Validates configured CUDA devices and selects the primary GPU.
+  - `extractor.py`: Produces frozen-Qwen pooled embeddings across GPU replicas.
   - `cache.py`: Validates and persists training or test embedding caches.
   - `model.py`: Defines backbone pooling and the pairwise MLP head.
   - `trainer.py`: Trains fold-specific heads or one full-data head.

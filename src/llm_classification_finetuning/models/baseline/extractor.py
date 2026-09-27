@@ -23,9 +23,9 @@ class QwenEmbeddingExtractor:
         self,
         gpu_config: GPUConfig,
         baseline_config: BaselineConfig,
-        device: torch.device,
+        devices: tuple[torch.device, ...],
     ) -> None:
-        self._device = device
+        self._devices = devices
         self._config = baseline_config
         dtype = GPUEnvironment.PRECISION_DTYPES[gpu_config.precision]
 
@@ -44,7 +44,7 @@ class QwenEmbeddingExtractor:
                 model_name=baseline_config.model_name,
                 classifier_hidden_size=baseline_config.hidden_size,
                 dropout=baseline_config.dropout,
-                device=self._device,
+                devices=self._devices,
                 dtype=dtype,
                 attention_implementation=gpu_config.attention_implementation,
             )
@@ -96,8 +96,8 @@ class QwenEmbeddingExtractor:
                     pair_count, 2, length
                 )
                 pooled = self._model.encode(
-                    input_ids.to(self._device, non_blocking=True),
-                    attention_mask.to(self._device, non_blocking=True),
+                    input_ids,
+                    attention_mask,
                 ).to(device="cpu", dtype=torch.float16)
 
                 ids.extend(record.row_id for record in batch)

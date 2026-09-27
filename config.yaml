@@ -8,14 +8,16 @@ cross_validation:
   random_state: 42
 
 gpu:
-  device: cuda:0
-  precision: bf16
+  devices:
+    - cuda:0
+    - cuda:1
+  precision: fp16
   attention_implementation: sdpa
-  allow_tf32: true
+  allow_tf32: false
 
 baseline:
   model_name: Qwen/Qwen3-1.7B
-  max_length: 1024
+  max_length: 16384
   extraction_batch_size: 1
   training_batch_size: 256
   hidden_size: 512

@@ -32,9 +32,9 @@ class CrossValidationConfig:
 
 @dataclass(frozen=True, slots=True)
 class GPUConfig:
-    """Project-wide settings for one CUDA device."""
+    """Project-wide settings for the configured CUDA devices."""
 
-    device: str
+    devices: tuple[str, ...]
     precision: str
     attention_implementation: str
     allow_tf32: bool
@@ -111,7 +111,7 @@ class AppConfig:
         gpu_section = _require_mapping(root.get("gpu"), "gpu")
         _reject_unknown_keys(
             gpu_section,
-            {"device", "precision", "attention_implementation", "allow_tf32"},
+            {"devices", "precision", "attention_implementation", "allow_tf32"},
             "gpu",
         )
         baseline_section = _require_mapping(root.get("baseline"), "baseline")
@@ -164,11 +164,26 @@ class AppConfig:
             "cross_validation.random_state",
         )
 
-        device = _require_non_empty_string(gpu_section.get("device"), "gpu.device")
-        if not device.startswith("cuda:") or not device.removeprefix("cuda:").isdigit():
+        devices_value = gpu_section.get("devices")
+        if not isinstance(devices_value, list) or not devices_value:
             raise ConfigurationError(
-                "gpu.device must identify one CUDA device, for example 'cuda:0'."
+                "gpu.devices must be a non-empty YAML list of CUDA devices."
             )
+        devices = tuple(
+            _require_non_empty_string(value, f"gpu.devices[{index}]")
+            for index, value in enumerate(devices_value)
+        )
+        if any(
+            not device.startswith("cuda:")
+            or not device.removeprefix("cuda:").isdigit()
+            for device in devices
+        ):
+            raise ConfigurationError(
+                "Every gpu.devices entry must identify a CUDA device, for example "
+                "'cuda:0'."
+            )
+        if len(set(devices)) != len(devices):
+            raise ConfigurationError("gpu.devices cannot contain duplicates.")
 
         precision = _require_choice(
             gpu_section.get("precision"),
@@ -239,7 +254,7 @@ class AppConfig:
                 random_state=random_state,
             ),
             gpu=GPUConfig(
-                device=device,
+                devices=devices,
                 precision=precision,
                 attention_implementation=attention_implementation,
                 allow_tf32=allow_tf32,

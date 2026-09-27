@@ -271,7 +271,8 @@ class BaselinePipeline:
         if mode is BaselineMode.TEST:
             return self._run_test(refresh_cache=refresh_cache)
 
-        device = GPUEnvironment(self._config.gpu).configure()
+        devices = GPUEnvironment(self._config.gpu).configure()
+        device = devices[0]
         data = self._training_repository.load()
         embeddings, cache_reused = self._load_or_extract_embeddings(
             records=data.canonical_texts,
@@ -279,7 +280,7 @@ class BaselinePipeline:
             serializer_version=self._training_repository.serializer_version,
             cache=self._training_cache,
             refresh_cache=refresh_cache,
-            device=device,
+            devices=devices,
         )
         trainer = BaselineCrossValidator(
             config=self._config.baseline,
@@ -335,14 +336,15 @@ class BaselinePipeline:
         checkpoint = self._checkpoint_store.load(
             self._checkpoint_compatibility(self._test_repository.serializer_version)
         )
-        device = GPUEnvironment(self._config.gpu).configure()
+        devices = GPUEnvironment(self._config.gpu).configure()
+        device = devices[0]
         embeddings, cache_reused = self._load_or_extract_embeddings(
             records=data.canonical_texts,
             fingerprint=data.fingerprint,
             serializer_version=self._test_repository.serializer_version,
             cache=self._test_cache,
             refresh_cache=refresh_cache,
-            device=device,
+            devices=devices,
         )
         probabilities = BaselinePredictor(
             config=self._config.baseline,
@@ -368,7 +370,7 @@ class BaselinePipeline:
         serializer_version: str,
         cache: EmbeddingCache,
         refresh_cache: bool,
-        device: torch.device,
+        devices: tuple[torch.device, ...],
     ) -> tuple[CachedEmbeddings, bool]:
         expected_ids = torch.tensor(
             [record.row_id for record in records],
@@ -385,7 +387,7 @@ class BaselinePipeline:
             extractor = QwenEmbeddingExtractor(
                 gpu_config=self._config.gpu,
                 baseline_config=self._config.baseline,
-                device=device,
+                devices=devices,
             )
             embeddings = extractor.extract(records)
             cache.save(cache_key, embeddings)
