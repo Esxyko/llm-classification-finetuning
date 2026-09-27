@@ -54,13 +54,14 @@ Run these commands from the project root.
 | `uv run data` | Downloads missing Kaggle files only | `data/raw/*.csv` |
 | `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_folds.parquet` |
 | `uv run model qwen3-1.7b` | Runs Qwen3-1.7B cross-validation | `results/qwen3-1.7b-*/` |
+| `uv run model qwen3-1.7b-mono-input` | Runs structured mono-input Qwen3-1.7B cross-validation | `results/qwen3-1.7b-mono-input-*/` |
 | `uv run model qwen3-4b` | Runs Qwen3-4B cross-validation | `results/qwen3-4b-*/` |
-| `uv run model MODEL --build` | Trains the selected model's head on all prepared rows | `models/MODEL_SLUG/head.pt` |
+| `uv run model MODEL --build` | Trains the selected model's head on its training rows | `models/MODEL_SLUG/head.pt` |
 | `uv run model MODEL --test` | Creates a submission with the selected model's saved head | `results/test/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
-Set `MODEL` to `qwen3-1.7b` or `qwen3-4b`. Add `--refresh-cache` to any model
-mode to rebuild that model and mode's embeddings.
+Set `MODEL` to `qwen3-1.7b`, `qwen3-1.7b-mono-input`, or `qwen3-4b`. Add
+`--refresh-cache` to any model mode to rebuild that model and mode's embeddings.
 `--build` and `--test` are mutually exclusive; without either flag, the command
 runs cross-validation.
 
@@ -101,7 +102,26 @@ backbone produces cached embeddings; only the pairwise MLP head is trained. A
 validation run writes one competition-format CSV per fold plus `metrics.json`
 to a timestamped model-named results directory.
 
-To train a production head on all prepared rows and generate a submission:
+The `qwen3-1.7b-mono-input` selector uses the same frozen 1.7B backbone but
+combines each comparison into one input. It places an editable instruction
+before a deterministic JSON array containing one `prompt`, `response_a`, and
+`response_b` object per aligned conversation turn. Original and A/B-swapped
+rows are encoded independently, while the classifier head trains only on
+original rows. Validation and test inference run both orientations, restore
+the swapped A/B probabilities to their original order, and average the two
+distributions. Validation fold CSVs retain both augmented rows in their usual
+order; each pair represents one averaged prediction. The instruction is defined
+as `INPUT_INSTRUCTION` in the mono-input model package; changing it invalidates
+that model's caches and checkpoints. The original-only training policy also
+requires rebuilding older mono-input heads.
+
+When a mono input exceeds `max_length`, the final responses receive equal token
+caps. Earlier complete turns are removed if the final prompt, JSON structure,
+and a prefix of each nonempty response need room. The resulting input is
+re-tokenized so the JSON remains complete and both response fields stay present.
+If that minimum cannot fit, the command raises an error.
+
+To train a production head and generate a submission:
 
 ```shell
 uv run model qwen3-1.7b --build
@@ -119,11 +139,11 @@ serialization, precision, attention implementation, and TF32 settings still
 match. Legacy `baseline_*` caches are left untouched and are not reused.
 
 The checked-in defaults target two 16 GB NVIDIA T4 GPUs. Frozen Qwen replicas
-split the flattened response branches across `cuda:0` and `cuda:1`; classifier
-head training runs on the first configured device. T4 requires `fp16`, and the
-default 16,384-token cap keeps one branch within each GPU's memory budget. If
-extraction runs out of memory, reduce the selected model section's
-`extraction_batch_size` or `max_length` in `config.yaml`.
+split tokenized inputs across `cuda:0` and `cuda:1`; classifier head training
+runs on the first configured device. T4 requires `fp16`, and the default
+16,384-token cap keeps one input within each GPU's memory budget. If extraction
+runs out of memory, reduce the selected model section's `extraction_batch_size`
+or `max_length` in `config.yaml`.
 
 ## Generate validation reports
 
@@ -159,9 +179,12 @@ both new files are generated successfully:
 | File | Contents |
 | --- | --- |
 | `confusion_matrix.png` | 3 × 3 counts and expected-class row percentages, after restoring swapped predictions to the original A/B orientation |
-| `records.xlsx` | One row per source ID with fold, expected and actual labels, incorrect count (`0`–`2`), and pair-averaged log loss |
+| `records.xlsx` | One row per source ID with fold, expected and actual labels, incorrect count, and log loss |
 
 The workbook supports filtering; its `AVG` row recalculates over visible rows.
+For averaged mono-input runs, each ID contributes one prediction, one confusion
+matrix count, and the log loss of its averaged distribution. Older runs retain
+their two-orientation report behavior.
 
 ## Configuration
 
@@ -174,6 +197,7 @@ resolved from that file's directory.
 | `cross_validation` | Fold count and random seed |
 | `gpu` | CUDA devices, precision, attention implementation, and TF32 |
 | `qwen3_1_7b` | Qwen3-1.7B model, sequence length, batches, MLP, and optimizer |
+| `qwen3_1_7b_mono_input` | Mono-input Qwen3-1.7B sequence, batches, MLP, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, and optimizer |
 
 ## Troubleshooting

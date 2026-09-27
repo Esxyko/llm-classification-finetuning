@@ -95,6 +95,8 @@ class ModelResultPublisher:
         self,
         fold_results: tuple[FoldTrainingResult, ...],
         model_name: str,
+        *,
+        prediction_aggregation: str | None = None,
     ) -> tuple[Path, float, int]:
         """Stage every artifact, then expose one complete run directory."""
         try:
@@ -112,13 +114,23 @@ class ModelResultPublisher:
                 f"Model result directory already exists for this second: {output_dir}"
             )
 
-        prediction_count = sum(len(result.ids) for result in fold_results)
+        if prediction_aggregation == "ab_swap_average" and any(
+            len(result.ids) % 2 for result in fold_results
+        ):
+            raise ModelExecutionError(
+                "Averaged fold predictions must contain complete orientation pairs."
+            )
+        prediction_divisor = 2 if prediction_aggregation == "ab_swap_average" else 1
+        prediction_count = sum(
+            len(result.ids) // prediction_divisor for result in fold_results
+        )
         if prediction_count == 0:
             raise ModelExecutionError(
                 "Model training produced no validation predictions."
             )
         weighted_loss = sum(
-            result.final_loss * len(result.ids) for result in fold_results
+            result.final_loss * (len(result.ids) // prediction_divisor)
+            for result in fold_results
         )
         average_loss = weighted_loss / prediction_count
         metrics = {
@@ -131,13 +143,15 @@ class ModelResultPublisher:
             "fold_metrics": [
                 {
                     "fold": result.fold,
-                    "predictions": len(result.ids),
+                    "predictions": len(result.ids) // prediction_divisor,
                     "final_validation_loss": result.final_loss,
                     "epochs": [asdict(epoch) for epoch in result.epochs],
                 }
                 for result in fold_results
             ],
         }
+        if prediction_aggregation is not None:
+            metrics["prediction_aggregation"] = prediction_aggregation
 
         try:
             with tempfile.TemporaryDirectory(

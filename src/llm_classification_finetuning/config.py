@@ -42,7 +42,7 @@ class GPUConfig:
 
 @dataclass(frozen=True, slots=True)
 class ModelConfig:
-    """Hyperparameters for one frozen-backbone pairwise model."""
+    """Hyperparameters for one frozen-backbone comparison model."""
 
     model_name: str
     max_length: int
@@ -65,6 +65,7 @@ class AppConfig:
     cross_validation: CrossValidationConfig
     gpu: GPUConfig
     qwen3_1_7b: ModelConfig
+    qwen3_1_7b_mono_input: ModelConfig
     qwen3_4b: ModelConfig
 
     @classmethod
@@ -91,7 +92,14 @@ class AppConfig:
         root = _require_mapping(raw_config, "configuration root")
         _reject_unknown_keys(
             root,
-            {"data", "cross_validation", "gpu", "qwen3_1_7b", "qwen3_4b"},
+            {
+                "data",
+                "cross_validation",
+                "gpu",
+                "qwen3_1_7b",
+                "qwen3_1_7b_mono_input",
+                "qwen3_4b",
+            },
             "configuration root",
         )
 
@@ -116,6 +124,10 @@ class AppConfig:
             "gpu",
         )
         qwen3_1_7b = _load_model_config(root, "qwen3_1_7b")
+        qwen3_1_7b_mono_input = _load_model_config(
+            root,
+            "qwen3_1_7b_mono_input",
+        )
         qwen3_4b = _load_model_config(root, "qwen3_4b")
 
         competition = _require_non_empty_string(
@@ -199,6 +211,7 @@ class AppConfig:
                 allow_tf32=allow_tf32,
             ),
             qwen3_1_7b=qwen3_1_7b,
+            qwen3_1_7b_mono_input=qwen3_1_7b_mono_input,
             qwen3_4b=qwen3_4b,
         )
 

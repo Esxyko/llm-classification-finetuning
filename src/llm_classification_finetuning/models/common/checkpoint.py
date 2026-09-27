@@ -9,10 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 
 from ...errors import ModelExecutionError
-from .model import PairwiseClassificationHead
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +51,7 @@ class ModelCheckpointStore:
 
     def save(
         self,
-        head: PairwiseClassificationHead,
+        head: nn.Module,
         compatibility: HeadCheckpointCompatibility,
         *,
         backbone_hidden_size: int,

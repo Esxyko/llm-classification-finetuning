@@ -52,9 +52,12 @@ and print summaries. Business logic belongs below the CLI layer.
     group folds, invokes augmentation, and atomically writes Parquet.
   - `augmentation.py`: Appends one A/B-swapped counterpart per source row.
 - `models/`
-  - `cli.py`: Selects `qwen3-1.7b` or `qwen3-4b` and an execution mode.
+  - `cli.py`: Selects a registered Qwen model and an execution mode.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_1_7b/` and `qwen3_4b/`: Lightweight model profile definitions.
+  - `qwen3_1_7b_mono_input/`: Structured JSON serialization, row-aligned
+    embedding cache, frozen encoder, mono-input head, orientation averaging,
+    trainer, predictor, and orchestration for `qwen3-1.7b-mono-input`.
   - `common/pipeline.py`: Selects cross-validation, build, or test behavior and
     atomically publishes model-named artifacts.
   - `common/`
@@ -71,6 +74,8 @@ and print summaries. Business logic belongs below the CLI layer.
 - `result/`
   - `synthesizer.py`: Discovers and validates fold CSVs, reverses swapped-row
     orientation, reduces each pair to one source record, and publishes reports.
+    Averaged mono-input runs count one prediction per pair; older runs retain
+    separate original and swapped votes.
   - `writers.py`: Renders the confusion-matrix PNG and filterable Excel workbook.
 
 Each package `__init__.py` exposes its intended public surface. Prefer those
@@ -87,7 +92,7 @@ exports over importing private helpers across package boundaries.
 | `tests/` | Automated coverage, currently focused on result synthesis |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
-| `models/qwen3_1_7b/`, `models/qwen3_4b/` | Saved classifier heads and metadata |
+| `models/qwen3_1_7b/`, `models/qwen3_1_7b_mono_input/`, `models/qwen3_4b/` | Saved classifier heads and metadata |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source
@@ -102,6 +107,13 @@ modules. Do not make application logic depend on a particular timestamped run.
   in that order, with finite probabilities that sum to one.
 - Every model's training and test caches remain separate and are reused only when
   their source fingerprint and model/runtime compatibility keys match.
+- Mono-input rows are serialized as an instruction followed by an ordered JSON
+  turn list; original and swapped orientations have distinct cached states.
+  Overlong inputs use equal token caps for final responses and remove earlier
+  whole turns only when needed to preserve the final prompt, response prefixes,
+  and valid JSON.
+- Mono-input head training uses original rows only. Validation and test inference
+  average original and A/B-restored swapped probabilities per source ID.
 - Full-data builds save only the classifier head; cross-validation does not save
   checkpoints.
 - Generated files and directories are staged before publication so failed runs do

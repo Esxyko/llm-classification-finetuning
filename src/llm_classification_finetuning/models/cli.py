@@ -10,11 +10,10 @@ from typing import NoReturn
 
 from ..config import AppConfig
 from ..errors import DataPreparationError
-from . import MODEL_PROFILES
+from . import MODEL_PIPELINES, MODEL_PROFILES
 from .common import (
     ModelBuildResult,
     ModelMode,
-    ModelPipeline,
     ModelRunResult,
     ModelTestResult,
 )
@@ -27,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Create the shared model command-line parser."""
     parser = argparse.ArgumentParser(
         prog="model",
-        description="Cross-validate, build, or test a frozen-Qwen pairwise model.",
+        description="Cross-validate, build, or test a frozen-Qwen comparison model.",
     )
     parser.add_argument(
         "model",
@@ -60,7 +59,8 @@ def run(arguments: Sequence[str] | None = None) -> int:
     try:
         config_path = CONFIG_PATH.resolve()
         config = AppConfig.load(config_path)
-        result = ModelPipeline(
+        pipeline_type = MODEL_PIPELINES[profile.selector]
+        result = pipeline_type(
             config=config,
             project_root=config_path.parent,
             profile=profile,

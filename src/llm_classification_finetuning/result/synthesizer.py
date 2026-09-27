@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -38,7 +39,7 @@ class ResultSynthesisResult:
 
 
 class AugmentationReducer:
-    """Reduce original/swapped predictions into canonical source records."""
+    """Reduce orientation pairs into canonical source records."""
 
     PROBABILITY_COLUMNS = (
         "winner_model_a",
@@ -46,9 +47,15 @@ class AugmentationReducer:
         "winner_tie",
     )
     SWAPPED_PROBABILITY_ORDER = (1, 0, 2)
+    AVERAGED_AGGREGATION = "ab_swap_average"
 
-    def reduce(self, predictions: pd.DataFrame) -> ReducedResults:
-        """Return one record per ID while retaining both canonical predictions."""
+    def reduce(
+        self,
+        predictions: pd.DataFrame,
+        *,
+        prediction_aggregation: str | None = None,
+    ) -> ReducedResults:
+        """Return one record per ID using the run's aggregation policy."""
         original = predictions.loc[~predictions["is_swapped"]].copy()
         swapped = predictions.loc[predictions["is_swapped"]].copy()
         if original.empty:
@@ -89,6 +96,42 @@ class AugmentationReducer:
         canonical_swapped_probabilities = swapped_probabilities[
             :, self.SWAPPED_PROBABILITY_ORDER
         ]
+
+        if prediction_aggregation == self.AVERAGED_AGGREGATION:
+            if not np.allclose(
+                original_probabilities,
+                canonical_swapped_probabilities,
+                rtol=0.0,
+                atol=1e-6,
+            ):
+                raise ResultSynthesisError(
+                    "Averaged original and swapped predictions do not match."
+                )
+            actual = np.argmax(original_probabilities, axis=1)
+            incorrects = (actual != expected).astype(np.int8)
+            row_indices = np.arange(len(expected))
+            expected_probability = np.clip(
+                original_probabilities[row_indices, expected],
+                np.finfo(np.float64).tiny,
+                1.0,
+            )
+            records = pd.DataFrame(
+                {
+                    "id": original["id"].to_numpy(),
+                    "fold": original["fold"].to_numpy(dtype=np.int16),
+                    "expected_labels": expected.astype(np.int8),
+                    "actual_labels": [str(label) for label in actual],
+                    "incorrects": incorrects,
+                    "contributed_loss": -np.log(expected_probability),
+                }
+            )
+            confusion = np.zeros((3, 3), dtype=np.int64)
+            np.add.at(confusion, (expected, actual), 1)
+            return ReducedResults(records=records, confusion_matrix=confusion)
+        if prediction_aggregation is not None:
+            raise ResultSynthesisError(
+                f"Unknown prediction aggregation: {prediction_aggregation}."
+            )
 
         original_actual = np.argmax(original_probabilities, axis=1)
         swapped_actual = np.argmax(canonical_swapped_probabilities, axis=1)
@@ -179,7 +222,11 @@ class ResultSynthesizer:
                 source_dir,
                 reference,
             )
-            reduced = self._reducer.reduce(predictions)
+            prediction_aggregation = self._read_prediction_aggregation(source_dir)
+            reduced = self._reducer.reduce(
+                predictions,
+                prediction_aggregation=prediction_aggregation,
+            )
             workbook_path, matrix_path = self._stage_and_publish(reduced)
         except ResultSynthesisError:
             raise
@@ -194,7 +241,11 @@ class ResultSynthesizer:
             workbook_path=workbook_path,
             confusion_matrix_path=matrix_path,
             folds=fold_count,
-            predictions=len(predictions),
+            predictions=(
+                len(records)
+                if prediction_aggregation == AugmentationReducer.AVERAGED_AGGREGATION
+                else len(predictions)
+            ),
             records=len(records),
             incorrects=int(records["incorrects"].sum()),
             average_loss=float(records["contributed_loss"].mean()),
@@ -294,6 +345,26 @@ class ResultSynthesizer:
             )
 
         return reference.reset_index(drop=True)
+
+    @staticmethod
+    def _read_prediction_aggregation(source_dir: Path) -> str | None:
+        metrics_path = source_dir / "metrics.json"
+        if not metrics_path.is_file():
+            return None
+        try:
+            metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ResultSynthesisError(
+                f"Could not read result metadata {metrics_path}: {error}"
+            ) from error
+        if not isinstance(metrics, dict):
+            raise ResultSynthesisError("Result metadata must be a JSON object.")
+        aggregation = metrics.get("prediction_aggregation")
+        if aggregation is not None and not isinstance(aggregation, str):
+            raise ResultSynthesisError(
+                "Result prediction aggregation must be a string."
+            )
+        return aggregation
 
     def _read_fold_predictions(
         self,
