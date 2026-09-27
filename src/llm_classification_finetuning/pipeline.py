@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from .config import AppConfig
-from .data import CompetitionDataDownloader
+from .data import CompetitionDataDownloader, DownloadResult
 from .preprocess import FoldPreparationResult, FoldPreprocessor
+
+
+@dataclass(frozen=True, slots=True)
+class PrepareDataResult:
+    download: DownloadResult
+    folds: FoldPreparationResult
 
 
 class PrepareDataPipeline:
@@ -15,35 +24,15 @@ class PrepareDataPipeline:
         self._downloader = CompetitionDataDownloader(config.data)
         self._preprocessor = FoldPreprocessor(config.cross_validation)
 
-    def run(self) -> FoldPreparationResult:
-        """Ensure raw inputs, preprocess them, and report their distribution."""
+    def run(
+        self, on_download: Callable[[DownloadResult], None] | None = None
+    ) -> PrepareDataResult:
+        """Ensure raw inputs and preprocess them."""
         download_result = self._downloader.ensure_available()
-
-        for file_name in download_result.skipped:
-            print(f"Skipped existing raw file: {file_name}")
-        for file_name in download_result.downloaded:
-            print(f"Downloaded raw file: {file_name}")
-
-        result = self._preprocessor.prepare(
+        if on_download is not None:
+            on_download(download_result)
+        fold_result = self._preprocessor.prepare(
             train_path=download_result.file_paths["train.csv"],
             output_path=self._config.data.processed_path,
         )
-        self._print_summary(result)
-        return result
-
-    @staticmethod
-    def _print_summary(result: FoldPreparationResult) -> None:
-        print(f"Prepared {result.rows:,} rows across {result.groups:,} prompt groups.")
-        print("Fold distribution:")
-        print("fold  rows     groups   model_a   model_b   tie")
-        for summary in result.folds:
-            class_percentages = tuple(
-                count / summary.rows * 100 for count in summary.class_counts
-            )
-            print(
-                f"{summary.fold:>4}  {summary.rows:>8,}  {summary.groups:>7,}  "
-                f"{class_percentages[0]:>7.2f}%  "
-                f"{class_percentages[1]:>7.2f}%  "
-                f"{class_percentages[2]:>6.2f}%"
-            )
-        print(f"Wrote processed data: {result.output_path}")
+        return PrepareDataResult(download=download_result, folds=fold_result)

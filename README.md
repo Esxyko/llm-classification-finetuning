@@ -173,8 +173,13 @@ Rows must follow the corresponding fold's exact ID order in
 `train_folds.parquet`. Filenames do not need to include the fold number because
 the command infers it from that sequence.
 
-Reports replace the previous contents of `results/comprehensive/` only after
-both new files are generated successfully:
+Both report files are generated in a staging directory before replacing
+`results/comprehensive/`. A staging or promotion failure leaves the previous
+report in place or restores it. If restoration fails, the command reports the
+path of the retained backup. If backup cleanup fails after promotion, the new
+report remains available and the command reports the backup path. Directory
+replacement uses two renames, so concurrent readers can briefly see the
+directory as unavailable.
 
 | File | Contents |
 | --- | --- |

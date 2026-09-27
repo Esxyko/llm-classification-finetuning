@@ -1,7 +1,7 @@
 """Qwen3-1.7B structured mono-input model definition."""
 
 from ..profile import ModelProfile
-from .model import INPUT_INSTRUCTION
+from .data import INPUT_INSTRUCTION
 from .pipeline import MonoInputModelPipeline
 
 PROFILE = ModelProfile(

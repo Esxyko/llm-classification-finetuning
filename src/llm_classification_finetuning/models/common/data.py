@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from ...errors import ModelExecutionError
+from .inputs import TestInputLoader, TrainingInputLoader
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,9 +87,7 @@ class ConversationSerializer:
                 f"Row {row_id} {column} is not a valid JSON array: {error}"
             ) from error
         if not isinstance(parsed, list):
-            raise ModelExecutionError(
-                f"Row {row_id} {column} must be a JSON array."
-            )
+            raise ModelExecutionError(f"Row {row_id} {column} must be a JSON array.")
         return parsed
 
     @staticmethod
@@ -113,20 +110,11 @@ class ConversationSerializer:
 class ModelDataRepository:
     """Read and validate the processed fold artifact for model training."""
 
-    REQUIRED_COLUMNS = (
-        "id",
-        "prompt",
-        "response_a",
-        "response_b",
-        "label",
-        "fold",
-        "is_swapped",
-    )
-    SWAPPED_LABELS: ClassVar[dict[int, int]] = {0: 1, 1: 0, 2: 2}
+    REQUIRED_COLUMNS = TrainingInputLoader.REQUIRED_COLUMNS
+    SWAPPED_LABELS = TrainingInputLoader.SWAPPED_LABELS
 
     def __init__(self, processed_path: Path, n_splits: int) -> None:
-        self._processed_path = processed_path.resolve()
-        self._n_splits = n_splits
+        self._loader = TrainingInputLoader(processed_path, n_splits)
         self._serializer = ConversationSerializer()
 
     @property
@@ -136,22 +124,8 @@ class ModelDataRepository:
 
     def load(self) -> ModelData:
         """Return validated references, canonical texts, and a file fingerprint."""
-        if not self._processed_path.is_file():
-            raise ModelExecutionError(
-                f"Processed fold data not found: {self._processed_path}. "
-                "Run 'uv run init' first."
-            )
-        try:
-            data = pd.read_parquet(
-                self._processed_path,
-                columns=list(self.REQUIRED_COLUMNS),
-            )
-        except Exception as error:
-            raise ModelExecutionError(
-                f"Could not read processed fold data {self._processed_path}: {error}"
-            ) from error
-
-        self._validate_reference(data)
+        inputs = self._loader.load()
+        data = inputs.data
         canonical = data.loc[~data["is_swapped"]]
         canonical_texts = tuple(
             self._serializer.serialize_pair(
@@ -162,7 +136,7 @@ class ModelDataRepository:
             )
             for row in canonical.itertuples(index=False)
         )
-        fingerprint = _sha256(self._processed_path)
+        fingerprint = inputs.fingerprint
         return ModelData(
             reference=data.loc[:, ["id", "label", "fold", "is_swapped"]]
             .copy()
@@ -171,66 +145,15 @@ class ModelDataRepository:
             fingerprint=fingerprint,
         )
 
-    def _validate_reference(self, data: pd.DataFrame) -> None:
-        if data.empty:
-            raise ModelExecutionError("Processed fold data contains no rows.")
-        if data.loc[:, list(self.REQUIRED_COLUMNS)].isna().any().any():
-            raise ModelExecutionError(
-                "Processed fold data contains missing required values."
-            )
-        if not data["label"].isin((0, 1, 2)).all():
-            raise ModelExecutionError("Processed labels must be 0, 1, or 2.")
-        if not data["is_swapped"].isin((True, False)).all():
-            raise ModelExecutionError("Processed is_swapped values must be boolean.")
-
-        expected_folds = set(range(self._n_splits))
-        actual_folds = {int(value) for value in data["fold"].unique()}
-        if actual_folds != expected_folds:
-            raise ModelExecutionError(
-                "Processed fold data must contain exactly the configured folds "
-                f"0 through {self._n_splits - 1}."
-            )
-
-        pairs = data.groupby("id", sort=False).agg(
-            rows=("id", "size"),
-            folds=("fold", "nunique"),
-            originals=("is_swapped", lambda values: int((~values).sum())),
-            swapped=("is_swapped", lambda values: int(values.sum())),
-        )
-        if (
-            pairs["rows"].ne(2)
-            | pairs["folds"].ne(1)
-            | pairs["originals"].ne(1)
-            | pairs["swapped"].ne(1)
-        ).any():
-            raise ModelExecutionError(
-                "Each ID must have one original and one swapped row in one fold."
-            )
-
-        originals = data.loc[~data["is_swapped"], ["id", "label"]].set_index("id")
-        swapped = data.loc[data["is_swapped"], ["id", "label"]].set_index("id")
-        swapped = swapped.loc[originals.index]
-        translated = swapped["label"].map(self.SWAPPED_LABELS)
-        if not translated.astype("int64").eq(originals["label"].astype("int64")).all():
-            raise ModelExecutionError(
-                "Swapped labels do not match their canonical labels."
-            )
-
 
 class ModelTestDataRepository:
     """Read and validate competition test and submission-template records."""
 
-    TEST_COLUMNS = ("id", "prompt", "response_a", "response_b")
-    SUBMISSION_COLUMNS = (
-        "id",
-        "winner_model_a",
-        "winner_model_b",
-        "winner_tie",
-    )
+    TEST_COLUMNS = TestInputLoader.TEST_COLUMNS
+    SUBMISSION_COLUMNS = TestInputLoader.SUBMISSION_COLUMNS
 
     def __init__(self, raw_dir: Path) -> None:
-        self._test_path = raw_dir.resolve() / "test.csv"
-        self._submission_path = raw_dir.resolve() / "sample_submission.csv"
+        self._loader = TestInputLoader(raw_dir)
         self._serializer = ConversationSerializer()
 
     @property
@@ -240,28 +163,8 @@ class ModelTestDataRepository:
 
     def load(self) -> ModelTestData:
         """Return validated test texts in sample-submission order."""
-        test = self._read_csv(self._test_path, "competition test data")
-        submission = self._read_csv(
-            self._submission_path,
-            "sample submission",
-        )
-        self._validate_columns(test, self.TEST_COLUMNS, self._test_path)
-        self._validate_columns(
-            submission,
-            self.SUBMISSION_COLUMNS,
-            self._submission_path,
-        )
-        if test.loc[:, list(self.TEST_COLUMNS)].isna().any().any():
-            raise ModelExecutionError(
-                "Competition test data contains missing values."
-            )
-
-        test_ids = self._validated_ids(test, self._test_path)
-        submission_ids = self._validated_ids(submission, self._submission_path)
-        if not np.array_equal(test_ids, submission_ids):
-            raise ModelExecutionError(
-                "test.csv and sample_submission.csv IDs must match in the same order."
-            )
+        inputs = self._loader.load()
+        test = inputs.data
 
         canonical_texts = tuple(
             self._serializer.serialize_pair(
@@ -273,65 +176,7 @@ class ModelTestDataRepository:
             for row in test.itertuples(index=False)
         )
         return ModelTestData(
-            ids=tuple(int(row_id) for row_id in test_ids),
+            ids=inputs.ids,
             canonical_texts=canonical_texts,
-            fingerprint=_sha256(self._test_path),
+            fingerprint=inputs.fingerprint,
         )
-
-    @staticmethod
-    def _read_csv(path: Path, description: str) -> pd.DataFrame:
-        if not path.is_file():
-            raise ModelExecutionError(
-                f"{description.capitalize()} not found: {path}. Run 'uv run data' first."
-            )
-        try:
-            return pd.read_csv(path)
-        except Exception as error:
-            raise ModelExecutionError(
-                f"Could not read {description} {path}: {error}"
-            ) from error
-
-    @staticmethod
-    def _validate_columns(
-        data: pd.DataFrame,
-        expected: tuple[str, ...],
-        path: Path,
-    ) -> None:
-        if tuple(data.columns) != expected:
-            columns = ", ".join(expected)
-            raise ModelExecutionError(
-                f"{path.name} must contain exactly these columns in order: {columns}."
-            )
-        if data.empty:
-            raise ModelExecutionError(f"{path.name} contains no rows.")
-
-    @staticmethod
-    def _validated_ids(data: pd.DataFrame, path: Path) -> np.ndarray:
-        try:
-            numeric_ids = pd.to_numeric(data["id"], errors="raise").to_numpy(
-                dtype=np.float64
-            )
-        except (TypeError, ValueError) as error:
-            raise ModelExecutionError(
-                f"{path.name} IDs must be numeric integers."
-            ) from error
-        if (
-            not np.isfinite(numeric_ids).all()
-            or not np.equal(numeric_ids, np.floor(numeric_ids)).all()
-        ):
-            raise ModelExecutionError(f"{path.name} IDs must be finite integers.")
-        integer_ids = numeric_ids.astype(np.int64)
-        if pd.Series(integer_ids).duplicated().any():
-            raise ModelExecutionError(f"{path.name} IDs must be unique.")
-        return integer_ids
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as source:
-            for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError as error:
-        raise ModelExecutionError(f"Could not fingerprint {path}: {error}") from error
-    return digest.hexdigest()

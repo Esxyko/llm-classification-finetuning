@@ -9,6 +9,7 @@ from typing import NoReturn, Sequence
 
 from dotenv import load_dotenv
 
+from .cli_output import print_download_result, print_fold_result
 from .config import AppConfig
 from .errors import DataPreparationError
 from .pipeline import PrepareDataPipeline
@@ -35,7 +36,8 @@ def _prepare_data() -> None:
         override=False,
     )
     config = AppConfig.load(resolved_config_path)
-    PrepareDataPipeline(config).run()
+    result = PrepareDataPipeline(config).run(on_download=print_download_result)
+    print_fold_result(result.folds)
 
 
 def run(arguments: Sequence[str] | None = None) -> int:

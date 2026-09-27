@@ -6,12 +6,6 @@ import torch
 from torch import Tensor, nn
 from transformers import AutoModel
 
-INPUT_INSTRUCTION = (
-    "Compare response_a and response_b for prompts in the following JSON "
-    "array and determine which response is better overall, or whether they are "
-    "tied."
-)
-
 
 class MonoInputClassificationHead(nn.Module):
     """Classify one pooled comparison state as A-win, B-win, or tie."""
@@ -138,7 +132,6 @@ class FrozenQwenEncoder(nn.Module):
 
 
 __all__ = (
-    "INPUT_INSTRUCTION",
     "FrozenQwenEncoder",
     "MonoInputClassificationHead",
 )

@@ -43,7 +43,9 @@ and print summaries. Business logic belongs below the CLI layer.
 - `config.py`: Immutable config value objects, strict YAML validation, and path
   resolution.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
-- `pipeline.py`: Orchestrates the complete download-and-preprocess workflow.
+- `pipeline.py`: Orchestrates the complete download-and-preprocess workflow and
+  returns both download and fold results without printing them.
+- `cli_output.py`: Formats shared download and fold summaries for CLI commands.
 - `data/`
   - `downloader.py`: Downloads the three required Kaggle CSVs, normalizes
     single-file ZIP responses, and preserves existing raw files.
@@ -52,17 +54,22 @@ and print summaries. Business logic belongs below the CLI layer.
     group folds, invokes augmentation, and atomically writes Parquet.
   - `augmentation.py`: Appends one A/B-swapped counterpart per source row.
 - `models/`
+  - `__init__.py`: Registers each selector with its profile and pipeline.
   - `cli.py`: Selects a registered Qwen model and an execution mode.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_1_7b/` and `qwen3_4b/`: Lightweight model profile definitions.
-  - `qwen3_1_7b_mono_input/`: Structured JSON serialization, row-aligned
-    embedding cache, frozen encoder, mono-input head, orientation averaging,
-    trainer, predictor, and orchestration for `qwen3-1.7b-mono-input`.
-  - `common/pipeline.py`: Selects cross-validation, build, or test behavior and
-    atomically publishes model-named artifacts.
+  - `qwen3_1_7b_mono_input/`: Structured JSON serialization and its editable
+    instruction, row-aligned embedding cache, frozen encoder, mono-input head,
+    orientation averaging, trainer, predictor, and orchestration for
+    `qwen3-1.7b-mono-input`.
+  - `common/pipeline.py`: Selects cross-validation, build, or test behavior for
+    pairwise models.
   - `common/`
-    - `data.py`: Validates training/test inputs and serializes aligned conversation
-      branches.
+    - `inputs.py`: Validates training and test tables, IDs, folds, orientation
+      pairs, and source fingerprints for both model input formats.
+    - `data.py`: Serializes aligned conversation branches for pairwise models.
+    - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
+    - `publishers.py`: Stages and publishes validation runs and test submissions.
     - `hardware.py`: Validates configured CUDA devices and selects the primary GPU.
     - `extractor.py`: Produces frozen-Qwen pooled embeddings across GPU replicas.
     - `cache.py`: Validates and persists training or test embedding caches.
@@ -73,9 +80,11 @@ and print summaries. Business logic belongs below the CLI layer.
     - `predictor.py`: Runs no-gradient inference from a saved head.
 - `result/`
   - `synthesizer.py`: Discovers and validates fold CSVs, reverses swapped-row
-    orientation, reduces each pair to one source record, and publishes reports.
+    orientation, and reduces each pair to one source record.
     Averaged mono-input runs count one prediction per pair; older runs retain
     separate original and swapped votes.
+  - `publisher.py`: Stages both report files, replaces the report directory,
+    and restores the previous report on a publication failure.
   - `writers.py`: Renders the confusion-matrix PNG and filterable Excel workbook.
 
 Each package `__init__.py` exposes its intended public surface. Prefer those
@@ -116,5 +125,6 @@ modules. Do not make application logic depend on a particular timestamped run.
   average original and A/B-restored swapped probabilities per source ID.
 - Full-data builds save only the classifier head; cross-validation does not save
   checkpoints.
-- Generated files and directories are staged before publication so failed runs do
-  not expose partial outputs.
+- Generated files and directories are staged before publication. Report
+  publication restores the previous directory after a recoverable promotion
+  failure and reports the backup path if restoration fails.

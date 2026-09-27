@@ -10,7 +10,7 @@ from typing import NoReturn
 
 from ..config import AppConfig
 from ..errors import DataPreparationError
-from . import MODEL_PIPELINES, MODEL_PROFILES
+from . import MODEL_REGISTRY
 from .common import (
     ModelBuildResult,
     ModelMode,
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "model",
-        choices=tuple(MODEL_PROFILES),
+        choices=tuple(MODEL_REGISTRY),
         help="Model profile to execute.",
     )
     modes = parser.add_mutually_exclusive_group()
@@ -55,12 +55,12 @@ def build_parser() -> argparse.ArgumentParser:
 def run(arguments: Sequence[str] | None = None) -> int:
     """Run the selected model mode and return a process exit code."""
     parsed_arguments = build_parser().parse_args(arguments)
-    profile = MODEL_PROFILES[parsed_arguments.model]
+    registration = MODEL_REGISTRY[parsed_arguments.model]
+    profile = registration.profile
     try:
         config_path = CONFIG_PATH.resolve()
         config = AppConfig.load(config_path)
-        pipeline_type = MODEL_PIPELINES[profile.selector]
-        result = pipeline_type(
+        result = registration.pipeline_type(
             config=config,
             project_root=config_path.parent,
             profile=profile,

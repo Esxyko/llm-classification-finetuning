@@ -9,18 +9,17 @@ import torch
 
 from ...config import AppConfig
 from ...errors import ModelExecutionError
-from ..common.cache import EmbeddingCacheKey
-from ..common.checkpoint import HeadCheckpointCompatibility, ModelCheckpointStore
+from ..common.checkpoint import ModelCheckpointStore
+from ..common.compatibility import ModelCompatibility
 from ..common.hardware import GPUEnvironment
 from ..common.pipeline import (
     ModelBuildResult,
     ModelExecutionResult,
     ModelMode,
-    ModelResultPublisher,
     ModelRunResult,
-    ModelSubmissionPublisher,
     ModelTestResult,
 )
+from ..common.publishers import ModelResultPublisher, ModelSubmissionPublisher
 from ..profile import ModelProfile
 from .cache import MonoInputCachedEmbeddings, MonoInputEmbeddingCache
 from .data import (
@@ -49,6 +48,12 @@ class MonoInputModelPipeline:
         self._config = config
         self._profile = profile
         self._model_config = profile.resolve_config(config)
+        self._compatibility = ModelCompatibility(
+            gpu=config.gpu,
+            model=self._model_config,
+            cache_schema_version=self.CACHE_SCHEMA_VERSION,
+            checkpoint_schema_version=self.CHECKPOINT_SCHEMA_VERSION,
+        )
         self._training_repository = MonoInputModelDataRepository(
             processed_path=config.data.processed_path,
             n_splits=config.cross_validation.n_splits,
@@ -131,7 +136,7 @@ class MonoInputModelPipeline:
         trained = trainer.train_all(data.reference, embeddings)
         self._checkpoint_store.save(
             trained.head,
-            self._checkpoint_compatibility(
+            self._compatibility.checkpoint(
                 self._training_repository.serializer_version
             ),
             backbone_hidden_size=embeddings.hidden_size,
@@ -149,7 +154,7 @@ class MonoInputModelPipeline:
     def _run_test(self, *, refresh_cache: bool) -> ModelTestResult:
         data = self._test_repository.load()
         checkpoint = self._checkpoint_store.load(
-            self._checkpoint_compatibility(self._test_repository.serializer_version)
+            self._compatibility.checkpoint(self._test_repository.serializer_version)
         )
         devices = GPUEnvironment(self._config.gpu).configure()
         embeddings, cache_reused = self._load_or_extract_embeddings(
@@ -196,7 +201,7 @@ class MonoInputModelPipeline:
             [record.is_swapped for record in records],
             dtype=torch.bool,
         )
-        cache_key = self._cache_key(fingerprint, serializer_version)
+        cache_key = self._compatibility.cache_key(fingerprint, serializer_version)
         embeddings = None
         if not refresh_cache:
             embeddings = cache.load(cache_key, expected_ids, expected_swapped)
@@ -220,37 +225,6 @@ class MonoInputModelPipeline:
         else:
             print(f"Reused embedding cache: {cache.tensor_path}")
         return embeddings, cache_reused
-
-    def _cache_key(
-        self,
-        fingerprint: str,
-        serializer_version: str,
-    ) -> EmbeddingCacheKey:
-        return EmbeddingCacheKey(
-            schema_version=self.CACHE_SCHEMA_VERSION,
-            processed_sha256=fingerprint,
-            model_name=self._model_config.model_name,
-            max_length=self._model_config.max_length,
-            serializer_version=serializer_version,
-            precision=self._config.gpu.precision,
-            attention_implementation=self._config.gpu.attention_implementation,
-            allow_tf32=self._config.gpu.allow_tf32,
-        )
-
-    def _checkpoint_compatibility(
-        self,
-        serializer_version: str,
-    ) -> HeadCheckpointCompatibility:
-        return HeadCheckpointCompatibility(
-            schema_version=self.CHECKPOINT_SCHEMA_VERSION,
-            model_name=self._model_config.model_name,
-            max_length=self._model_config.max_length,
-            serializer_version=serializer_version,
-            precision=self._config.gpu.precision,
-            attention_implementation=self._config.gpu.attention_implementation,
-            allow_tf32=self._config.gpu.allow_tf32,
-            classifier_hidden_size=self._model_config.hidden_size,
-        )
 
 
 __all__ = ("MonoInputModelPipeline",)

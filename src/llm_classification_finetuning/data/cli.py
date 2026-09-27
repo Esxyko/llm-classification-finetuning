@@ -9,9 +9,10 @@ from typing import NoReturn, Sequence
 
 from dotenv import load_dotenv
 
+from ..cli_output import print_download_result
 from ..config import AppConfig
 from ..errors import DataPreparationError
-from .downloader import CompetitionDataDownloader, DownloadResult
+from .downloader import CompetitionDataDownloader
 
 CONFIG_PATH = Path("config.yaml")
 
@@ -34,18 +35,11 @@ def run(arguments: Sequence[str] | None = None) -> int:
         load_dotenv(dotenv_path=config_path.parent / ".env", override=False)
         config = AppConfig.load(config_path)
         result = CompetitionDataDownloader(config.data).ensure_available()
-        _print_result(result)
+        print_download_result(result)
         return 0
     except DataPreparationError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
-
-
-def _print_result(result: DownloadResult) -> None:
-    for file_name in result.skipped:
-        print(f"Skipped existing raw file: {file_name}")
-    for file_name in result.downloaded:
-        print(f"Downloaded raw file: {file_name}")
 
 
 def main() -> NoReturn:

@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from ..errors import ResultSynthesisError
-from .writers import ConfusionMatrixWriter, RecordsWorkbookWriter
+from .publisher import ResultPublisher
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,10 +184,10 @@ class AugmentationReducer:
 class ResultSynthesizer:
     """Coordinate result discovery, validation, reduction, and publishing."""
 
-    OUTPUT_DIR_NAME = "comprehensive"
+    OUTPUT_DIR_NAME = ResultPublisher.OUTPUT_DIR_NAME
     RESERVED_SOURCE_DIR_NAMES = (OUTPUT_DIR_NAME, "test")
-    WORKBOOK_NAME = "records.xlsx"
-    CONFUSION_MATRIX_NAME = "confusion_matrix.png"
+    WORKBOOK_NAME = ResultPublisher.WORKBOOK_NAME
+    CONFUSION_MATRIX_NAME = ResultPublisher.CONFUSION_MATRIX_NAME
     REQUIRED_COLUMNS = (
         "id",
         "winner_model_a",
@@ -210,8 +207,7 @@ class ResultSynthesizer:
         self._n_splits = n_splits
         self._results_root = results_root.resolve()
         self._reducer = AugmentationReducer()
-        self._matrix_writer = ConfusionMatrixWriter()
-        self._workbook_writer = RecordsWorkbookWriter()
+        self._publisher = ResultPublisher(self._results_root)
 
     def synthesize(self, subfolder: str | None = None) -> ResultSynthesisResult:
         """Generate comprehensive artifacts for one cross-validation run."""
@@ -227,7 +223,9 @@ class ResultSynthesizer:
                 predictions,
                 prediction_aggregation=prediction_aggregation,
             )
-            workbook_path, matrix_path = self._stage_and_publish(reduced)
+            workbook_path, matrix_path = self._publisher.publish(
+                reduced.records, reduced.confusion_matrix
+            )
         except ResultSynthesisError:
             raise
         except Exception as error:
@@ -489,50 +487,3 @@ class ResultSynthesizer:
         data = data.copy()
         data["id"] = numeric_ids.astype("int64")
         return data
-
-    def _stage_and_publish(self, reduced: ReducedResults) -> tuple[Path, Path]:
-        output_dir = self._results_root / self.OUTPUT_DIR_NAME
-        if output_dir.is_symlink():
-            raise ResultSynthesisError(
-                f"Comprehensive output path cannot be a symlink: {output_dir}"
-            )
-        if output_dir.exists() and not output_dir.is_dir():
-            raise ResultSynthesisError(
-                f"Comprehensive output path is not a directory: {output_dir}"
-            )
-
-        with tempfile.TemporaryDirectory(
-            dir=self._results_root,
-            prefix=f".{self.OUTPUT_DIR_NAME}-",
-        ) as temporary_dir:
-            staging_dir = Path(temporary_dir)
-            staged_workbook = staging_dir / self.WORKBOOK_NAME
-            staged_matrix = staging_dir / self.CONFUSION_MATRIX_NAME
-            try:
-                self._workbook_writer.write(reduced.records, staged_workbook)
-                self._matrix_writer.write(reduced.confusion_matrix, staged_matrix)
-            except Exception as error:
-                raise ResultSynthesisError(
-                    f"Could not generate comprehensive artifacts: {error}"
-                ) from error
-
-            try:
-                output_dir.mkdir(parents=True, exist_ok=True)
-                for child in output_dir.iterdir():
-                    if child.is_symlink() or child.is_file():
-                        child.unlink()
-                    elif child.is_dir():
-                        shutil.rmtree(child)
-                    else:
-                        child.unlink()
-
-                workbook_path = output_dir / self.WORKBOOK_NAME
-                matrix_path = output_dir / self.CONFUSION_MATRIX_NAME
-                os.replace(staged_workbook, workbook_path)
-                os.replace(staged_matrix, matrix_path)
-            except OSError as error:
-                raise ResultSynthesisError(
-                    f"Could not publish comprehensive artifacts to {output_dir}: {error}"
-                ) from error
-
-        return workbook_path, matrix_path
