@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +20,7 @@ class ConfusionMatrixWriter:
         """Write counts and expected-class percentages to an annotated heatmap."""
         os.environ.setdefault(
             "MPLCONFIGDIR",
-            str(output_path.parent / ".matplotlib"),
+            str(Path(tempfile.gettempdir()) / "llm-classification-finetuning-matplotlib"),
         )
         from matplotlib.backends.backend_agg import FigureCanvasAgg
         from matplotlib.figure import Figure

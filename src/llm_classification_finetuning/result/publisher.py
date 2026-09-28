@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,7 @@ class ResultPublisher:
     OUTPUT_DIR_NAME = "comprehensive"
     WORKBOOK_NAME = "records.xlsx"
     CONFUSION_MATRIX_NAME = "confusion_matrix.png"
+    WINDOWS_RENAME_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8)
 
     def __init__(self, results_root: Path) -> None:
         self._results_root = results_root.resolve()
@@ -49,7 +51,7 @@ class ResultPublisher:
                     f"A previous comprehensive report backup needs review: {backup_dir}"
                 )
             try:
-                os.replace(backup_dir, output_dir)
+                self._replace_directory(backup_dir, output_dir)
             except OSError as error:
                 raise ResultSynthesisError(
                     f"Could not restore the previous report from {backup_dir}: {error}"
@@ -76,13 +78,13 @@ class ResultPublisher:
                 previous_moved = False
                 try:
                     if output_dir.exists():
-                        os.replace(output_dir, backup_dir)
+                        self._replace_directory(output_dir, backup_dir)
                         previous_moved = True
-                    os.replace(staging_dir, output_dir)
+                    self._replace_directory(staging_dir, output_dir)
                 except OSError as error:
                     if previous_moved:
                         try:
-                            os.replace(backup_dir, output_dir)
+                            self._replace_directory(backup_dir, output_dir)
                         except OSError as restore_error:
                             raise ResultSynthesisError(
                                 "Could not publish the new report or restore the previous "
@@ -109,3 +111,15 @@ class ResultPublisher:
             ) from error
 
         return output_dir / self.WORKBOOK_NAME, output_dir / self.CONFUSION_MATRIX_NAME
+
+    @classmethod
+    def _replace_directory(cls, source: Path, destination: Path) -> None:
+        """Retry brief Windows sharing races while preserving rename semantics."""
+        for delay in (*cls.WINDOWS_RENAME_RETRY_DELAYS, None):
+            try:
+                os.replace(source, destination)
+                return
+            except OSError as error:
+                if os.name != "nt" or error.winerror not in (5, 32) or delay is None:
+                    raise
+                time.sleep(delay)
