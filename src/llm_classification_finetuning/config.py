@@ -55,6 +55,7 @@ class ModelConfig:
     weight_decay: float
     random_state: int
     dataloader_workers: int
+    ab_swap: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +69,7 @@ class AppConfig:
 
     @classmethod
     def load(cls, config_path: Path) -> AppConfig:
-        """Read a YAML configuration and resolve paths relative to it."""
+        """Read YAML and resolve relative data paths from the working directory."""
         resolved_config_path = config_path.expanduser().resolve()
         if not resolved_config_path.is_file():
             raise ConfigurationError(
@@ -124,12 +125,12 @@ class AppConfig:
         competition = _require_non_empty_string(
             data_section.get("competition"), "data.competition"
         )
-        base_dir = resolved_config_path.parent
-        raw_dir = _resolve_config_path(
+        base_dir = Path.cwd()
+        raw_dir = _resolve_data_path(
             base_dir,
             _require_non_empty_string(data_section.get("raw_dir"), "data.raw_dir"),
         )
-        processed_path = _resolve_config_path(
+        processed_path = _resolve_data_path(
             base_dir,
             _require_non_empty_string(
                 data_section.get("processed_path"), "data.processed_path"
@@ -219,6 +220,7 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
         "weight_decay",
         "random_state",
         "dataloader_workers",
+        "A/B_swap",
     }
     _reject_unknown_keys(section, allowed_keys, section_name)
 
@@ -272,6 +274,9 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
             section.get("random_state"), field("random_state")
         ),
         dataloader_workers=dataloader_workers,
+        ab_swap=_require_choice(
+            section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
+        ),
     )
 
 
@@ -323,7 +328,7 @@ def _require_choice(value: Any, field_name: str, choices: set[str]) -> str:
     return choice
 
 
-def _resolve_config_path(base_dir: Path, configured_path: str) -> Path:
+def _resolve_data_path(base_dir: Path, configured_path: str) -> Path:
     path = Path(configured_path).expanduser()
     if not path.is_absolute():
         path = base_dir / path

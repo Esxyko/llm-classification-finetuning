@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
 
+from ..cli_config import add_config_argument
 from ..config import AppConfig
 from ..errors import DataPreparationError
 from . import MODEL_REGISTRY, ModelRegistration
@@ -20,7 +21,6 @@ from .common import (
 )
 from .common.pipeline import ModelExecutionResult
 
-CONFIG_PATH = Path("config.yaml")
 ALL_MODELS = "ALL"
 
 
@@ -30,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="model",
         description="Cross-validate, build, or test a frozen-Qwen comparison model.",
     )
+    add_config_argument(parser)
     parser.add_argument(
         "model",
         choices=(*MODEL_REGISTRY, ALL_MODELS),
@@ -58,13 +59,13 @@ def run(arguments: Sequence[str] | None = None) -> int:
     """Run the selected model mode and return a process exit code."""
     parsed_arguments = build_parser().parse_args(arguments)
     try:
-        config_path = CONFIG_PATH.resolve()
-        config = AppConfig.load(config_path)
+        config = AppConfig.load(parsed_arguments.config)
+        project_root = Path.cwd()
         mode = _selected_mode(parsed_arguments)
         if parsed_arguments.model == ALL_MODELS:
             return _run_all_models(
                 config=config,
-                project_root=config_path.parent,
+                project_root=project_root,
                 mode=mode,
                 refresh_cache=parsed_arguments.refresh_cache,
             )
@@ -73,7 +74,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
         result = _run_registered_model(
             registration=registration,
             config=config,
-            project_root=config_path.parent,
+            project_root=project_root,
             mode=mode,
             refresh_cache=parsed_arguments.refresh_cache,
         )

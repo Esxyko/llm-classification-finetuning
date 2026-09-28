@@ -16,7 +16,7 @@ gpu:
   allow_tf32: false
 
 qwen3_4b:
-  A/B_swap: aug
+  A/B_swap: inf
   model_name: Qwen/Qwen3-4B
   max_length: 16384
   extraction_batch_size: 1

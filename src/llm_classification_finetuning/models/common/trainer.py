@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 from torch import Tensor
 from torch.nn import CrossEntropyLoss
+from torch.nn import functional as F
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 
@@ -17,6 +18,7 @@ from ...config import ModelConfig
 from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
 from .model import PairwiseClassificationHead
+from .orientation import ABSwapAverager
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,13 +142,14 @@ class ModelCrossValidator:
         reference: pd.DataFrame,
         embeddings: CachedEmbeddings,
     ) -> FullTrainingResult:
-        """Train one head on every original and augmented fold row."""
+        """Train one head on all source IDs using the selected A/B policy."""
         if reference.empty:
             raise ModelExecutionError("Full-data model training received no rows.")
         seed = self._config.random_state
         self._seed_everything(seed)
+        training_reference = self._training_reference(reference)
         training_loader = self._create_loader(
-            reference,
+            training_reference,
             embeddings,
             shuffle=True,
             seed=seed,
@@ -166,12 +169,12 @@ class ModelCrossValidator:
         except torch.cuda.OutOfMemoryError as error:
             raise ModelExecutionError(
                 "GPU memory was exhausted while training the model head. Lower "
-                f"{self._config_key}.training_batch_size in config.yaml."
+                f"{self._config_key}.training_batch_size in the selected configuration."
             ) from error
 
         return FullTrainingResult(
             head=head,
-            rows=len(reference),
+            rows=len(training_reference),
             training_losses=tuple(training_losses),
         )
 
@@ -185,13 +188,16 @@ class ModelCrossValidator:
         seed = self._config.random_state + fold
         self._seed_everything(seed)
         training_loader = self._create_loader(
-            training_reference,
+            self._training_reference(training_reference),
             embeddings,
             shuffle=True,
             seed=seed,
         )
+        original_validation = validation_reference.loc[
+            ~validation_reference["is_swapped"]
+        ]
         validation_loader = self._create_loader(
-            validation_reference,
+            original_validation,
             embeddings,
             shuffle=False,
             seed=seed,
@@ -225,7 +231,7 @@ class ModelCrossValidator:
         except torch.cuda.OutOfMemoryError as error:
             raise ModelExecutionError(
                 "GPU memory was exhausted while training the model head. Lower "
-                f"{self._config_key}.training_batch_size in config.yaml."
+                f"{self._config_key}.training_batch_size in the selected configuration."
             ) from error
 
         if final_probabilities is None:
@@ -235,9 +241,19 @@ class ModelCrossValidator:
         return FoldTrainingResult(
             fold=fold,
             ids=validation_reference["id"].to_numpy(dtype=np.int64, copy=True),
-            probabilities=final_probabilities,
+            probabilities=ABSwapAverager.align_rows(
+                validation_reference["id"].to_numpy(dtype=np.int64),
+                validation_reference["is_swapped"].to_numpy(dtype=np.bool_),
+                original_validation["id"].to_numpy(dtype=np.int64),
+                final_probabilities,
+            ),
             epochs=tuple(epoch_metrics),
         )
+
+    def _training_reference(self, reference: pd.DataFrame) -> pd.DataFrame:
+        if self._config.ab_swap == "inf":
+            return reference.loc[~reference["is_swapped"]]
+        return reference
 
     def _create_head(self, backbone_hidden_size: int) -> PairwiseClassificationHead:
         return PairwiseClassificationHead(
@@ -276,8 +292,14 @@ class ModelCrossValidator:
             labels = labels.to(self._device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
-            logits = head(h_a, h_b)
-            loss = self._criterion(logits, labels)
+            if self._config.ab_swap == "inf":
+                log_probabilities = ABSwapAverager.log_probabilities(
+                    head, h_a, h_b
+                )
+                loss = F.nll_loss(log_probabilities, labels)
+            else:
+                logits = head(h_a, h_b)
+                loss = self._criterion(logits, labels)
             loss.backward()
             optimizer.step()
 
@@ -331,14 +353,14 @@ class ModelCrossValidator:
                     non_blocking=True,
                 )
                 labels = labels.to(self._device, non_blocking=True)
-                logits = head(h_a, h_b)
-                loss = self._criterion(logits, labels)
+                log_probabilities = ABSwapAverager.log_probabilities(head, h_a, h_b)
+                loss = F.nll_loss(log_probabilities, labels)
 
                 rows = int(labels.shape[0])
                 loss_total += float(loss) * rows
                 rows_total += rows
                 probabilities.append(
-                    torch.softmax(logits, dim=-1).to(device="cpu").numpy()
+                    log_probabilities.exp().to(device="cpu").numpy()
                 )
         return loss_total / rows_total, np.concatenate(probabilities, axis=0)
 

@@ -27,6 +27,7 @@ class HeadCheckpointCompatibility:
     allow_tf32: bool
     classifier_hidden_size: int
     class_count: int = 3
+    ab_swap: str = "aug"
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +123,7 @@ class ModelCheckpointStore:
             mismatches = [
                 key
                 for key, value in asdict(expected).items()
-                if metadata.get(key) != value
+                if metadata.get(key, "aug" if key == "ab_swap" else None) != value
             ]
             if mismatches:
                 fields = ", ".join(mismatches)

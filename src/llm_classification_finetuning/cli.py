@@ -9,12 +9,11 @@ from typing import NoReturn, Sequence
 
 from dotenv import load_dotenv
 
+from .cli_config import add_config_argument
 from .cli_output import print_download_result, print_fold_result
 from .config import AppConfig
 from .errors import DataPreparationError
 from .pipeline import PrepareDataPipeline
-
-CONFIG_PATH = Path("config.yaml")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,26 +25,26 @@ def build_parser() -> argparse.ArgumentParser:
             "training data."
         ),
     )
+    add_config_argument(parser)
     return parser
 
 
-def _prepare_data() -> None:
-    resolved_config_path = CONFIG_PATH.resolve()
+def _prepare_data(config_path: Path) -> None:
     load_dotenv(
-        dotenv_path=resolved_config_path.parent / ".env",
+        dotenv_path=Path.cwd() / ".env",
         override=False,
     )
-    config = AppConfig.load(resolved_config_path)
+    config = AppConfig.load(config_path)
     result = PrepareDataPipeline(config).run(on_download=print_download_result)
     print_fold_result(result.folds)
 
 
 def run(arguments: Sequence[str] | None = None) -> int:
     """Run the complete initialization workflow and return a process exit code."""
-    build_parser().parse_args(arguments)
+    parsed_arguments = build_parser().parse_args(arguments)
 
     try:
-        _prepare_data()
+        _prepare_data(parsed_arguments.config)
         return 0
     except DataPreparationError as error:
         print(f"Error: {error}", file=sys.stderr)

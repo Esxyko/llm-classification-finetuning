@@ -11,6 +11,7 @@ from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
 from .checkpoint import LoadedHeadCheckpoint
 from .model import PairwiseClassificationHead
+from .orientation import ABSwapAverager
 
 
 class ModelPredictor:
@@ -64,25 +65,26 @@ class ModelPredictor:
         try:
             with torch.no_grad():
                 for h_a, h_b in loader:
-                    logits = head(
-                        h_a.to(
-                            device=self._device,
-                            dtype=torch.float32,
-                            non_blocking=True,
-                        ),
-                        h_b.to(
-                            device=self._device,
-                            dtype=torch.float32,
-                            non_blocking=True,
-                        ),
+                    h_a = h_a.to(
+                        device=self._device,
+                        dtype=torch.float32,
+                        non_blocking=True,
+                    )
+                    h_b = h_b.to(
+                        device=self._device,
+                        dtype=torch.float32,
+                        non_blocking=True,
                     )
                     probabilities.append(
-                        torch.softmax(logits, dim=-1).to(device="cpu").numpy()
+                        ABSwapAverager.log_probabilities(head, h_a, h_b)
+                        .exp()
+                        .to(device="cpu")
+                        .numpy()
                     )
         except torch.cuda.OutOfMemoryError as error:
             raise ModelExecutionError(
                 "GPU memory was exhausted during model test inference. Lower "
-                f"{self._config_key}.training_batch_size in config.yaml."
+                f"{self._config_key}.training_batch_size in the selected configuration."
             ) from error
 
         if not probabilities:

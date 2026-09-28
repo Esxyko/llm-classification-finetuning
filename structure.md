@@ -6,7 +6,7 @@ pipelines, user interaction in CLI modules, and domain logic in focused classes.
 ## Runtime flow
 
 ```text
-config.yaml
+selected YAML config (defaults to config.yaml)
   -> init -> Kaggle download -> fold assignment + A/B augmentation
      -> data/processed/train_folds.parquet
 
@@ -18,8 +18,10 @@ head.pt + data/raw/test.csv
   -> model MODEL --test -> results/test/MODEL-.../submission.csv
 ```
 
-All commands load `config.yaml` from the working directory. Configured relative
-paths are resolved from the config file's directory.
+All commands accept `--config PATH` and default to `config.yaml` in the working
+directory. Relative config-file and data paths resolve from the working
+directory. `init` and `data` read `.env` there; model artifacts and reports are
+also rooted there, regardless of the config file's location.
 
 ## Entry points
 
@@ -42,6 +44,7 @@ and print summaries. Business logic belongs below the CLI layer.
 
 - `config.py`: Immutable config value objects, strict YAML validation, and path
   resolution.
+- `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
 - `pipeline.py`: Orchestrates the complete download-and-preprocess workflow and
   returns both download and fold results without printing them.
@@ -73,6 +76,8 @@ and print summaries. Business logic belongs below the CLI layer.
     - `extractor.py`: Produces frozen-Qwen pooled embeddings across GPU replicas.
     - `cache.py`: Validates and persists training or test embedding caches.
     - `model.py`: Defines backbone pooling and the pairwise MLP head.
+    - `orientation.py`: Averages original and swapped class probabilities and
+      aligns validation predictions with processed fold rows.
     - `trainer.py`: Trains fold-specific heads or one full-data head.
     - `checkpoint.py`: Saves and validates the production head and compatibility
       metadata.
@@ -80,8 +85,8 @@ and print summaries. Business logic belongs below the CLI layer.
 - `result/`
   - `synthesizer.py`: Discovers and validates fold CSVs, reverses swapped-row
     orientation, and reduces each pair to one source record.
-    Averaged mono-input runs count one prediction per pair; older runs retain
-    separate original and swapped votes.
+    Averaged Qwen3-4B and mono-input runs count one prediction per pair; older
+    runs retain separate original and swapped votes.
   - `publisher.py`: Stages both report files, replaces the report directory,
     and restores the previous report on a publication failure.
   - `writers.py`: Renders the confusion-matrix PNG and filterable Excel workbook.
@@ -97,6 +102,8 @@ exports over importing private helpers across package boundaries.
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Human setup and usage guide |
+| `scripts/run_all_configs.py` | Run `model ALL` for each YAML file in `configs/` |
+| `configs/` | Complete YAML configurations for sequential model runs |
 | `tests/` | Automated coverage, currently focused on result synthesis |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
@@ -122,6 +129,9 @@ modules. Do not make application logic depend on a particular timestamped run.
   and valid JSON.
 - Mono-input head training uses original rows only. Validation and test inference
   average original and A/B-restored swapped probabilities per source ID.
+- Qwen3-4B `A/B_swap: aug` trains on both orientations with per-row loss;
+  `A/B_swap: inf` optimizes the averaged probability of both orientations for
+  each original ID. Both modes average probabilities for validation and test.
 - Full-data builds save only the classifier head; cross-validation does not save
   checkpoints.
 - Generated files and directories are staged before publication. Report

@@ -7,11 +7,10 @@ import sys
 from pathlib import Path
 from typing import NoReturn, Sequence
 
+from ..cli_config import add_config_argument
 from ..config import AppConfig
 from ..errors import DataPreparationError
 from .synthesizer import ResultSynthesisResult, ResultSynthesizer
-
-CONFIG_PATH = Path("config.yaml")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
             "and confusion matrix."
         ),
     )
+    add_config_argument(parser)
     parser.add_argument(
         "subfolder",
         nargs="?",
@@ -39,12 +39,11 @@ def run(arguments: Sequence[str] | None = None) -> int:
     parsed_arguments = build_parser().parse_args(arguments)
 
     try:
-        config_path = CONFIG_PATH.resolve()
-        config = AppConfig.load(config_path)
+        config = AppConfig.load(parsed_arguments.config)
         result = ResultSynthesizer(
             processed_path=config.data.processed_path,
             n_splits=config.cross_validation.n_splits,
-            results_root=config_path.parent / "results",
+            results_root=Path.cwd() / "results",
         ).synthesize(parsed_arguments.subfolder)
         _print_result(result)
         return 0

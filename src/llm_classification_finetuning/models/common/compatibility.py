@@ -1,4 +1,4 @@
-"""Build unchanged embedding-cache and head-checkpoint compatibility keys."""
+"""Build embedding-cache and head-checkpoint compatibility keys."""
 
 from __future__ import annotations
 
@@ -38,4 +38,5 @@ class ModelCompatibility:
             attention_implementation=self.gpu.attention_implementation,
             allow_tf32=self.gpu.allow_tf32,
             classifier_hidden_size=self.model.hidden_size,
+            ab_swap=self.model.ab_swap,
         )

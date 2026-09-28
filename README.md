@@ -101,6 +101,11 @@ uv run model qwen3-4b
 The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
 CSV per fold plus `metrics.json` to a timestamped model-named results directory.
+Set `qwen3_4b.A/B_swap` to `aug` (the default) to train on both original and
+A/B-swapped rows, or `inf` to train on original IDs using the loss of their
+averaged original and swapped probabilities. Both modes average the two
+orientations for validation predictions and loss, and for test submissions.
+Changing modes requires rebuilding the saved head; embedding caches are shared.
 
 To train a production head and generate a submission:
 
@@ -129,7 +134,7 @@ split tokenized inputs across `cuda:0` and `cuda:1`; classifier head training
 runs on the first configured device. T4 requires `fp16`, and the default
 16,384-token cap keeps one input within each GPU's memory budget. If extraction
 runs out of memory, reduce the selected model section's `extraction_batch_size`
-or `max_length` in `config.yaml`.
+or `max_length` in the selected configuration file.
 
 ## Generate validation reports
 
@@ -173,27 +178,48 @@ directory as unavailable.
 | `records.xlsx` | One row per source ID with fold, expected and actual labels, incorrect count, and log loss |
 
 The workbook supports filtering; its `AVG` row recalculates over visible rows.
-For averaged mono-input runs, each ID contributes one prediction, one confusion
-matrix count, and the log loss of its averaged distribution. Older runs retain
-their two-orientation report behavior.
+For Qwen3-4B and averaged mono-input runs, each ID contributes one prediction,
+one confusion matrix count, and the log loss of its averaged distribution.
+Older runs retain their two-orientation report behavior.
 
 ## Configuration
 
-All commands read `config.yaml` from the project root. Relative data paths are
-resolved from that file's directory.
+All commands read `config.yaml` from the working directory by default. Pass a
+complete YAML file with `--config PATH` to `init`, `data`, `preprocess`, `model`,
+or `result`. Relative config-file paths and relative `data.raw_dir` and
+`data.processed_path` values resolve from the working directory; absolute paths
+stay absolute. Model artifacts and reports also remain under the working
+directory. `init` and `data` load `.env` from the working directory.
+
+For example, from the project root:
+
+```shell
+uv run model qwen3-4b --config configs/experiment.yaml
+```
+
+To run `uv run model ALL` sequentially for every `.yaml` or `.yml` file in
+`configs/`, run:
+
+```shell
+uv run python scripts/run_all_configs.py
+```
+
+The script continues after a failed config and exits with a nonzero status if
+any config fails.
 
 | Section | Controls |
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count and random seed |
 | `gpu` | CUDA devices, precision, attention implementation, and TF32 |
-| `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, and optimizer |
+| `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 
 ## Troubleshooting
 
 - **Kaggle download fails:** Accept the competition rules, verify
   `KAGGLE_API_TOKEN`, and check network access.
-- **`config.yaml` is missing:** Run the command from the project root.
+- **Configuration file is missing:** Run from the intended working directory or
+  pass the correct file path with `--config`.
 - **`train.csv` is missing:** Run `uv run data`, or use `uv run init` for both
   download and preprocessing.
 - **CUDA or precision is unsupported:** Select an available `cuda:N` device and

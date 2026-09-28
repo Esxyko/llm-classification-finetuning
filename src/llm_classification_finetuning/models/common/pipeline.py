@@ -158,6 +158,7 @@ class ModelPipeline:
         output_dir, average_loss, prediction_count = self._result_publisher.publish(
             fold_results,
             self._model_config.model_name,
+            prediction_aggregation="ab_swap_average",
         )
         return ModelRunResult(
             output_dir=output_dir,
