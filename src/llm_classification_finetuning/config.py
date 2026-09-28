@@ -64,8 +64,6 @@ class AppConfig:
     data: DataConfig
     cross_validation: CrossValidationConfig
     gpu: GPUConfig
-    qwen3_1_7b: ModelConfig
-    qwen3_1_7b_mono_input: ModelConfig
     qwen3_4b: ModelConfig
 
     @classmethod
@@ -96,8 +94,6 @@ class AppConfig:
                 "data",
                 "cross_validation",
                 "gpu",
-                "qwen3_1_7b",
-                "qwen3_1_7b_mono_input",
                 "qwen3_4b",
             },
             "configuration root",
@@ -122,11 +118,6 @@ class AppConfig:
             gpu_section,
             {"devices", "precision", "attention_implementation", "allow_tf32"},
             "gpu",
-        )
-        qwen3_1_7b = _load_model_config(root, "qwen3_1_7b")
-        qwen3_1_7b_mono_input = _load_model_config(
-            root,
-            "qwen3_1_7b_mono_input",
         )
         qwen3_4b = _load_model_config(root, "qwen3_4b")
 
@@ -210,8 +201,6 @@ class AppConfig:
                 attention_implementation=attention_implementation,
                 allow_tf32=allow_tf32,
             ),
-            qwen3_1_7b=qwen3_1_7b,
-            qwen3_1_7b_mono_input=qwen3_1_7b_mono_input,
             qwen3_4b=qwen3_4b,
         )
 

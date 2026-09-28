@@ -53,17 +53,14 @@ Run these commands from the project root.
 | `uv run init` | Downloads missing raw files and prepares training data | `data/processed/train_folds.parquet` |
 | `uv run data` | Downloads missing Kaggle files only | `data/raw/*.csv` |
 | `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_folds.parquet` |
-| `uv run model qwen3-1.7b` | Runs Qwen3-1.7B cross-validation | `results/qwen3-1.7b-*/` |
-| `uv run model qwen3-1.7b-mono-input` | Runs structured mono-input Qwen3-1.7B cross-validation | `results/qwen3-1.7b-mono-input-*/` |
 | `uv run model qwen3-4b` | Runs Qwen3-4B cross-validation | `results/qwen3-4b-*/` |
 | `uv run model ALL` | Runs cross-validation for every registered model sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the selected model's head on its training rows | `models/MODEL_SLUG/head.pt` |
 | `uv run model MODEL --test` | Creates a submission with the selected model's saved head | `results/test/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
-Set `MODEL` to `qwen3-1.7b`, `qwen3-1.7b-mono-input`, `qwen3-4b`, or exact
-uppercase `ALL`. Add `--refresh-cache` to any model mode to rebuild that model
-and mode's embeddings.
+Set `MODEL` to `qwen3-4b` or exact uppercase `ALL`. Add `--refresh-cache` to any
+model mode to rebuild that model and mode's embeddings.
 `--build` and `--test` are mutually exclusive; without either flag, the command
 runs cross-validation. `ALL` follows model registry order and accepts the same
 `--build`, `--test`, and `--refresh-cache` options. If one model fails, the
@@ -98,44 +95,29 @@ the processed file.
 Prepare the data first, then run cross-validation:
 
 ```shell
-uv run model qwen3-1.7b
+uv run model qwen3-4b
 ```
 
-Use `qwen3-4b` instead to run the same workflow with `Qwen/Qwen3-4B`. The frozen
-backbone produces cached embeddings; only the pairwise MLP head is trained. A
-validation run writes one competition-format CSV per fold plus `metrics.json`
-to a timestamped model-named results directory.
-
-The `qwen3-1.7b-mono-input` selector uses the same frozen 1.7B backbone but
-combines each comparison into one input. It places an editable instruction
-before a deterministic JSON array containing one `prompt`, `response_a`, and
-`response_b` object per aligned conversation turn. Original and A/B-swapped
-rows are encoded independently, while the classifier head trains only on
-original rows. Validation and test inference run both orientations, restore
-the swapped A/B probabilities to their original order, and average the two
-distributions. Validation fold CSVs retain both augmented rows in their usual
-order; each pair represents one averaged prediction. The instruction is defined
-as `INPUT_INSTRUCTION` in the mono-input model package; changing it invalidates
-that model's caches and checkpoints. The original-only training policy also
-requires rebuilding older mono-input heads.
-
-When a mono input exceeds `max_length`, the final responses receive equal token
-caps. Earlier complete turns are removed if the final prompt, JSON structure,
-and a prefix of each nonempty response need room. The resulting input is
-re-tokenized so the JSON remains complete and both response fields stay present.
-If that minimum cannot fit, the command raises an error.
+The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
+pairwise MLP head is trained. A validation run writes one competition-format
+CSV per fold plus `metrics.json` to a timestamped model-named results directory.
 
 To train a production head and generate a submission:
 
 ```shell
-uv run model qwen3-1.7b --build
-uv run model qwen3-1.7b --test
+uv run model qwen3-4b --build
+uv run model qwen3-4b --test
 ```
 
 Build mode replaces the saved classifier head and compatibility metadata. Test
 mode validates `test.csv` against `sample_submission.csv`, loads that head, and
 writes a timestamped submission. The Qwen backbone is not stored in the
 checkpoint.
+
+The previous `qwen3-1.7b` and `qwen3-1.7b-mono-input` implementations and their
+configuration sections are retained locally in
+`src/llm_classification_finetuning/models/archive/`. This directory is ignored
+by Git, and these models are no longer CLI choices.
 
 Each model's training and test embeddings use separate model-named caches in
 `data/processed/`. A cache is reused only when its data, model, sequence length,
@@ -160,7 +142,7 @@ uv run result
 Or select a direct subfolder of `results/`:
 
 ```shell
-uv run result qwen3-1.7b-YYYYMMDD-HHMMSS
+uv run result qwen3-4b-YYYYMMDD-HHMMSS
 ```
 
 Without an argument, the command selects the most recently modified result
@@ -205,8 +187,6 @@ resolved from that file's directory.
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count and random seed |
 | `gpu` | CUDA devices, precision, attention implementation, and TF32 |
-| `qwen3_1_7b` | Qwen3-1.7B model, sequence length, batches, MLP, and optimizer |
-| `qwen3_1_7b_mono_input` | Mono-input Qwen3-1.7B sequence, batches, MLP, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, and optimizer |
 
 ## Troubleshooting

@@ -57,11 +57,10 @@ and print summaries. Business logic belongs below the CLI layer.
   - `__init__.py`: Registers each selector with its profile and pipeline.
   - `cli.py`: Selects a registered Qwen model and an execution mode.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
-  - `qwen3_1_7b/` and `qwen3_4b/`: Lightweight model profile definitions.
-  - `qwen3_1_7b_mono_input/`: Structured JSON serialization and its editable
-    instruction, row-aligned embedding cache, frozen encoder, mono-input head,
-    orientation averaging, trainer, predictor, and orchestration for
-    `qwen3-1.7b-mono-input`.
+  - `qwen3_4b/`: Active lightweight model profile definition.
+  - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B model
+    implementations and their configuration sections. Nothing imports these
+    models from the active package.
   - `common/pipeline.py`: Selects cross-validation, build, or test behavior for
     pairwise models.
   - `common/`
@@ -101,7 +100,7 @@ exports over importing private helpers across package boundaries.
 | `tests/` | Automated coverage, currently focused on result synthesis |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
-| `models/qwen3_1_7b/`, `models/qwen3_1_7b_mono_input/`, `models/qwen3_4b/` | Saved classifier heads and metadata |
+| `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source

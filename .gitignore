@@ -14,3 +14,6 @@ wheels/
 
 # Downloaded and generated competition data
 /data/
+
+# Locally archived model implementations
+/src/llm_classification_finetuning/models/archive/
