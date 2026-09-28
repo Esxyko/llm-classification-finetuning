@@ -1,0 +1,120 @@
+{
+  "average_out_of_fold_loss": 1.0213390315879638,
+  "fold_metrics": [
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.1008054714252864,
+          "validation_loss": 1.0157716868544777
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.0008973169847348,
+          "validation_loss": 1.0012448342422704
+        },
+        {
+          "epoch": 3,
+          "training_loss": 0.9788822774497385,
+          "validation_loss": 1.012296723950235
+        }
+      ],
+      "final_validation_loss": 1.012296723950235,
+      "fold": 0,
+      "predictions": 22988
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.2014344412018394,
+          "validation_loss": 1.0138674970553254
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.0016603745290018,
+          "validation_loss": 1.0081162250144613
+        },
+        {
+          "epoch": 3,
+          "training_loss": 0.9836964465006894,
+          "validation_loss": 1.0061008451689406
+        }
+      ],
+      "final_validation_loss": 1.0061008451689406,
+      "fold": 1,
+      "predictions": 22994
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.1764954103444545,
+          "validation_loss": 1.0321890138445433
+        },
+        {
+          "epoch": 2,
+          "training_loss": 0.997378875665843,
+          "validation_loss": 1.019866844680171
+        },
+        {
+          "epoch": 3,
+          "training_loss": 0.9748714472688557,
+          "validation_loss": 1.0430817900299558
+        }
+      ],
+      "final_validation_loss": 1.0430817900299558,
+      "fold": 2,
+      "predictions": 22994
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.1632284996614863,
+          "validation_loss": 1.0210490420035545
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.0100083578854266,
+          "validation_loss": 1.0164494527738461
+        },
+        {
+          "epoch": 3,
+          "training_loss": 0.9919184921813486,
+          "validation_loss": 1.0072873503944488
+        }
+      ],
+      "final_validation_loss": 1.0072873503944488,
+      "fold": 3,
+      "predictions": 22992
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.1665498244737533,
+          "validation_loss": 1.0198411020153466
+        },
+        {
+          "epoch": 2,
+          "training_loss": 0.9967143292549839,
+          "validation_loss": 1.0201624253809964
+        },
+        {
+          "epoch": 3,
+          "training_loss": 0.9744300272784966,
+          "validation_loss": 1.0379306392135295
+        }
+      ],
+      "final_validation_loss": 1.0379306392135295,
+      "fold": 4,
+      "predictions": 22986
+    }
+  ],
+  "folds": 5,
+  "generated_at": "2026-09-28T21:27:50+08:00",
+  "model_name": "Qwen/Qwen3-4B",
+  "predictions": 114954,
+  "run_name": "qwen3-4b-20260928-212750"
+}
