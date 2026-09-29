@@ -41,9 +41,16 @@ class LoadedHeadCheckpoint:
 class ModelCheckpointStore:
     """Atomically replace and strictly load one model head checkpoint."""
 
-    def __init__(self, checkpoint_path: Path, selector: str) -> None:
+    def __init__(
+        self,
+        checkpoint_path: Path,
+        selector: str,
+        checkpoint_tag: str | None = None,
+    ) -> None:
         self._checkpoint_path = checkpoint_path.resolve()
-        self._selector = selector
+        self._build_command = f"uv run model {selector} --build"
+        if checkpoint_tag:
+            self._build_command += f" --checkpoint-tag {checkpoint_tag}"
 
     @property
     def path(self) -> Path:
@@ -105,7 +112,7 @@ class ModelCheckpointStore:
         if not self._checkpoint_path.is_file():
             raise ModelExecutionError(
                 f"Model checkpoint not found: {self._checkpoint_path}. "
-                f"Run 'uv run model {self._selector} --build' first."
+                f"Run '{self._build_command}' first."
             )
         try:
             checkpoint = torch.load(
@@ -130,7 +137,7 @@ class ModelCheckpointStore:
                 raise ModelExecutionError(
                     "Model checkpoint is incompatible with the current "
                     f"configuration ({fields}). Run "
-                    f"'uv run model {self._selector} --build'."
+                    f"'{self._build_command}'."
                 )
 
             backbone_hidden_size = metadata.get("backbone_hidden_size")

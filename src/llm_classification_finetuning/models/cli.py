@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import traceback
 from collections.abc import Sequence
@@ -22,6 +23,14 @@ from .common import (
 from .common.pipeline import ModelExecutionResult
 
 ALL_MODELS = "ALL"
+
+
+def _checkpoint_tag(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", value):
+        raise argparse.ArgumentTypeError(
+            "checkpoint tag must contain only letters, digits, underscores, or hyphens"
+        )
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,12 +61,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Rebuild the selected mode's embedding cache for each selected model.",
     )
+    parser.add_argument(
+        "--checkpoint-tag",
+        type=_checkpoint_tag,
+        metavar="TAG",
+        help="Save or load head_TAG.pt instead of head.pt (build and test only).",
+    )
     return parser
 
 
 def run(arguments: Sequence[str] | None = None) -> int:
     """Run the selected model mode and return a process exit code."""
     parsed_arguments = build_parser().parse_args(arguments)
+    if parsed_arguments.checkpoint_tag and not (parsed_arguments.build or parsed_arguments.test):
+        raise SystemExit("--checkpoint-tag requires --build or --test")
     try:
         config = AppConfig.load(parsed_arguments.config)
         project_root = Path.cwd()
@@ -68,6 +85,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
                 project_root=project_root,
                 mode=mode,
                 refresh_cache=parsed_arguments.refresh_cache,
+                checkpoint_tag=parsed_arguments.checkpoint_tag,
             )
 
         registration = MODEL_REGISTRY[parsed_arguments.model]
@@ -77,6 +95,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
             project_root=project_root,
             mode=mode,
             refresh_cache=parsed_arguments.refresh_cache,
+            checkpoint_tag=parsed_arguments.checkpoint_tag,
         )
         _print_result(registration.profile.selector, result)
         return 0
@@ -92,11 +111,13 @@ def _run_registered_model(
     project_root: Path,
     mode: ModelMode,
     refresh_cache: bool,
+    checkpoint_tag: str | None,
 ) -> ModelExecutionResult:
     return registration.pipeline_type(
         config=config,
         project_root=project_root,
         profile=registration.profile,
+        checkpoint_tag=checkpoint_tag,
     ).run(mode=mode, refresh_cache=refresh_cache)
 
 
@@ -106,6 +127,7 @@ def _run_all_models(
     project_root: Path,
     mode: ModelMode,
     refresh_cache: bool,
+    checkpoint_tag: str | None,
 ) -> int:
     """Run every registered model, preserving registry order after failures."""
     failed_models: list[str] = []
@@ -118,6 +140,7 @@ def _run_all_models(
                 project_root=project_root,
                 mode=mode,
                 refresh_cache=refresh_cache,
+                checkpoint_tag=checkpoint_tag,
             )
             _print_result(selector, result)
         except DataPreparationError as error:

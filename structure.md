@@ -13,6 +13,7 @@ selected YAML config (defaults to config.yaml)
 train_folds.parquet
   -> model MODEL (default) -> fold CSVs + metrics -> result -> PNG + XLSX report
   -> model MODEL --build -> models/MODEL_SLUG/head.pt
+  -> model MODEL --build --checkpoint-tag TAG -> models/MODEL_SLUG/head_TAG.pt
 
 head.pt + data/raw/test.csv
   -> model MODEL --test -> results/test/MODEL-.../submission.csv
@@ -102,7 +103,7 @@ exports over importing private helpers across package boundaries.
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Human setup and usage guide |
-| `scripts/run_all_configs.py` | Run `model ALL` for each YAML file in `configs/` |
+| `scripts/run_all_configs.py` | Cross-validate and build `model ALL` for each YAML file in `configs/`, with separate tagged heads |
 | `configs/` | Complete YAML configurations for sequential model runs |
 | `tests/` | Automated coverage, currently focused on result synthesis |
 | `data/raw/` | Downloaded competition CSVs |

@@ -65,6 +65,8 @@ model mode to rebuild that model and mode's embeddings.
 runs cross-validation. `ALL` follows model registry order and accepts the same
 `--build`, `--test`, and `--refresh-cache` options. If one model fails, the
 remaining models still run; the command exits with status `1` if any failed.
+For builds and test inference, `--checkpoint-tag TAG` selects
+`models/MODEL_SLUG/head_TAG.pt`; without it, the checkpoint is `head.pt`.
 
 ## Prepare training data
 
@@ -197,15 +199,24 @@ For example, from the project root:
 uv run model qwen3-4b --config configs/experiment.yaml
 ```
 
-To run `uv run model ALL` sequentially for every `.yaml` or `.yml` file in
+To cross-validate and build a separate head for every `.yaml` or `.yml` file in
 `configs/`, run:
 
 ```shell
 uv run python scripts/run_all_configs.py
 ```
 
-The script continues after a failed config and exits with a nonzero status if
-any config fails.
+The script runs cross-validation and then a full-data build for each config.
+The current `config_aug.yaml` and `config_inf.yaml` write
+`models/qwen3_4b/head_config_aug.pt` and
+`models/qwen3_4b/head_config_inf.pt`, respectively. It continues after a failed
+mode or config and exits with a nonzero status if any step fails. To use one of
+these heads for test inference, pass its config and matching checkpoint tag, for
+example:
+
+```shell
+uv run model qwen3-4b --test --config configs/config_inf.yaml --checkpoint-tag config_inf
+```
 
 | Section | Controls |
 | --- | --- |

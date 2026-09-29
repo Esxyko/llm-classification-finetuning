@@ -85,6 +85,7 @@ class ModelPipeline:
         config: AppConfig,
         project_root: Path,
         profile: ModelProfile,
+        checkpoint_tag: str | None = None,
     ) -> None:
         self._config = config
         self._profile = profile
@@ -109,9 +110,11 @@ class ModelPipeline:
             artifact_stem=f"{profile.artifact_stem}_test_embeddings",
         )
         project_root = project_root.resolve()
+        checkpoint_name = f"head_{checkpoint_tag}.pt" if checkpoint_tag else "head.pt"
         self._checkpoint_store = ModelCheckpointStore(
-            project_root / "models" / profile.artifact_stem / "head.pt",
+            project_root / "models" / profile.artifact_stem / checkpoint_name,
             selector=profile.selector,
+            checkpoint_tag=checkpoint_tag,
         )
         self._result_publisher = ModelResultPublisher(
             project_root / "results",
