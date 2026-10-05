@@ -1,0 +1,96 @@
+{
+  "average_out_of_fold_loss": 1.0175844318946332,
+  "fold_metrics": [
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.2758373376261951,
+          "validation_loss": 1.0101203899788447
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.00758224973174,
+          "validation_loss": 1.0095091924390234
+        }
+      ],
+      "final_validation_loss": 1.0095091924390234,
+      "fold": 0,
+      "predictions": 11494
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.2554055390123597,
+          "validation_loss": 1.0449341168411506
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.0315500540026068,
+          "validation_loss": 1.0345904659559242
+        }
+      ],
+      "final_validation_loss": 1.0345904659559242,
+      "fold": 1,
+      "predictions": 11497
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.2307892366200233,
+          "validation_loss": 1.0223782290642578
+        },
+        {
+          "epoch": 2,
+          "training_loss": 0.9937871326721974,
+          "validation_loss": 1.0215716033310769
+        }
+      ],
+      "final_validation_loss": 1.0215716033310769,
+      "fold": 2,
+      "predictions": 11497
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.1935966571306893,
+          "validation_loss": 1.0249769754847804
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.0043561660756812,
+          "validation_loss": 1.010359074145286
+        }
+      ],
+      "final_validation_loss": 1.010359074145286,
+      "fold": 3,
+      "predictions": 11496
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "training_loss": 1.1831334610323816,
+          "validation_loss": 1.0510652263388771
+        },
+        {
+          "epoch": 2,
+          "training_loss": 1.0027997296306104,
+          "validation_loss": 1.0118871058163086
+        }
+      ],
+      "final_validation_loss": 1.0118871058163086,
+      "fold": 4,
+      "predictions": 11493
+    }
+  ],
+  "folds": 5,
+  "generated_at": "2026-10-05T20:29:43+08:00",
+  "model_name": "Qwen/Qwen3-4B",
+  "prediction_aggregation": "ab_swap_average",
+  "predictions": 57477,
+  "run_name": "qwen3-4b-20261005-202943"
+}
