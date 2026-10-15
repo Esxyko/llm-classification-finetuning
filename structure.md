@@ -103,6 +103,7 @@ exports over importing private helpers across package boundaries.
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Human setup and usage guide |
+| `notebooks/` | Kaggle-facing orchestration notebooks that reuse package inference APIs |
 | `scripts/run_all_configs.py` | Cross-validate and build `model ALL` for each YAML file in `configs/`, with separate tagged heads |
 | `configs/` | Complete YAML configurations for sequential model runs |
 | `tests/` | Automated coverage, currently focused on result synthesis |

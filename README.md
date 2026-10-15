@@ -138,6 +138,21 @@ runs on the first configured device. T4 requires `fp16`, and the default
 runs out of memory, reduce the selected model section's `extraction_batch_size`
 or `max_length` in the selected configuration file.
 
+## Kaggle inference notebook
+
+Use `notebooks/qwen3_4b_kaggle_inference.ipynb` for Kaggle submission inference.
+The notebook is inference-only and reuses the existing model CLI/test pipeline.
+Attach Kaggle inputs for:
+
+1. competition files (`test.csv` and `sample_submission.csv`);
+2. a repository snapshot containing `src/llm_classification_finetuning/`; and
+3. a trained `models/qwen3_4b/head.pt` (or tagged `head_TAG.pt`) checkpoint.
+
+The notebook copies mounted read-only inputs into `/kaggle/working`, adapts
+`gpu.devices` to detected CUDA hardware, runs `qwen3-4b --test`, validates the
+generated CSV against required columns/IDs/probability checks, and writes the
+final file to `/kaggle/working/submission.csv`.
+
 ## Generate validation reports
 
 Create reports for the latest validation run:
