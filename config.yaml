@@ -17,7 +17,7 @@ gpu:
 qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
-  max_length: 12288
+  max_length: 16384
   extraction_batch_size: 1
   training_batch_size: 256
   hidden_size: 512
