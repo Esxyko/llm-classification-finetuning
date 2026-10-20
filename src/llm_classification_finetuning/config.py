@@ -74,7 +74,9 @@ class LoRAModelConfig:
 	learning_rate: float
 	head_learning_rate: float
 	weight_decay: float
-	warmup_ratio: float
+	warmup_epochs: int
+	warmup_training_batch_size: int
+	warmup_learning_rate: float
 	max_grad_norm: float
 	lora_rank: int
 	lora_alpha: int
@@ -251,6 +253,11 @@ def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
 	weight_decay = _require_float(section.get("weight_decay"), field("weight_decay"))
 	if weight_decay < 0.0:
 		raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
+	warmup_epochs = _require_integer(
+		section.get("warmup_epochs"), field("warmup_epochs")
+	)
+	if warmup_epochs < 0:
+		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
 	workers = _require_integer(
 		section.get("dataloader_workers"), field("dataloader_workers")
 	)
@@ -287,7 +294,9 @@ def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
 		learning_rate=positive_float("learning_rate"),
 		head_learning_rate=positive_float("head_learning_rate"),
 		weight_decay=weight_decay,
-		warmup_ratio=fraction("warmup_ratio"),
+		warmup_epochs=warmup_epochs,
+		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
+		warmup_learning_rate=positive_float("warmup_learning_rate"),
 		max_grad_norm=positive_float("max_grad_norm"),
 		lora_rank=positive_integer("lora_rank"),
 		lora_alpha=positive_integer("lora_alpha"),

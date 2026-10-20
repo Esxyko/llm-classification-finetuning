@@ -173,15 +173,36 @@ pair and 16 accumulation steps, giving an effective batch of 16 augmented rows.
 LoRA rank is 16, alpha is 32, and dropout is 0.05, targeting attention
 `q_proj`, `k_proj`, `v_proj`, `o_proj` and MLP `gate_proj`, `up_proj`, `down_proj`.
 The 512-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
-`0.0002`, head learning rate `0.001`, weight decay `0.01`, linear decay with 3%
-warmup, and gradient clipping at 1.0 for two epochs. All these settings are
-configurable in `qwen3_4b_lora`.
+`0.0002`, head learning rate `0.001`, weight decay `0.01`, and gradient clipping
+at 1.0. Training starts with one head-only warmup epoch at a fixed learning rate
+of `0.001`, then jointly trains adapters and head for two epochs with learning
+rates linearly decaying to zero. All these settings are configurable in
+`qwen3_4b_lora`.
 
-For smaller GPUs, lower `max_length` or the relevant `training_batch_size` /
-`inference_batch_size`. Increase `gradient_accumulation_steps` when reducing
-the training batch to retain the desired effective batch. Larger GPUs can use
-larger batches. Memory fit for the 16,384-token preset on a 32 GB GPU has not
-been measured; execution reports OOM without silently lowering context length.
+`warmup_epochs` is a required nonnegative integer; `0` skips head warmup.
+`warmup_training_batch_size` is a required positive integer controlling only the
+head-warmup micro-batch size (default preset: `1`); joint training uses
+`training_batch_size`. Both stages use `gradient_accumulation_steps` and normalize
+loss by the actual row count of each accumulation group, including short final
+batches. The joint-training decay schedule uses only the joint-training batches.
+`warmup_learning_rate` is a required finite positive number, even when warmup is
+disabled. During warmup, the backbone runs in evaluation mode without gradient
+tracking, while the classifier remains in training mode. Joint training restores
+backbone training mode and retains the head's AdamW state. The joint-training
+schedule starts at `learning_rate` / `head_learning_rate` without a learning-rate
+ramp. Total training lasts `warmup_epochs + epochs` rounds (three by default),
+and training histories and build summaries include both stages. Each validation
+fold and full-data build follows these stages; validation still runs after each
+epoch. Replace the removed `warmup_ratio` key with `warmup_epochs`,
+`warmup_training_batch_size`, and `warmup_learning_rate`; old keys are rejected
+as unknown configuration options.
+
+For smaller GPUs, lower `max_length` or the relevant `warmup_training_batch_size`,
+`training_batch_size`, or `inference_batch_size`. Increase
+`gradient_accumulation_steps` when reducing the training batch to retain the
+desired effective batch. Larger GPUs can use larger batches. Memory fit for the
+16,384-token preset on a 32 GB GPU has not been measured; execution reports OOM
+without silently lowering context length.
 
 Builds atomically save adapters, the classifier, and compatibility metadata in
 `models/qwen3_4b_lora/adapter.pt`. `--checkpoint-tag TAG` selects

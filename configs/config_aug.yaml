@@ -33,7 +33,7 @@ qwen3_4b_lora:
   max_length: 16384
   training_batch_size: 1
   inference_batch_size: 1
-  gradient_accumulation_steps: 16
+  gradient_accumulation_steps: 32
   gradient_checkpointing: true
   hidden_size: 512
   dropout: 0.1
@@ -41,7 +41,9 @@ qwen3_4b_lora:
   learning_rate: 0.0001
   head_learning_rate: 0.00001
   weight_decay: 0.01
-  warmup_ratio: 0.03
+  warmup_epochs: 1
+  warmup_training_batch_size: 256
+  warmup_learning_rate: 0.001
   max_grad_norm: 1.0
   lora_rank: 32
   lora_alpha: 64

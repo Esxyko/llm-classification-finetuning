@@ -41,7 +41,9 @@ qwen3_4b_lora:
   learning_rate: 0.0002
   head_learning_rate: 0.001
   weight_decay: 0.01
-  warmup_ratio: 0.03
+  warmup_epochs: 1
+  warmup_training_batch_size: 1
+  warmup_learning_rate: 0.001
   max_grad_norm: 1.0
   lora_rank: 16
   lora_alpha: 32

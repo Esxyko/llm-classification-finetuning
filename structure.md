@@ -69,8 +69,9 @@ and print summaries. Business logic belongs below the CLI layer.
     - `data.py`: Orient canonical A/B texts and independently tokenize/pad branches.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       pool their last real tokens, and classify with the shared pairwise MLP.
-    - `trainer.py`: Train fresh adapters/heads per fold or all-data build, with
-      mixed precision, accumulation, scheduling, and averaged live inference.
+    - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
+      adapters/heads per fold or all-data build with linear decay, mixed
+      precision, accumulation, and averaged live inference.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
     - `pipeline.py`: Orchestrate cross-validation, builds, and test submissions
@@ -150,9 +151,14 @@ modules. Do not make application logic depend on a particular timestamped run.
 - Qwen3-4B `A/B_swap: aug` trains on both orientations with per-row loss;
   `A/B_swap: inf` optimizes the averaged probability of both orientations for
   each original ID. Both modes average probabilities for validation and test.
-- LoRA supports `A/B_swap: aug`, trains both orientations with gradients through
-  both branches, and averages their probabilities for validation and test.
-  Accumulation normalizes by actual row counts, including incomplete groups.
+- LoRA supports `A/B_swap: aug`. Optional head-only warmup uses a no-gradient,
+  evaluation-mode backbone at a fixed head learning rate, followed by joint
+  training with gradients through both branches and linear learning-rate decay.
+  Warmup uses `warmup_training_batch_size`; joint training uses
+  `training_batch_size`, which also determines the joint schedule's step count.
+  Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
+  optimizer state and normalize accumulation by actual row counts, including
+  incomplete groups. Validation and test average both orientations' probabilities.
 - All models use one shared `gpu.device` without GPU-name or VRAM restrictions.
   GPU configuration is a scalar CUDA identifier; there is no replica or
   cross-device branch distribution logic.

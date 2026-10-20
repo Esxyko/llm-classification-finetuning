@@ -126,10 +126,20 @@ class LoRATrainer:
 		validation: pd.DataFrame | None = None,
 		description: str = "Build",
 	) -> LoRATrainingHistory:
-		"""Optimize both augmented orientations with an effective-batch schedule."""
+		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
 		if training.empty:
 			raise ModelExecutionError("LoRA training received no rows.")
-		loader = self._create_loader(training, records, training=True, seed=seed)
+		loader = self._create_loader(
+			training,
+			records,
+			training=True,
+			seed=seed,
+			batch_size=(
+				self._config.warmup_training_batch_size
+				if self._config.warmup_epochs
+				else self._config.training_batch_size
+			),
+		)
 		optimizer = AdamW(
 			[
 				{
@@ -142,28 +152,56 @@ class LoRATrainer:
 				},
 				{
 					"params": model.classifier.parameters(),
-					"lr": self._config.head_learning_rate,
+					"lr": (
+						self._config.warmup_learning_rate
+						if self._config.warmup_epochs
+						else self._config.head_learning_rate
+					),
 				},
 			],
 			weight_decay=self._config.weight_decay,
 		)
-		steps = (
-			math.ceil(len(loader) / self._config.gradient_accumulation_steps)
-			* self._config.epochs
-		)
-		scheduler = get_linear_schedule_with_warmup(
-			optimizer,
-			num_warmup_steps=math.ceil(steps * self._config.warmup_ratio),
-			num_training_steps=steps,
-		)
+		scheduler: LambdaLR | None = None
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
 		losses: list[float] = []
 		metrics: list[EpochMetrics] = []
 		probabilities: np.ndarray | None = None
-		for epoch in range(1, self._config.epochs + 1):
-			loss = self._train_epoch(model, loader, optimizer, scheduler, scaler)
+		total_epochs = self._config.warmup_epochs + self._config.epochs
+		for epoch in range(1, total_epochs + 1):
+			head_only = epoch <= self._config.warmup_epochs
+			if epoch == self._config.warmup_epochs + 1:
+				if self._config.warmup_epochs:
+					loader = self._create_loader(
+						training, records, training=True, seed=seed
+					)
+				for group, learning_rate in zip(
+					optimizer.param_groups,
+					(self._config.learning_rate, self._config.head_learning_rate),
+					strict=True,
+				):
+					group["lr"] = learning_rate
+				steps = (
+					math.ceil(len(loader) / self._config.gradient_accumulation_steps)
+					* self._config.epochs
+				)
+				scheduler = get_linear_schedule_with_warmup(
+					optimizer,
+					num_warmup_steps=0,
+					num_training_steps=steps,
+				)
+			loss = self._train_epoch(
+				model, loader, optimizer, scheduler, scaler, head_only=head_only
+			)
 			losses.append(loss)
-			message = f"{description} epoch {epoch}/{self._config.epochs}: train_loss={loss:.6f}"
+			stage = "head warmup" if head_only else "joint training"
+			stage_epoch = epoch if head_only else epoch - self._config.warmup_epochs
+			stage_epochs = (
+				self._config.warmup_epochs if head_only else self._config.epochs
+			)
+			message = (
+				f"{description} {stage} epoch {stage_epoch}/{stage_epochs} "
+				f"(total {epoch}/{total_epochs}): train_loss={loss:.6f}"
+			)
 			if validation is not None:
 				validation_loss, probabilities = self.evaluate(
 					model, validation, records
@@ -178,10 +216,15 @@ class LoRATrainer:
 		model: LoRAQwenClassifier,
 		loader: DataLoader[PairwiseBatch],
 		optimizer: AdamW,
-		scheduler: LambdaLR,
+		scheduler: LambdaLR | None,
 		scaler: torch.amp.GradScaler,
+		*,
+		head_only: bool = False,
 	) -> float:
+		"""Optimize one epoch, optionally retaining gradients only for the head."""
 		model.train()
+		if head_only:
+			model.backbone.eval()
 		optimizer.zero_grad(set_to_none=True)
 		accumulation = self._config.gradient_accumulation_steps
 		total_rows = len(loader.dataset)
@@ -192,11 +235,17 @@ class LoRATrainer:
 			if index % accumulation == 0:
 				# Use actual row counts, including a short final micro-batch or group.
 				group_rows = min(
-					accumulation * self._config.training_batch_size,
+					accumulation * loader.batch_size,
 					total_rows - rows_total,
 				)
 			labels = batch.labels.to(self._device, non_blocking=True)
-			loss_sum = F.cross_entropy(model(batch), labels, reduction="sum")
+			if head_only:
+				with torch.no_grad():
+					encodings = model.encode(batch)
+				logits = model.classifier(*encodings)
+			else:
+				logits = model(batch)
+			loss_sum = F.cross_entropy(logits, labels, reduction="sum")
 			if not torch.isfinite(loss_sum):
 				raise ModelExecutionError("LoRA training produced a non-finite loss.")
 			scaler.scale(loss_sum / group_rows).backward()
@@ -215,12 +264,13 @@ class LoRATrainer:
 				old_scale = scaler.get_scale()
 				scaler.step(optimizer)
 				scaler.update()
-				if scaler.get_scale() >= old_scale:
+				if scheduler is not None and scaler.get_scale() >= old_scale:
 					scheduler.step()
 				optimizer.zero_grad(set_to_none=True)
 			if index == 0 or (index + 1) % 100 == 0:
+				stage = "head warmup" if head_only else "joint training"
 				print(
-					f"LoRA training batch {index + 1:,}/{len(loader):,}: "
+					f"LoRA {stage} batch {index + 1:,}/{len(loader):,}: "
 					f"train_loss={loss_total / rows_total:.6f}",
 					flush=True,
 				)
@@ -263,15 +313,20 @@ class LoRATrainer:
 		*,
 		training: bool,
 		seed: int,
+		batch_size: int | None = None,
 	) -> DataLoader[PairwiseBatch]:
 		if self._collator is None:
 			raise RuntimeError("Initialize a LoRA model before creating its loaders.")
+		if batch_size is None:
+			batch_size = (
+				self._config.training_batch_size
+				if training
+				else self._config.inference_batch_size
+			)
 		workers = self._config.dataloader_workers
 		return DataLoader(
 			PairwiseTextDataset(reference, records),
-			batch_size=self._config.training_batch_size
-			if training
-			else self._config.inference_batch_size,
+			batch_size=batch_size,
 			shuffle=training,
 			collate_fn=self._collator,
 			num_workers=workers,
