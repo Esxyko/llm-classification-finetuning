@@ -13,7 +13,6 @@ from ...errors import ModelExecutionError
 from ..common import (
 	GPUEnvironment,
 	ModelBuildResult,
-	ModelDataRepository,
 	ModelExecutionResult,
 	ModelMode,
 	ModelResultPublisher,
@@ -23,6 +22,7 @@ from ..common import (
 	ModelTestResult,
 )
 from ..profile import ModelProfile
+from .batching import LoRATrainingBatchRepository
 from .checkpoint import LoRACheckpointCompatibility, LoRACheckpointStore
 from .trainer import LoRATrainer
 
@@ -43,9 +43,6 @@ class LoRAModelPipeline:
 		if not isinstance(model_config, LoRAModelConfig):
 			raise TypeError("LoRA execution requires a LoRAModelConfig.")
 		self._model_config = model_config
-		self._training_repository = ModelDataRepository(
-			config.data.processed_path, config.cross_validation.n_splits
-		)
 		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
 		project_root = project_root.resolve()
 		checkpoint_name = (
@@ -71,30 +68,39 @@ class LoRAModelPipeline:
 		mode: ModelMode = ModelMode.CROSS_VALIDATION,
 		refresh_cache: bool = False,
 	) -> ModelExecutionResult:
-		"""Run without persistent embeddings; refresh_cache intentionally has no effect."""
+		"""Use cached training tokens/plans while retaining live backbone encodings."""
 		try:
 			device = GPUEnvironment(self._config.gpu).configure()
-			trainer = LoRATrainer(self._model_config, self._config.gpu, device)
+			trainer = LoRATrainer(
+				self._model_config,
+				self._config.gpu,
+				device,
+				token_cache_dir=self._config.data.processed_path.parent / "token_cache",
+				refresh_cache=refresh_cache,
+			)
 			if mode is ModelMode.TEST:
 				return self._run_test(trainer)
 			if mode not in (ModelMode.CROSS_VALIDATION, ModelMode.BUILD):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
-			data = self._training_repository.load()
+			batches = LoRATrainingBatchRepository.from_config(
+				self._config, refresh_cache=refresh_cache
+			)
 			if mode is ModelMode.BUILD:
-				model = trainer.create_model(seed=self._model_config.random_state)
+				training = batches.get_training(None)
+				model = trainer.create_model(
+					seed=self._model_config.random_state, revision=batches.base_revision
+				)
 				try:
 					history = trainer.fit(
 						model,
-						data.reference,
-						data.canonical_texts,
+						training,
+						batches.data.canonical_texts,
 						seed=self._model_config.random_state,
 					)
 					self._checkpoint_store.save(
 						model,
-						self._compatibility(
-							self._training_repository.serializer_version
-						),
-						training_source_sha256=data.fingerprint,
+						self._compatibility(batches.serializer_version),
+						training_source_sha256=batches.data.fingerprint,
 						gpu=self._config.gpu,
 					)
 					return ModelBuildResult(
@@ -105,7 +111,7 @@ class LoRAModelPipeline:
 					)
 				finally:
 					del model
-			folds = trainer.cross_validate(data, self._config.cross_validation.n_splits)
+			folds = trainer.cross_validate(batches)
 			output_dir, average_loss, predictions = self._result_publisher.publish(
 				folds,
 				self._model_config.model_name,

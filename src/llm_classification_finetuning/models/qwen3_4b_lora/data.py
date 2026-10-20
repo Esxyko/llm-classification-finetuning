@@ -1,21 +1,18 @@
-"""Reuse canonical tokens and features, orient rows, and batch within update groups."""
+"""Orient canonical token/feature views and independently pad conversation branches."""
 
 from __future__ import annotations
 
-from array import array
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass
-from itertools import islice
 
 import numpy as np
 import pandas as pd
 import torch
 from torch import Tensor
-from torch.utils.data import Dataset, RandomSampler, Sampler
-from transformers import AutoTokenizer
+from torch.utils.data import Dataset
 
 from ...errors import ModelExecutionError
-from ..common import PairwiseText
+from ..common import PairwiseTokenStore
 
 
 def _row_indices(row_ids: Iterable[int], positions: dict[int, int]) -> np.ndarray:
@@ -71,79 +68,6 @@ class PairwiseBatch:
 			self.branch_b.pin_memory(),
 			self.labels.pin_memory(),
 		)
-
-
-class PairwiseTokenStore:
-	"""Tokenize every canonical branch once into a temporary compact CPU buffer."""
-
-	def __init__(
-		self,
-		records: tuple[PairwiseText, ...],
-		model_name: str,
-		max_length: int,
-		revision: str | None,
-	) -> None:
-		self._records = records
-		self.revision = revision
-		self.positions = {record.row_id: index for index, record in enumerate(records)}
-		if len(self.positions) != len(records):
-			raise ModelExecutionError(
-				"Canonical LoRA conversations must have unique IDs."
-			)
-		tokenizer = AutoTokenizer.from_pretrained(model_name, revision=revision)
-		self.pad_token_id = tokenizer.pad_token_id
-		if self.pad_token_id is None:
-			self.pad_token_id = tokenizer.eos_token_id
-		if self.pad_token_id is None:
-			raise ModelExecutionError(
-				"The configured tokenizer has neither a pad token nor an EOS token."
-			)
-		tokens = array("i")
-		self.offsets = np.empty(2 * len(records) + 1, dtype=np.int64)
-		self.offsets[0] = 0
-		longest = 0
-		for start in range(0, len(records), 256):
-			group = records[start : start + 256]
-			encoded = tokenizer(
-				[
-					text
-					for record in group
-					for text in (record.response_a, record.response_b)
-				],
-				padding=False,
-				truncation=False,
-				return_attention_mask=False,
-				return_token_type_ids=False,
-				verbose=False,
-			)
-			for offset, input_ids in enumerate(encoded["input_ids"]):
-				branch_index = 2 * start + offset
-				length = len(input_ids)
-				row_id = records[branch_index // 2].row_id
-				branch_name = "AB"[branch_index % 2]
-				if length == 0:
-					raise ModelExecutionError(
-						f"Row {row_id} branch {branch_name} contains no tokens."
-					)
-				if length > max_length:
-					raise ModelExecutionError(
-						f"Row {row_id} branch {branch_name} has {length:,} tokens, exceeding "
-						f"qwen3_4b_lora.max_length={max_length:,}. Increase max_length to "
-						f"at least {length:,}; LoRA inputs are never truncated."
-					)
-				longest = max(longest, length)
-				tokens.extend(input_ids)
-				self.offsets[branch_index + 1] = len(tokens)
-		self.tokens = np.frombuffer(tokens, dtype=np.int32)
-		self.lengths = np.diff(self.offsets).reshape(-1, 2)
-		print(
-			f"Tokenized {len(records):,} unique LoRA pairs once; "
-			f"longest branch={longest:,} tokens (no truncation).",
-			flush=True,
-		)
-
-	def matches(self, records: tuple[PairwiseText, ...], revision: str | None) -> bool:
-		return self._records is records and self.revision == revision
 
 
 class PairwiseTokenDataset(Dataset[tuple[np.ndarray, np.ndarray, int]]):
@@ -202,48 +126,6 @@ class PairwiseCollator:
 			branches[1],
 			torch.tensor([row[2] for row in rows], dtype=torch.long),
 		)
-
-
-class OptimizerGroupBatchSampler(Sampler[list[int]]):
-	"""Split the original shuffled update groups into fixed or token-budget batches."""
-
-	def __init__(
-		self,
-		dataset: PairwiseTokenDataset,
-		batch_size: int,
-		accumulation_steps: int,
-		token_budget: int,
-		generator: torch.Generator,
-	) -> None:
-		self._dataset = dataset
-		self._sampler = RandomSampler(dataset, generator=generator)
-		self._batch_size = batch_size
-		self._group_size = batch_size * accumulation_steps
-		self._token_budget = token_budget
-
-	def __iter__(self) -> Iterator[list[int]]:
-		indices = iter(self._sampler)
-		while group := list(islice(indices, self._group_size)):
-			if self._token_budget == 0:
-				for start in range(0, len(group), self._batch_size):
-					yield group[start : start + self._batch_size]
-				continue
-			batch: list[int] = []
-			max_a = max_b = 0
-			for index in group:
-				a, b = self._dataset.branch_lengths(index)
-				if (
-					batch
-					and (len(batch) + 1) * (max(max_a, a) + max(max_b, b))
-					> self._token_budget
-				):
-					yield batch
-					batch = []
-					max_a = max_b = 0
-				batch.append(index)
-				max_a, max_b = max(max_a, a), max(max_b, b)
-			if batch:
-				yield batch
 
 
 class PairwiseFeatureDataset(Dataset[tuple[Tensor, int]]):

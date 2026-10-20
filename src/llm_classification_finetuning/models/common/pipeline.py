@@ -36,7 +36,7 @@ from .trainer import ModelCrossValidator
 class ModelPipeline:
 	"""Run cross-validation, build, or test inference for one model profile."""
 
-	CACHE_SCHEMA_VERSION = 1
+	CACHE_SCHEMA_VERSION = 2
 	CHECKPOINT_SCHEMA_VERSION = 2
 
 	def __init__(
@@ -62,13 +62,8 @@ class ModelPipeline:
 			n_splits=config.cross_validation.n_splits,
 		)
 		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
-		self._training_cache = EmbeddingCache(
-			config.data.processed_path,
-			artifact_stem=f"{profile.artifact_stem}_embeddings",
-		)
-		self._test_cache = EmbeddingCache(
-			config.data.processed_path,
-			artifact_stem=f"{profile.artifact_stem}_test_embeddings",
+		self._embedding_cache = EmbeddingCache(
+			config.data.processed_path.parent / "embedding_cache"
 		)
 		project_root = project_root.resolve()
 		checkpoint_name = f"head_{checkpoint_tag}.pt" if checkpoint_tag else "head.pt"
@@ -100,9 +95,6 @@ class ModelPipeline:
 		data = self._training_repository.load()
 		embeddings, cache_reused = self._load_or_extract_embeddings(
 			records=data.canonical_texts,
-			fingerprint=data.fingerprint,
-			serializer_version=self._training_repository.serializer_version,
-			cache=self._training_cache,
 			refresh_cache=refresh_cache,
 			device=device,
 		)
@@ -128,7 +120,7 @@ class ModelPipeline:
 			folds=len(fold_results),
 			predictions=prediction_count,
 			average_loss=average_loss,
-			cache_path=self._training_cache.tensor_path,
+			cache_path=self._embedding_cache.root,
 			cache_reused=cache_reused,
 		)
 
@@ -153,7 +145,7 @@ class ModelPipeline:
 			training_rows=trained.rows,
 			epochs=len(trained.training_losses),
 			final_training_loss=trained.training_losses[-1],
-			cache_path=self._training_cache.tensor_path,
+			cache_path=self._embedding_cache.root,
 			cache_reused=cache_reused,
 		)
 
@@ -165,9 +157,6 @@ class ModelPipeline:
 		device = GPUEnvironment(self._config.gpu).configure()
 		embeddings, cache_reused = self._load_or_extract_embeddings(
 			records=data.canonical_texts,
-			fingerprint=data.fingerprint,
-			serializer_version=self._test_repository.serializer_version,
-			cache=self._test_cache,
 			refresh_cache=refresh_cache,
 			device=device,
 		)
@@ -185,7 +174,7 @@ class ModelPipeline:
 			output_dir=output_dir,
 			submission_path=submission_path,
 			predictions=len(data.ids),
-			cache_path=self._test_cache.tensor_path,
+			cache_path=self._embedding_cache.root,
 			cache_reused=cache_reused,
 		)
 
@@ -193,35 +182,56 @@ class ModelPipeline:
 		self,
 		*,
 		records: tuple[PairwiseText, ...],
-		fingerprint: str,
-		serializer_version: str,
-		cache: EmbeddingCache,
 		refresh_cache: bool,
 		device: torch.device,
 	) -> tuple[CachedEmbeddings, bool]:
-		expected_ids = torch.tensor(
-			[record.row_id for record in records],
-			dtype=torch.int64,
+		extractor = QwenEmbeddingExtractor(
+			gpu_config=self._config.gpu,
+			model_config=self._model_config,
+			device=device,
+			token_cache_dir=self._config.data.processed_path.parent / "token_cache",
+			refresh_cache=refresh_cache,
 		)
-		cache_key = self._compatibility.cache_key(fingerprint, serializer_version)
-		embeddings = None
-		if not refresh_cache:
-			embeddings = cache.load(cache_key, expected_ids)
-
-		cache_reused = embeddings is not None
-		if embeddings is None:
-			print("No matching embedding cache found; extracting Qwen features.")
-			extractor = QwenEmbeddingExtractor(
-				gpu_config=self._config.gpu,
-				model_config=self._model_config,
-				device=device,
+		try:
+			tokens = extractor.prepare(records)
+			input_keys = extractor.input_keys(tokens)
+			cache_key = self._compatibility.cache_key(
+				base_revision=extractor.base_revision,
+				local_weights_sha256=extractor.local_weights_sha256,
+				hidden_size=extractor.hidden_size,
 			)
-			embeddings = extractor.extract(records)
-			cache.save(cache_key, embeddings)
-			print(f"Wrote embedding cache: {cache.tensor_path}")
+			rows = self._embedding_cache.load(
+				cache_key, input_keys, refresh_cache=refresh_cache
+			)
+			cache_reused = not rows.missing
+			if rows.missing:
+				extractor.extract(
+					tokens,
+					[positions[0] for positions in rows.missing.values()],
+					rows.features,
+				)
+				for positions in rows.missing.values():
+					if len(positions) > 1:
+						rows.features[list(positions[1:])] = rows.features[
+							positions[0]
+						].clone()
+				self._embedding_cache.save(cache_key, rows)
+			paired = rows.features.view(len(records), 2, extractor.hidden_size)
+			embeddings = CachedEmbeddings(
+				ids=torch.tensor(
+					[record.row_id for record in records], dtype=torch.int64
+				),
+				h_a=paired[:, 0],
+				h_b=paired[:, 1],
+			)
+			print(
+				f"Embedding cache: {rows.reused_entries:,} reused, {len(rows.missing):,} encoded unique branches; "
+				f"{self._embedding_cache.path(cache_key)}",
+				flush=True,
+			)
+			return embeddings, cache_reused
+		finally:
 			del extractor
 			gc.collect()
-			torch.cuda.empty_cache()
-		else:
-			print(f"Reused embedding cache: {cache.tensor_path}")
-		return embeddings, cache_reused
+			if torch.cuda.is_initialized():
+				torch.cuda.empty_cache()

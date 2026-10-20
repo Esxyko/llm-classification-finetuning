@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from time import perf_counter
 
 import numpy as np
@@ -22,15 +23,15 @@ from ..common import (
 	ABSwapAverager,
 	EpochMetrics,
 	FoldTrainingResult,
-	ModelData,
 	PairwiseText,
+	PairwiseTokenStore,
+	TokenizationCache,
 )
+from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
 from .data import (
-	OptimizerGroupBatchSampler,
 	PairwiseBatch,
 	PairwiseCollator,
 	PairwiseTokenDataset,
-	PairwiseTokenStore,
 )
 from .extractor import WarmupEmbeddingExtractor
 from .model import LoRAQwenClassifier
@@ -50,11 +51,19 @@ class LoRATrainer:
 	"""Run adapter optimization on one configured CUDA device."""
 
 	def __init__(
-		self, config: LoRAModelConfig, gpu: GPUConfig, device: torch.device
+		self,
+		config: LoRAModelConfig,
+		gpu: GPUConfig,
+		device: torch.device,
+		*,
+		token_cache_dir: Path,
+		refresh_cache: bool = False,
 	) -> None:
 		self._config = config
 		self._gpu = gpu
 		self._device = device
+		self._token_cache_dir = token_cache_dir
+		self._refresh_cache = refresh_cache
 		self._tokens: PairwiseTokenStore | None = None
 		self._base_revision: str | None = None
 		self._model_initialized = False
@@ -84,20 +93,23 @@ class LoRATrainer:
 		return model
 
 	def cross_validate(
-		self, data: ModelData, n_splits: int
+		self, batches: LoRATrainingBatchRepository
 	) -> tuple[FoldTrainingResult, ...]:
 		"""Train a fresh model per fold and restore augmented prediction row order."""
+		data = batches.data
 		results: list[FoldTrainingResult] = []
-		for fold in range(n_splits):
+		for fold in range(batches.n_splits):
 			fold_started = self._timestamp()
-			training = data.reference.loc[data.reference["fold"].ne(fold)]
+			training = batches.get_training(fold)
 			validation = data.reference.loc[data.reference["fold"].eq(fold)]
 			originals = validation.loc[~validation["is_swapped"]]
-			if training.empty or originals.empty:
+			if originals.empty:
 				raise ModelExecutionError(
 					f"Fold {fold} has an empty training or validation set."
 				)
-			model = self.create_model(seed=self._config.random_state + fold)
+			model = self.create_model(
+				seed=self._config.random_state + fold, revision=batches.base_revision
+			)
 			try:
 				history = self.fit(
 					model,
@@ -136,7 +148,7 @@ class LoRATrainer:
 	def fit(
 		self,
 		model: LoRAQwenClassifier,
-		training: pd.DataFrame,
+		training: PreparedTrainingSplit,
 		records: tuple[PairwiseText, ...],
 		*,
 		seed: int,
@@ -144,13 +156,17 @@ class LoRATrainer:
 		description: str = "Build",
 	) -> LoRATrainingHistory:
 		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
-		if self._config.ab_swap == "inf":
-			training = training.loc[~training["is_swapped"]]
-		if training.empty:
+		reference = training.reference
+		if reference.empty:
 			raise ModelExecutionError("LoRA training received no rows.")
 		if validation is not None and validation.empty:
 			raise ModelExecutionError("LoRA inference received no rows.")
-		# Validate every canonical branch before any optimizer update, including validation.
+		if not training.tokens.matches(records, model.base_revision):
+			raise ModelExecutionError(
+				"Prepared LoRA tokens do not match the model's base revision or data."
+			)
+		self._tokens = training.tokens
+		# Cached tokens have already been checked, including every validation branch.
 		self._tokens_for(records)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
@@ -188,9 +204,7 @@ class LoRATrainer:
 				# Drop both views of the shared CPU feature store before joint training.
 				loader = None
 				warmup_validation = None
-				loader = self._create_loader(
-					training, records, training=True, seed=seed
-				)
+				loader = training.loader
 				for group, learning_rate in zip(
 					optimizer.param_groups,
 					(self._config.learning_rate, self._config.head_learning_rate),
@@ -199,7 +213,7 @@ class LoRATrainer:
 					group["lr"] = learning_rate
 				steps = (
 					math.ceil(
-						len(training)
+						len(reference)
 						/ (
 							self._config.training_batch_size
 							* self._config.gradient_accumulation_steps
@@ -215,10 +229,20 @@ class LoRATrainer:
 			training_started = self._timestamp()
 			if loader is None:
 				loader, warmup_validation = self._create_warmup_loaders(
-					model, training, records, validation=validation, seed=seed
+					model, reference, records, validation=validation, seed=seed
 				)
+			if not head_only:
+				training.set_epoch(epoch - self._config.warmup_epochs - 1)
 			loss = self._train_epoch(
-				model, loader, optimizer, scheduler, scaler, head_only=head_only
+				model,
+				loader,
+				optimizer,
+				scheduler,
+				scaler,
+				head_only=head_only,
+				optimizer_group_rows=None
+				if head_only
+				else training.optimizer_group_rows,
 			)
 			training_finished = self._timestamp()
 			if validation is not None:
@@ -253,7 +277,7 @@ class LoRATrainer:
 			training_losses=tuple(losses),
 			epochs=tuple(metrics),
 			validation_probabilities=probabilities,
-			training_rows=len(training),
+			training_rows=len(reference),
 		)
 
 	def _timestamp(self) -> float:
@@ -271,6 +295,7 @@ class LoRATrainer:
 		scaler: torch.amp.GradScaler,
 		*,
 		head_only: bool = False,
+		optimizer_group_rows: tuple[int, ...] | None = None,
 	) -> float:
 		"""Optimize one epoch, optionally retaining gradients only for the head."""
 		model.train()
@@ -292,10 +317,20 @@ class LoRATrainer:
 		rows_total = 0
 		group_rows = 0
 		group_processed = 0
+		planned_groups = (
+			None if optimizer_group_rows is None else iter(optimizer_group_rows)
+		)
 		for index, batch in enumerate(loader):
 			if group_processed == 0:
-				# Use actual row counts, including a short final micro-batch or group.
-				group_rows = min(effective_batch_size, total_rows - rows_total)
+				# A cached short group may occur anywhere after shuffling update groups.
+				if planned_groups is None:
+					group_rows = min(effective_batch_size, total_rows - rows_total)
+				else:
+					group_rows = next(planned_groups, 0)
+					if not 0 < group_rows <= effective_batch_size:
+						raise RuntimeError(
+							"A LoRA batch plan has an invalid optimizer group."
+						)
 			if head_only:
 				features, labels = batch
 				features = features.to(self._device, non_blocking=True)
@@ -346,6 +381,14 @@ class LoRATrainer:
 					f"train_loss={loss_total.item() / rows_total:.6f}",
 					flush=True,
 				)
+		if (
+			group_processed
+			or rows_total != total_rows
+			or (planned_groups is not None and next(planned_groups, None) is not None)
+		):
+			raise RuntimeError(
+				"LoRA training did not consume the complete optimizer-group plan."
+			)
 		return loss_total.item() / rows_total
 
 	def _create_warmup_loaders(
@@ -365,7 +408,6 @@ class LoRATrainer:
 		extraction_loader = self._create_loader(
 			canonical,
 			records,
-			training=False,
 			seed=seed,
 			batch_size=self._config.warmup_extraction_batch_size,
 		)
@@ -408,9 +450,7 @@ class LoRATrainer:
 		loader = (
 			feature_loader
 			if feature_loader is not None
-			else self._create_loader(
-				reference, records, training=False, seed=self._config.random_state
-			)
+			else self._create_loader(reference, records, seed=self._config.random_state)
 		)
 		probabilities = torch.empty(
 			(len(reference), 3), device=self._device, dtype=torch.float32
@@ -448,11 +488,17 @@ class LoRATrainer:
 		if self._tokens is None or not self._tokens.matches(
 			records, self._base_revision
 		):
+			cache = TokenizationCache.from_pretrained(
+				self._token_cache_dir,
+				self._config.model_name,
+				revision=self._base_revision,
+			)
 			self._tokens = PairwiseTokenStore(
 				records,
-				self._config.model_name,
-				self._config.max_length,
-				self._base_revision,
+				cache,
+				revision=self._base_revision,
+				max_length=self._config.max_length,
+				refresh_cache=self._refresh_cache,
 			)
 		return self._tokens
 
@@ -461,18 +507,13 @@ class LoRATrainer:
 		reference: pd.DataFrame,
 		records: tuple[PairwiseText, ...],
 		*,
-		training: bool,
 		seed: int,
 		batch_size: int | None = None,
 	) -> DataLoader[PairwiseBatch]:
 		tokens = self._tokens_for(records)
 		dataset = PairwiseTokenDataset(reference, tokens)
 		if batch_size is None:
-			batch_size = (
-				self._config.training_batch_size
-				if training
-				else self._config.inference_batch_size
-			)
+			batch_size = self._config.inference_batch_size
 		workers = self._config.dataloader_workers
 		generator = torch.Generator().manual_seed(seed)
 		options = {
@@ -482,21 +523,9 @@ class LoRATrainer:
 			"persistent_workers": workers > 0,
 			"generator": generator,
 		}
-		if training and self._config.training_token_budget > 0:
-			return DataLoader(
-				dataset,
-				batch_sampler=OptimizerGroupBatchSampler(
-					dataset,
-					batch_size,
-					self._config.gradient_accumulation_steps,
-					self._config.training_token_budget,
-					generator,
-				),
-				**options,
-			)
 		return DataLoader(
 			dataset,
 			batch_size=batch_size,
-			shuffle=training,
+			shuffle=False,
 			**options,
 		)

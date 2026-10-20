@@ -62,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser.add_argument(
 		"--refresh-cache",
 		action="store_true",
-		help="Rebuild frozen-model embeddings; has no effect for LoRA models.",
+		help="Rebuild shared token caches and model-specific embedding or batch caches.",
 	)
 	parser.add_argument(
 		"--checkpoint-tag",

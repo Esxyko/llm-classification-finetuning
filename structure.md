@@ -67,9 +67,11 @@ and print summaries. Business logic belongs below the CLI layer.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: Single-CUDA-GPU adapter model and profile.
-    - `data.py`: Store canonical tokens once per run, orient token/feature views,
-      independently pad branches with CPU pooling positions, and split shuffled
-      optimizer groups into fixed or optional token-budget micro-batches.
+    - `data.py`: Orient shared canonical token/feature views and independently
+      pad branches with CPU pooling positions.
+    - `batching.py`: Prepare training loaders from config without model weights
+      or CUDA setup, consume the common token cache, persist per-fold/build
+      global batch plans, and shuffle fixed update groups with explicit row counts.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       pool their last real tokens, and classify with the shared pairwise MLP.
     - `extractor.py`: Extract one no-gradient canonical feature pair per needed
@@ -99,9 +101,14 @@ and print summaries. Business logic belongs below the CLI layer.
       durations and test submissions; atomically records each model's complete
       runtime under its selected config.
     - `hardware.py`: Validates and activates the single configured CUDA device.
-    - `extractor.py`: Produces frozen-Qwen pooled embeddings with one backbone,
-      encoding A and B sequentially on the selected GPU.
-    - `cache.py`: Validates and persists training or test embedding caches.
+    - `extractor.py`: Resolve pinned backbone/token identities on CPU, hash local
+      weights when needed, and lazily encode only missing frozen branches on GPU.
+    - `cache.py`: Persist per-branch embeddings by effective tokens and backbone
+      computation identity in SQLite shards shared across datasets/configs/modes;
+      rebind vectors to current positions and recompute only missing/corrupt rows.
+    - `token_cache.py`: Independently cache individual text encodings by text,
+      tokenizer content, and encoding options in shared SQLite shards; provide
+      compact CPU text views, canonical pair views, and LoRA context validation.
     - `model.py`: Defines backbone pooling and the pairwise MLP head.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed fold rows.
@@ -134,6 +141,9 @@ exports over importing private helpers across package boundaries.
 | `configs/` | Complete aug/inf YAML configurations, each including both models and one shared CUDA device |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
+| `data/processed/token_cache/` | Shared per-text token encodings for both models and training/test inputs |
+| `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
+| `data/processed/qwen3_4b_lora_batches/` | LoRA fold/build batch-plan caches; legacy token files are unused |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
@@ -148,8 +158,28 @@ modules. Do not make application logic depend on a particular timestamped run.
   `fold`; A/B fields and labels `0`/`1` are reversed, while label `2` is unchanged.
 - Prediction CSVs use `id`, `winner_model_a`, `winner_model_b`, and `winner_tie`
   in that order, with finite probabilities that sum to one.
-- Frozen-model training and test caches remain separate and are reused only when
-  their source fingerprint and model/runtime compatibility keys match.
+- Frozen embeddings are shared across training/test and addressed by actual
+  token IDs after truncation, independent of labels, folds, IDs, reference order,
+  source files, serializers, and configured length caps when effective IDs match.
+  Namespaces retain the exact Hub model revision or local weight/configuration
+  content, backbone hidden size, precision, attention implementation, TF32,
+  pooling/storage format, and extraction version. Different identities coexist.
+  Returned feature rows follow current canonical IDs and order. Duplicate inputs
+  share entries; only missing/corrupt branches are encoded. Complete hits do not
+  load backbone weights. Missing branches are independently right-padded, so
+  floating-point rounding may differ with batch composition. Old dataset-wide
+  embedding files remain untouched and are not reused. Checkpoint formats/checks
+  are unchanged.
+- Token encodings are shared across models, training/test inputs, datasets, and
+  configurations when their actual tokenizer/encoding content matches. Keys use
+  individual text content, encoding options, cache schema, and tokenizer
+  implementation/library versions, excluding source paths/IDs, labels, folds,
+  row order, and model-weight identities. Tokenizer fingerprints omit padding,
+  truncation, and decoding state; full encodings remain reusable across context
+  limits. Frozen extraction separately caches exact tokenizer truncations only
+  for overflowing texts, then right-pads missing branches for feature extraction.
+  Missing/corrupt entries are recomputed transactionally; corrupt shards are
+  archived before rebuilding. Refresh replaces only requested encodings.
 - Mono-input rows are serialized as an instruction followed by an ordered JSON
   turn list; original and swapped orientations have distinct cached states.
   Overlong inputs use equal token caps for final responses and remove earlier
@@ -169,22 +199,37 @@ modules. Do not make application logic depend on a particular timestamped run.
   Optional head-only warmup uses a no-gradient,
   evaluation-mode backbone at a fixed head learning rate, followed by joint
   training with gradients through both branches and linear learning-rate decay.
-  Canonical A/B token IDs are stored once in temporary int32 CPU memory and
-  reused across epochs/folds with a pinned base/tokenizer revision. No LoRA input
-  is truncated: empty or over-limit branches fail before training/encoding with
+  Canonical A/B token IDs are stored once in compact int32 CPU memory, cached on
+  disk through the common text cache, and shared across epochs/folds/runs.
+  A pinned base/tokenizer revision is resolved before training model initialization,
+  while cache identities use the actual tokenizer content rather than model
+  revision. Each token-store preparation revalidates the configured context limit.
+  No LoRA input is truncated: empty or over-limit branches fail before training/encoding with
   the offending ID and branch. Warmup extracts each training/validation ID once
   in canonical orientation using `warmup_extraction_batch_size`, then selects
   oriented feature views with `warmup_training_batch_size`. Warmup validation
   reuses the frozen CPU features in `inference_batch_size` batches. Both feature
   views are released at the start of joint training; `warmup_epochs: 0` skips
   feature extraction. Joint validation and test inference use live encodings.
-  Joint training groups the seeded shuffle into
-  `training_batch_size * gradient_accumulation_steps` rows per update. The default
-  `training_token_budget: 0` uses fixed micro-batches; a positive budget packs
-  consecutive rows within each update group by independently padded A/B token
-  cost. Over-budget singletons retain all tokens. Update-group row counts,
-  clipping/update boundaries, and the joint scheduler's step count are preserved,
-  including incomplete final groups; floating-point order/dropout draws may vary.
+  The default `training_token_budget: 0` retains fixed micro-batches and the
+  original seeded shuffle, while reusing cached tokens. A positive budget
+  compares three stable global A/B length sorts for each selected training set,
+  forms `training_batch_size * gradient_accumulation_steps` rows per update, and
+  best-fit packs each group by independently padded A/B token cost. Plans minimize
+  candidate micro-batch counts, then padded tokens, and are cached separately
+  from tokens. Plan keys use sorted selected identities/orientations and A/B
+  lengths, budget, group size, and algorithm version. Labels, source row order,
+  fold identifiers, token content beyond lengths, and unselected inputs are
+  excluded. Stored sample identities are rebound to current indices on every
+  read, and current labels are used. Group membership stays fixed;
+  each zero-based joint epoch shuffles groups and their micro-batches with
+  `random_state + fold + joint_epoch` (builds omit fold). The short group can
+  appear anywhere and supplies its actual row count to the trainer. Over-budget
+  singletons retain all tokens. Update-group row counts, clipping/update
+  boundaries, and scheduler step counts are preserved; grouping, floating-point
+  order, and dropout draws may differ from fixed-batch training.
+  `--refresh-cache` refreshes requested shared token encodings and LoRA plans;
+  test inference uses the same text cache with its checkpoint's tokenizer revision.
   Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize accumulation by actual row counts, including
   incomplete groups. Validation and test average both orientations' probabilities.

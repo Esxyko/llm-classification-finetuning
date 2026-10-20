@@ -40,15 +40,19 @@ class PairwiseQwenClassifier(nn.Module):
 		device: torch.device,
 		dtype: torch.dtype,
 		attention_implementation: str,
+		*,
+		revision: str | None = None,
 	) -> None:
 		super().__init__()
 		self.device = device
 		self.backbone = AutoModel.from_pretrained(
 			model_name,
+			revision=revision,
 			dtype=dtype,
 			attn_implementation=attention_implementation,
 		)
 		self.backbone.config.use_cache = False
+		self.base_revision = getattr(self.backbone.config, "_commit_hash", None)
 		self.backbone.requires_grad_(False)
 		self.backbone.to(device)
 		self.backbone.eval()
@@ -73,20 +77,30 @@ class PairwiseQwenClassifier(nn.Module):
 		if attention_mask.shape != input_ids.shape:
 			raise ValueError("attention_mask must match input_ids shape.")
 
-		pooled: list[Tensor] = []
-		for branch in range(2):
-			device_ids = input_ids[:, branch].to(self.device, non_blocking=True)
-			device_mask = attention_mask[:, branch].to(self.device, non_blocking=True)
-			hidden_states = self.backbone(
-				input_ids=device_ids,
-				attention_mask=device_mask,
-				use_cache=False,
-				return_dict=True,
-			).last_hidden_state
-			pooled.append(self._last_token_pool(hidden_states, device_mask))
-			del hidden_states
+		return torch.stack(
+			[
+				self.encode_branch(input_ids[:, branch], attention_mask[:, branch])
+				for branch in range(2)
+			],
+			dim=1,
+		)
 
-		return torch.stack(pooled, dim=1)
+	@torch.no_grad()
+	def encode_branch(self, input_ids: Tensor, attention_mask: Tensor) -> Tensor:
+		"""Pool independently cacheable branches without computing their counterparts."""
+		if input_ids.ndim != 2 or attention_mask.shape != input_ids.shape:
+			raise ValueError(
+				"Branch tokens and masks must have matching [batch, length] shapes."
+			)
+		device_ids = input_ids.to(self.device, non_blocking=True)
+		device_mask = attention_mask.to(self.device, non_blocking=True)
+		hidden_states = self.backbone(
+			input_ids=device_ids,
+			attention_mask=device_mask,
+			use_cache=False,
+			return_dict=True,
+		).last_hidden_state
+		return self._last_token_pool(hidden_states, device_mask)
 
 	@staticmethod
 	def _last_token_pool(hidden_states: Tensor, attention_mask: Tensor) -> Tensor:

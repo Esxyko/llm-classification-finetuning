@@ -21,6 +21,7 @@ from .model import PairwiseClassificationHead, PairwiseQwenClassifier
 from .orientation import ABSwapAverager
 from .pipeline import ModelPipeline
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
+from .token_cache import PairwiseTokenStore, TokenizationCache, TokenizedTexts
 from .trainer import EpochMetrics, FoldTrainingResult
 
 __all__ = (
@@ -44,6 +45,9 @@ __all__ = (
 	"PairwiseClassificationHead",
 	"PairwiseQwenClassifier",
 	"PairwiseText",
+	"PairwiseTokenStore",
 	"TestInputLoader",
+	"TokenizationCache",
+	"TokenizedTexts",
 	"TrainingInputLoader",
 )

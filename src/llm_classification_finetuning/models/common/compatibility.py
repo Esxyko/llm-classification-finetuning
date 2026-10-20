@@ -16,13 +16,21 @@ class ModelCompatibility:
 	cache_schema_version: int
 	checkpoint_schema_version: int
 
-	def cache_key(self, fingerprint: str, serializer_version: str) -> EmbeddingCacheKey:
+	def cache_key(
+		self,
+		*,
+		base_revision: str | None,
+		local_weights_sha256: str | None,
+		hidden_size: int,
+	) -> EmbeddingCacheKey:
 		return EmbeddingCacheKey(
 			schema_version=self.cache_schema_version,
-			processed_sha256=fingerprint,
-			model_name=self.model.model_name,
-			max_length=self.model.max_length,
-			serializer_version=serializer_version,
+			model_name=self.model.model_name
+			if local_weights_sha256 is None
+			else "local-content",
+			base_revision=base_revision if local_weights_sha256 is None else None,
+			local_weights_sha256=local_weights_sha256,
+			hidden_size=hidden_size,
 			precision=self.gpu.precision,
 			attention_implementation=self.gpu.attention_implementation,
 			allow_tf32=self.gpu.allow_tf32,

@@ -61,8 +61,9 @@ Run these commands from the project root.
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
 Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, or exact uppercase `ALL`.
-Add `--refresh-cache` to rebuild frozen-model embeddings; it has no effect for
-LoRA, which encodes inputs during training and inference.
+Add `--refresh-cache` to rebuild requested shared token encodings and
+model-specific frozen embeddings or LoRA batch plans. Token encodings are shared
+by both models and by training, validation, and test inference.
 `--build` and `--test` are mutually exclusive; without either flag, the command
 runs cross-validation. `ALL` runs only profiles with a model section in the
 selected YAML, follows registry order, and accepts the same
@@ -143,10 +144,29 @@ configuration sections are retained locally in
 `src/llm_classification_finetuning/models/archive/`. This directory is ignored
 by Git, and these models are no longer CLI choices.
 
-The frozen model's training and test embeddings use separate model-named caches in
-`data/processed/`. A cache is reused only when its data, model, sequence length,
-serialization, precision, attention implementation, and TF32 settings still
-match. Legacy `baseline_*` caches are left untouched and are not reused.
+The frozen model shares content-addressed embeddings between training and test
+under `embedding_cache/` beside the processed Parquet. Each SQLite shard
+identifies the model and exact Hub revision (or local checkpoint/configuration
+content), backbone hidden size, precision, attention implementation, TF32,
+pooling, storage format, and extraction version. Individual entries identify
+the effective token IDs of one branch, after any requested truncation. Different
+compute identities coexist without overwriting one another.
+
+Changing labels, folds, IDs, row order, or dataset file encoding does not
+invalidate existing vectors. Overlapping datasets and A/B branches reuse each
+other's entries; only missing inputs are encoded. Changing `max_length` or the
+serializer also reuses vectors when the resulting token IDs remain identical.
+Cache rows are mapped back to the current canonical IDs and order. When all
+inputs hit, the backbone weights are not loaded. Local checkpoint identities
+require reading the selected weight files to hash their content.
+
+Missing branches are right-padded and encoded independently; changing batch
+composition can change floating-point rounding. The precision, attention, and
+TF32 boundaries remain separate. Corrupt vectors are recomputed, SQLite writes
+are transactional, and corrupt shards are archived before rebuilding. Older
+dataset-wide `.pt`/`.json` embedding caches, including `baseline_*`, are left
+untouched and are no longer read; their metadata cannot establish the new
+backbone/input identities. Saved head checkpoint compatibility is unchanged.
 
 Both models share the single CUDA device selected by `gpu.device`, which defaults
 to `cuda:0`. The frozen model loads one backbone and encodes A and B sequentially
@@ -195,10 +215,13 @@ before training, and inference checks its inputs before encoding them. An input
 longer than `max_length` raises an error with its ID, branch, actual token count,
 and required minimum setting. Empty token sequences are also rejected.
 
-Tokenization runs once per unique ID's A/B branches, with temporary int32 CPU
-tokens reused across epochs and folds. Swapped rows select the opposite branch
-views. A cross-validation run pins the first fold's resolved base revision for
-subsequent folds and their tokenizer. Tokens are not written to disk. Pooling
+Tokenization uses a shared cache keyed by text content and tokenizer content,
+with compact int32 CPU views shared across epochs and folds. Identical texts
+reuse encodings across IDs, dataset revisions, A/B modes, model profiles, and
+training/test inputs. Swapped rows select the opposite branch views. LoRA training
+preparation resolves a fixed base revision before loading weights and uses it for
+both tokenizer and models. A model revision change can still reuse tokens when
+the actual tokenizer is unchanged. Pooling
 positions are computed on the CPU; branches without padding omit the attention
 mask. Encoding releases the full hidden-state tensor after pooling, while joint
 training still retains both branches' gradient graphs. Training loss statistics
@@ -252,7 +275,7 @@ over these same frozen features. All warmup epochs reuse the features; both
 training and validation views are released when joint training starts, and
 features are never written to disk or reused between folds. The full 57,477-ID
 feature pool occupies about 1.10 GiB. With `warmup_epochs: 0`, feature extraction
-is skipped; temporary token storage is still used.
+is skipped; the shared training token cache is still used.
 `warmup_training_batch_size` is a required positive integer controlling only the
 head-warmup micro-batch size over extracted features (default config: `1`).
 Joint training uses `training_batch_size` and the optional token budget described
@@ -283,25 +306,108 @@ For example, add this key to the existing `qwen3_4b_lora` section:
 training_token_budget: 4096
 ```
 
-Each optimizer update still receives the next
-`training_batch_size * gradient_accumulation_steps` rows from the same seeded
-shuffle. Within that group, consecutive rows are combined while
-`rows * (longest_A + longest_B)` padded tokens fit the budget. Dynamic
-micro-batches can contain more than `training_batch_size` rows, up to the update
-group's size. A single over-budget pair is processed alone without truncation.
-Losses are divided by the actual update-group row count; gradient clipping and
-optimizer/scaler/scheduler handling occur once per group, including the short
-final group. The planned joint schedule has
+Each fold's training rows are globally planned before joint training, excluding
+its validation fold and selecting the configured A/B training orientations.
+Preparation tries stable sorts by `(A_length, B_length)`,
+`(B_length, A_length)`, and `(A_length + B_length, A_length, B_length)`, with
+`(id, is_swapped)` as the tie-breaker. Each candidate is divided into update
+groups of `G = training_batch_size * gradient_accumulation_steps` rows, with a
+possibly shorter final group. Inside each group, longest-total-length rows are
+placed first into the existing batch with the least remaining token budget;
+a new batch is opened when none fits. Batch cost is
+`rows * (longest_A + longest_B)`. The chosen candidate minimizes micro-batch
+count, then total padded tokens; this heuristic does not guarantee a global
+optimum. A full-data build applies the same planning to all training folds.
+
+Group membership stays fixed across epochs. A zero-based joint epoch uses
+`random_state + fold + joint_epoch` to shuffle update groups and their
+micro-batches; builds omit the fold term. Dynamic micro-batches can contain more
+than `training_batch_size` rows, up to `G`. A single over-budget pair is processed
+alone without truncation. Losses are divided by each group's actual row count,
+even when the short group is shuffled into the middle of an epoch. Gradient
+clipping and optimizer/scaler/scheduler handling occur once per group.
+The planned joint schedule still has
 `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`
 updates per epoch; FP16 overflow can still skip an update as before.
 
-This keeps update-group membership, effective batch size, and schedule length;
-floating-point accumulation order and dropout draws can differ. Both shipped
-active configs leave the budget at `0`. The example budget of `4096` is a starting
+The effective batch size and schedule length are preserved; positive budgets
+change update-group membership from the earlier random grouping to global
+length-based grouping. Floating-point accumulation order and dropout draws can
+differ. The default configuration leaves the budget at `0`, retaining the
+original fixed-batch seeded shuffle. The example budget of `4096` is a starting
 point to try, not a measured recommendation for a particular GPU. Padded batches
 can change SDPA kernel selection, so dynamic batching is not guaranteed to be
 faster or use less peak memory. No throughput or peak-VRAM benchmark has been
 run on the target 32 GB virtual GPU.
+
+### Shared token cache and LoRA batch plans
+
+`token_cache/` beside the processed Parquet is shared by frozen-model extraction,
+LoRA training/warmup/validation, and LoRA test inference. Each SQLite shard
+identifies the tokenizer's encoding content, implementation/library versions,
+encoding options, and cache schema; entries identify individual UTF-8 texts by
+SHA-256. IDs, labels, folds, row order, dataset fingerprints, model names, model
+weight revisions, and training settings are excluded. Only changed or missing
+texts are encoded; duplicates and overlapping datasets reuse existing entries.
+The tokenizer is loaded to fingerprint its actual content, but cache hits do not
+run tokenization. Padding is applied by each caller after cache lookup.
+
+Full untruncated encodings are the common reusable representation. Frozen-model
+extraction additionally caches the tokenizer's exact truncated output for texts
+exceeding its selected length limit, preserving special-token behavior. LoRA
+always validates the full cached lengths against `max_length` and rejects empty
+or over-limit branches without truncation. Changing length limits therefore
+keeps full tokens reusable. Corrupt entries are recomputed; corrupt SQLite
+shards are archived and rebuilt. SQLite transactions publish complete entries.
+
+LoRA's `qwen3_4b_lora_batches/plans/*.pt` files remain separate and identify the
+sorted selected `(id, is_swapped, A_length, B_length)` rows, budget, update group
+size, and planning algorithm version. Labels, fold numbers, reference order,
+text/token content beyond lengths, and unselected validation inputs do not enter
+the plan key. Cached groups store sample identities and are mapped to current
+dataset indices on every read; current labels are always used for training.
+A/B mode and fold selection determine membership before lookup. Changing
+budget or effective batch size rebuilds plans while reusing tokens. With
+`training_token_budget: 0`, tokens are cached but no global plan is created.
+Earlier LoRA `tokens/*.pt` files are left untouched and are no longer read.
+
+`--refresh-cache` replaces requested token entries and model-specific caches;
+shared training encodings remain reusable between folds in that run. Warmup
+features and live LoRA encodings are never persisted in these token caches.
+
+The independent text API accepts arbitrary serialized strings and a shared
+cache directory; an already loaded tokenizer can also be passed to
+`TokenizationCache(cache_dir, tokenizer)`:
+
+```python
+from pathlib import Path
+
+from llm_classification_finetuning.models.common import TokenizationCache
+
+cache = TokenizationCache.from_pretrained(
+    Path("data/processed/token_cache"), "Qwen/Qwen3-4B"
+)
+encoded = cache.encode(["first input", "second input"])
+first_ids = encoded[0]  # Unpadded int32 token IDs, in requested input order.
+```
+
+The Python API can prepare a CPU loader without loading model weights or
+initializing CUDA:
+
+```python
+from pathlib import Path
+
+from llm_classification_finetuning.config import AppConfig
+from llm_classification_finetuning.models.qwen3_4b_lora import (
+    LoRATrainingBatchRepository,
+)
+
+config = AppConfig.load(Path("config.yaml"))
+batches = LoRATrainingBatchRepository.from_config(config)
+training = batches.get_training(fold=0)  # None selects a full-data build.
+training.set_epoch(0)  # Zero-based joint epoch; fixed batching keeps its RNG stream.
+loader = training.loader  # Yields PairwiseBatch; training.tokens is shared.
+```
 
 For smaller GPUs, lower an enabled token budget or the relevant
 `warmup_extraction_batch_size`, `warmup_training_batch_size`,
