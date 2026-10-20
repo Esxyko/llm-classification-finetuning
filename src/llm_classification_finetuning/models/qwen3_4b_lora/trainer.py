@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import math
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
@@ -76,6 +77,7 @@ class LoRATrainer:
 		"""Train a fresh model per fold and restore augmented prediction row order."""
 		results: list[FoldTrainingResult] = []
 		for fold in range(n_splits):
+			fold_started = self._timestamp()
 			training = data.reference.loc[data.reference["fold"].ne(fold)]
 			validation = data.reference.loc[data.reference["fold"].eq(fold)]
 			originals = validation.loc[~validation["is_swapped"]]
@@ -97,23 +99,26 @@ class LoRATrainer:
 					raise ModelExecutionError(
 						f"Fold {fold} did not produce validation predictions."
 					)
-				results.append(
-					FoldTrainingResult(
-						fold=fold,
-						ids=validation["id"].to_numpy(dtype=np.int64, copy=True),
-						probabilities=ABSwapAverager.align_rows(
-							validation["id"].to_numpy(dtype=np.int64),
-							validation["is_swapped"].to_numpy(dtype=np.bool_),
-							originals["id"].to_numpy(dtype=np.int64),
-							history.validation_probabilities,
-						),
-						epochs=history.epochs,
-					)
+				ids = validation["id"].to_numpy(dtype=np.int64, copy=True)
+				probabilities = ABSwapAverager.align_rows(
+					validation["id"].to_numpy(dtype=np.int64),
+					validation["is_swapped"].to_numpy(dtype=np.bool_),
+					originals["id"].to_numpy(dtype=np.int64),
+					history.validation_probabilities,
 				)
 			finally:
 				del model
 				gc.collect()
 				torch.cuda.empty_cache()
+			results.append(
+				FoldTrainingResult(
+					fold=fold,
+					ids=ids,
+					probabilities=probabilities,
+					epochs=history.epochs,
+					total_time_seconds=self._timestamp() - fold_started,
+				)
+			)
 		return tuple(results)
 
 	def fit(
@@ -168,6 +173,7 @@ class LoRATrainer:
 		probabilities: np.ndarray | None = None
 		total_epochs = self._config.warmup_epochs + self._config.epochs
 		for epoch in range(1, total_epochs + 1):
+			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
 			if epoch == self._config.warmup_epochs + 1:
 				if self._config.warmup_epochs:
@@ -189,9 +195,26 @@ class LoRATrainer:
 					num_warmup_steps=0,
 					num_training_steps=steps,
 				)
+			training_started = self._timestamp()
 			loss = self._train_epoch(
 				model, loader, optimizer, scheduler, scaler, head_only=head_only
 			)
+			training_finished = self._timestamp()
+			if validation is not None:
+				validation_loss, probabilities = self.evaluate(
+					model, validation, records
+				)
+				validation_finished = self._timestamp()
+				metrics.append(
+					EpochMetrics(
+						epoch=epoch,
+						training_loss=loss,
+						validation_loss=validation_loss,
+						training_time_seconds=training_finished - training_started,
+						validation_time_seconds=validation_finished - training_finished,
+						total_time_seconds=validation_finished - epoch_started,
+					)
+				)
 			losses.append(loss)
 			stage = "head warmup" if head_only else "joint training"
 			stage_epoch = epoch if head_only else epoch - self._config.warmup_epochs
@@ -203,13 +226,15 @@ class LoRATrainer:
 				f"(total {epoch}/{total_epochs}): train_loss={loss:.6f}"
 			)
 			if validation is not None:
-				validation_loss, probabilities = self.evaluate(
-					model, validation, records
-				)
-				metrics.append(EpochMetrics(epoch, loss, validation_loss))
 				message += f" validation_loss={validation_loss:.6f}"
 			print(message, flush=True)
 		return LoRATrainingHistory(tuple(losses), tuple(metrics), probabilities)
+
+	def _timestamp(self) -> float:
+		"""Wait for this device's GPU work before reading the monotonic clock."""
+		if self._device.type == "cuda":
+			torch.cuda.synchronize(self._device)
+		return perf_counter()
 
 	def _train_epoch(
 		self,

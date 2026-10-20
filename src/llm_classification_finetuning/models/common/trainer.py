@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
@@ -23,11 +24,14 @@ from .orientation import ABSwapAverager
 
 @dataclass(frozen=True, slots=True)
 class EpochMetrics:
-	"""Training and validation loss for one completed epoch."""
+	"""Training and validation losses and elapsed seconds for one epoch."""
 
 	epoch: int
 	training_loss: float
 	validation_loss: float
+	training_time_seconds: float
+	validation_time_seconds: float
+	total_time_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,11 +42,22 @@ class FoldTrainingResult:
 	ids: np.ndarray
 	probabilities: np.ndarray
 	epochs: tuple[EpochMetrics, ...]
+	total_time_seconds: float
 
 	@property
 	def final_loss(self) -> float:
 		"""Return the final epoch validation loss."""
 		return self.epochs[-1].validation_loss
+
+	@property
+	def training_time_seconds(self) -> float:
+		"""Sum training time across all epochs in the fold."""
+		return sum(epoch.training_time_seconds for epoch in self.epochs)
+
+	@property
+	def validation_time_seconds(self) -> float:
+		"""Sum validation time across all epochs in the fold."""
+		return sum(epoch.validation_time_seconds for epoch in self.epochs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +200,7 @@ class ModelCrossValidator:
 		validation_reference: pd.DataFrame,
 		embeddings: CachedEmbeddings,
 	) -> FoldTrainingResult:
+		fold_started = self._timestamp()
 		seed = self._config.random_state + fold
 		self._seed_everything(seed)
 		training_loader = self._create_loader(
@@ -210,17 +226,23 @@ class ModelCrossValidator:
 
 		try:
 			for epoch in range(1, self._config.epochs + 1):
+				epoch_started = self._timestamp()
 				training_loss = self._train_epoch(
 					head,
 					optimizer,
 					training_loader,
 				)
+				training_finished = self._timestamp()
 				validation_loss, probabilities = self._evaluate(head, validation_loader)
+				validation_finished = self._timestamp()
 				final_probabilities = probabilities
 				metrics = EpochMetrics(
 					epoch=epoch,
 					training_loss=training_loss,
 					validation_loss=validation_loss,
+					training_time_seconds=training_finished - epoch_started,
+					validation_time_seconds=validation_finished - training_finished,
+					total_time_seconds=validation_finished - epoch_started,
 				)
 				epoch_metrics.append(metrics)
 				print(
@@ -248,7 +270,14 @@ class ModelCrossValidator:
 				final_probabilities,
 			),
 			epochs=tuple(epoch_metrics),
+			total_time_seconds=self._timestamp() - fold_started,
 		)
+
+	def _timestamp(self) -> float:
+		"""Wait for this device's GPU work before reading the monotonic clock."""
+		if self._device.type == "cuda":
+			torch.cuda.synchronize(self._device)
+		return perf_counter()
 
 	def _training_reference(self, reference: pd.DataFrame) -> pd.DataFrame:
 		if self._config.ab_swap == "inf":

@@ -50,6 +50,7 @@ and print summaries. Business logic belongs below the CLI layer.
   resolution.
 - `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
+- `timing.py`: Formats elapsed durations as unbounded `HH:MM:SS` values.
 - `pipeline.py`: Orchestrates the complete download-and-preprocess workflow and
   returns both download and fold results without printing them.
 - `cli_output.py`: Formats shared download and fold summaries for CLI commands.
@@ -88,7 +89,9 @@ and print summaries. Business logic belongs below the CLI layer.
       pairs, and source fingerprints for both model input formats.
     - `data.py`: Serializes aligned conversation branches for pairwise models.
     - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
-    - `publishers.py`: Stages and publishes validation runs and test submissions.
+    - `publishers.py`: Stages and publishes validation runs with epoch/fold
+      durations and test submissions; atomically records each model's complete
+      runtime under its selected config.
     - `hardware.py`: Validates and activates the single configured CUDA device.
     - `extractor.py`: Produces frozen-Qwen pooled embeddings with one backbone,
       encoding A and B sequentially on the selected GPU.

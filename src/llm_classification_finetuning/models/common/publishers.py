@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ...errors import ModelExecutionError
+from ...timing import format_duration
 from .trainer import FoldTrainingResult
 
 
@@ -78,12 +78,38 @@ class ModelResultPublisher:
 			"folds": len(fold_results),
 			"predictions": prediction_count,
 			"average_out_of_fold_loss": average_loss,
+			"training_time": format_duration(
+				sum(result.training_time_seconds for result in fold_results)
+			),
+			"validation_time": format_duration(
+				sum(result.validation_time_seconds for result in fold_results)
+			),
+			"total_time": format_duration(
+				sum(result.total_time_seconds for result in fold_results)
+			),
 			"fold_metrics": [
 				{
 					"fold": result.fold,
 					"predictions": len(result.ids) // prediction_divisor,
 					"final_validation_loss": result.final_loss,
-					"epochs": [asdict(epoch) for epoch in result.epochs],
+					"training_time": format_duration(result.training_time_seconds),
+					"validation_time": format_duration(result.validation_time_seconds),
+					"total_time": format_duration(result.total_time_seconds),
+					"epochs": [
+						{
+							"epoch": epoch.epoch,
+							"training_loss": epoch.training_loss,
+							"validation_loss": epoch.validation_loss,
+							"training_time": format_duration(
+								epoch.training_time_seconds
+							),
+							"validation_time": format_duration(
+								epoch.validation_time_seconds
+							),
+							"total_time": format_duration(epoch.total_time_seconds),
+						}
+						for epoch in result.epochs
+					],
 				}
 				for result in fold_results
 			],
@@ -124,6 +150,33 @@ class ModelResultPublisher:
 				f"Could not publish model results to {output_dir}: {error}"
 			) from error
 		return output_dir, average_loss, prediction_count
+
+	@staticmethod
+	def record_model_time(
+		output_dir: Path,
+		config_path: Path,
+		elapsed_seconds: float,
+	) -> None:
+		"""Atomically record this model's complete duration under the selected config."""
+		metrics_path = output_dir / "metrics.json"
+		try:
+			metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+			metrics["total_time"] = format_duration(elapsed_seconds)
+			metrics["config"] = str(config_path)
+			metrics.pop("config_total_time", None)
+			metrics["config_total_time"] = format_duration(elapsed_seconds)
+			with tempfile.TemporaryDirectory(
+				dir=output_dir, prefix=".metrics-"
+			) as temporary_dir:
+				staged_metrics = Path(temporary_dir) / "metrics.json"
+				staged_metrics.write_text(
+					json.dumps(metrics, indent=2) + "\n", encoding="utf-8"
+				)
+				os.replace(staged_metrics, metrics_path)
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not record model timing in {metrics_path}: {error}"
+			) from error
 
 	def _validate_probabilities(self, predictions: pd.DataFrame, fold: int) -> None:
 		values = predictions.loc[:, list(self.PROBABILITY_COLUMNS)].to_numpy(

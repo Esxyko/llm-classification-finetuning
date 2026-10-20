@@ -8,16 +8,19 @@ import sys
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
+from time import perf_counter
 from typing import NoReturn
 
 from ..cli_config import add_config_argument
 from ..config import AppConfig
 from ..errors import ConfigurationError, DataPreparationError
+from ..timing import format_duration
 from . import MODEL_REGISTRY, ModelRegistration
 from .common import (
 	ModelBuildResult,
 	ModelExecutionResult,
 	ModelMode,
+	ModelResultPublisher,
 	ModelRunResult,
 	ModelTestResult,
 )
@@ -84,6 +87,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		if parsed_arguments.model == ALL_MODELS:
 			return _run_all_models(
 				config=config,
+				config_path=parsed_arguments.config,
 				project_root=project_root,
 				mode=mode,
 				refresh_cache=parsed_arguments.refresh_cache,
@@ -94,6 +98,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		result = _run_registered_model(
 			registration=registration,
 			config=config,
+			config_path=parsed_arguments.config,
 			project_root=project_root,
 			mode=mode,
 			refresh_cache=parsed_arguments.refresh_cache,
@@ -110,22 +115,35 @@ def _run_registered_model(
 	*,
 	registration: ModelRegistration,
 	config: AppConfig,
+	config_path: Path,
 	project_root: Path,
 	mode: ModelMode,
 	refresh_cache: bool,
 	checkpoint_tag: str | None,
 ) -> ModelExecutionResult:
-	return registration.pipeline_type(
+	model_started = perf_counter()
+	result = registration.pipeline_type(
 		config=config,
 		project_root=project_root,
 		profile=registration.profile,
 		checkpoint_tag=checkpoint_tag,
 	).run(mode=mode, refresh_cache=refresh_cache)
+	elapsed_seconds = perf_counter() - model_started
+	if isinstance(result, ModelRunResult):
+		ModelResultPublisher.record_model_time(
+			result.output_dir, config_path, elapsed_seconds
+		)
+	print(
+		f"Model total time ({registration.profile.selector}): "
+		f"{format_duration(elapsed_seconds)}"
+	)
+	return result
 
 
 def _run_all_models(
 	*,
 	config: AppConfig,
+	config_path: Path,
 	project_root: Path,
 	mode: ModelMode,
 	refresh_cache: bool,
@@ -148,6 +166,7 @@ def _run_all_models(
 			result = _run_registered_model(
 				registration=registration,
 				config=config,
+				config_path=config_path,
 				project_root=project_root,
 				mode=mode,
 				refresh_cache=refresh_cache,

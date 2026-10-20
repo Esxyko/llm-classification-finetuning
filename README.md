@@ -107,6 +107,19 @@ uv run model qwen3-4b
 The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
 CSV per fold plus `metrics.json` to a timestamped model-named results directory.
+For both frozen and LoRA models (including head warmup), `metrics.json` records
+`training_time`, `validation_time`, and `total_time` as `HH:MM:SS` strings rounded
+to whole seconds for every epoch and fold. Hours can exceed 24.
+Training and validation times measure each phase's elapsed wall time after
+waiting for GPU work to finish. Fold totals also include initialization,
+prediction alignment, and LoRA fold cleanup; epoch totals include epoch setup.
+Top-level `training_time` and `validation_time` sum that model's corresponding
+phases across all folds. Top-level `total_time` measures the model's complete
+run, including pipeline initialization, input loading, embedding preparation,
+all folds, cleanup, and result publication. The final `config_total_time` field
+records the same duration for this model under the selected config. With
+`model ALL`, each model is timed separately and its metrics contain only its
+own elapsed time. The command also prints each model's duration at completion.
 Set `qwen3_4b.A/B_swap` to `aug` (the default) to train on both original and
 A/B-swapped rows, or `inf` to train on original IDs using the loss of their
 averaged original and swapped probabilities. Both modes average the two
@@ -286,6 +299,10 @@ using only its configured model sections. `config.yaml`, `config_aug.yaml`, and
 `config_inf.yaml` each contain both `qwen3_4b` and `qwen3_4b_lora`; `model ALL`
 runs them sequentially on the shared single GPU. The aug/inf configurations
 select the frozen model's A/B policy; LoRA uses `A/B_swap: aug` in both.
+The script does not create a separate `metrics.json`: each model's validation
+run publishes its own file. Its `config_total_time` covers only that model's
+cross-validation run under the selected config, excluding the later build
+command. The full-data build itself does not produce `metrics.json`.
 
 For each file in `configs/`, the script writes
 `models/qwen3_4b/head_CONFIG_STEM.pt` and
