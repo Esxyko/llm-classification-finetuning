@@ -125,7 +125,6 @@ exports over importing private helpers across package boundaries.
 | `README.md` | Human setup and usage guide |
 | `scripts/build_all_config.py` | Cross-validate and build `model ALL` for each YAML file in `configs/`, with separate tagged checkpoints |
 | `configs/` | Complete aug/inf YAML configurations, each including both models and one shared CUDA device |
-| `tests/` | Automated coverage, currently focused on result synthesis |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
