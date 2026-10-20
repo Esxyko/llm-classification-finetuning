@@ -1,4 +1,4 @@
-"""Configure the project-selected CUDA devices."""
+"""Configure the project-selected CUDA device."""
 
 from __future__ import annotations
 
@@ -11,54 +11,42 @@ from ...errors import ModelExecutionError
 
 
 class GPUEnvironment:
-    """Validate the configured CUDA devices and activate the primary one."""
+	"""Validate and activate the configured CUDA device."""
 
-    PRECISION_DTYPES: ClassVar[dict[str, torch.dtype]] = {
-        "bf16": torch.bfloat16,
-        "fp16": torch.float16,
-        "fp32": torch.float32,
-    }
+	PRECISION_DTYPES: ClassVar[dict[str, torch.dtype]] = {
+		"bf16": torch.bfloat16,
+		"fp16": torch.float16,
+		"fp32": torch.float32,
+	}
 
-    def __init__(self, config: GPUConfig) -> None:
-        self._config = config
+	def __init__(self, config: GPUConfig) -> None:
+		self._config = config
 
-    @property
-    def dtype(self) -> torch.dtype:
-        """Return the configured backbone weight dtype."""
-        return self.PRECISION_DTYPES[self._config.precision]
+	@property
+	def dtype(self) -> torch.dtype:
+		"""Return the configured backbone weight dtype."""
+		return self.PRECISION_DTYPES[self._config.precision]
 
-    def configure(self) -> tuple[torch.device, ...]:
-        """Validate and configure the requested CUDA devices."""
-        if not torch.cuda.is_available():
-            raise ModelExecutionError(
-                "CUDA is not available. Model execution requires configured CUDA GPUs."
-            )
+	def configure(self) -> torch.device:
+		"""Validate and configure the requested single CUDA device."""
+		if not torch.cuda.is_available():
+			raise ModelExecutionError(
+				"CUDA is not available. Model execution requires a configured CUDA GPU."
+			)
 
-        devices = tuple(torch.device(value) for value in self._config.devices)
-        available_devices = torch.cuda.device_count()
-        unavailable = [
-            str(device)
-            for device in devices
-            if device.index is None or device.index >= available_devices
-        ]
-        if unavailable:
-            configured = ", ".join(unavailable)
-            raise ModelExecutionError(
-                f"Configured GPU(s) {configured} are unavailable; found "
-                f"{available_devices} CUDA device(s)."
-            )
+		device = torch.device(self._config.device)
+		available_devices = torch.cuda.device_count()
+		if device.index is None or device.index >= available_devices:
+			raise ModelExecutionError(
+				f"Configured GPU {device} is unavailable; found "
+				f"{available_devices} CUDA device(s)."
+			)
 
-        for device in devices:
-            torch.cuda.set_device(device)
-            if (
-                self._config.precision == "bf16"
-                and not torch.cuda.is_bf16_supported()
-            ):
-                raise ModelExecutionError(
-                    f"Configured GPU {device} does not support bf16. Set "
-                    "gpu.precision to fp16 or fp32."
-                )
-
-        torch.cuda.set_device(devices[0])
-        torch.backends.cuda.matmul.allow_tf32 = self._config.allow_tf32
-        return devices
+		torch.cuda.set_device(device)
+		if self._config.precision == "bf16" and not torch.cuda.is_bf16_supported():
+			raise ModelExecutionError(
+				f"Configured GPU {device} does not support bf16. Set "
+				"gpu.precision to fp16 or fp32."
+			)
+		torch.backends.cuda.matmul.allow_tf32 = self._config.allow_tf32
+		return device

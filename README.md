@@ -1,6 +1,6 @@
 # LLM Classification Finetuning
 
-Prepare leakage-safe training folds, run frozen-Qwen pairwise models, and
+Prepare leakage-safe training folds, run frozen or LoRA Qwen pairwise models, and
 generate reports or submissions for Kaggle's
 [LLM Classification Finetuning competition](https://www.kaggle.com/competitions/llm-classification-finetuning).
 
@@ -9,8 +9,8 @@ generate reports or submissions for Kaggle's
 - Python 3.14 or newer
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
 - A Kaggle account with the competition rules accepted
-- The configured CUDA GPUs to run a model (data preparation and report generation
-  do not require them)
+- A configured CUDA GPU to run a model (data preparation and report generation
+  do not require one)
 
 ## Quick start
 
@@ -54,19 +54,23 @@ Run these commands from the project root.
 | `uv run data` | Downloads missing Kaggle files only | `data/raw/*.csv` |
 | `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_folds.parquet` |
 | `uv run model qwen3-4b` | Runs Qwen3-4B cross-validation | `results/qwen3-4b-*/` |
-| `uv run model ALL` | Runs cross-validation for every registered model sequentially | Each model's results directory |
-| `uv run model MODEL --build` | Trains the selected model's head on its training rows | `models/MODEL_SLUG/head.pt` |
-| `uv run model MODEL --test` | Creates a submission with the selected model's saved head | `results/test/MODEL-*/submission.csv` |
+| `uv run model qwen3-4b-lora` | Runs Qwen3-4B LoRA cross-validation | `results/qwen3-4b-lora-*/` |
+| `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
+| `uv run model MODEL --build` | Trains the classifier and any adapters on all folds | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
+| `uv run model MODEL --test` | Creates a submission with the selected model's checkpoint | `results/test/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
-Set `MODEL` to `qwen3-4b` or exact uppercase `ALL`. Add `--refresh-cache` to any
-model mode to rebuild that model and mode's embeddings.
+Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, or exact uppercase `ALL`.
+Add `--refresh-cache` to rebuild frozen-model embeddings; it has no effect for
+LoRA, which encodes inputs during training and inference.
 `--build` and `--test` are mutually exclusive; without either flag, the command
-runs cross-validation. `ALL` follows model registry order and accepts the same
+runs cross-validation. `ALL` runs only profiles with a model section in the
+selected YAML, follows registry order, and accepts the same
 `--build`, `--test`, and `--refresh-cache` options. If one model fails, the
 remaining models still run; the command exits with status `1` if any failed.
 For builds and test inference, `--checkpoint-tag TAG` selects
-`models/MODEL_SLUG/head_TAG.pt`; without it, the checkpoint is `head.pt`.
+`models/MODEL_SLUG/head_TAG.pt` for the frozen model or `adapter_TAG.pt` for
+LoRA; without it, the checkpoint is `head.pt` or `adapter.pt`, respectively.
 
 ## Prepare training data
 
@@ -126,17 +130,67 @@ configuration sections are retained locally in
 `src/llm_classification_finetuning/models/archive/`. This directory is ignored
 by Git, and these models are no longer CLI choices.
 
-Each model's training and test embeddings use separate model-named caches in
+The frozen model's training and test embeddings use separate model-named caches in
 `data/processed/`. A cache is reused only when its data, model, sequence length,
 serialization, precision, attention implementation, and TF32 settings still
 match. Legacy `baseline_*` caches are left untouched and are not reused.
 
-The checked-in defaults target two 16 GB NVIDIA T4 GPUs. Frozen Qwen replicas
-split tokenized inputs across `cuda:0` and `cuda:1`; classifier head training
-runs on the first configured device. T4 requires `fp16`, and the default
-16,384-token cap keeps one input within each GPU's memory budget. If extraction
-runs out of memory, reduce the selected model section's `extraction_batch_size`
-or `max_length` in the selected configuration file.
+Both models share the single CUDA device selected by `gpu.device`, which defaults
+to `cuda:0`. The frozen model loads one backbone and encodes A and B sequentially
+on that device; classifier head training uses the same GPU. If extraction runs
+out of memory, reduce `qwen3_4b.extraction_batch_size` or `qwen3_4b.max_length`.
+Device lists, backbone replicas, and multi-GPU execution are not supported.
+
+## Train with LoRA
+
+Prepare the data, then use the LoRA section in the shared `config.yaml`:
+
+```shell
+uv run model qwen3-4b-lora
+uv run model qwen3-4b-lora --build
+uv run model qwen3-4b-lora --test
+```
+
+The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
+prompt+B separately. LoRA adapters and the pairwise MLP are trained together;
+original backbone parameters remain frozen. `A/B_swap: aug` trains on both
+processed orientations. Validation loss, fold predictions, and test submissions
+average original and A/B-restored swapped probabilities. Each validation fold
+starts with fresh adapters and a fresh classifier. Cross-validation saves no
+model checkpoints.
+
+The default LoRA settings target one 32 GB CUDA GPU. The model also
+supports other single NVIDIA CUDA GPUs with sufficient memory for the selected
+settings. Set `gpu.device` to a single `cuda:N` identifier and choose
+`gpu.precision: fp16`, `bf16`, or `fp32`. BF16 is checked against the selected
+GPU's capabilities. FP16 uses gradient scaling; adapters and classifier weights
+remain FP32 in all three modes. GPU model names and VRAM sizes are not restricted.
+
+The default configuration caps **each branch** at 16,384 tokens, dynamically pads
+A and B independently, processes branches sequentially, and enables non-reentrant
+activation checkpointing with KV caching disabled. It uses micro-batches of one
+pair and 16 accumulation steps, giving an effective batch of 16 augmented rows.
+LoRA rank is 16, alpha is 32, and dropout is 0.05, targeting attention
+`q_proj`, `k_proj`, `v_proj`, `o_proj` and MLP `gate_proj`, `up_proj`, `down_proj`.
+The 512-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
+`0.0002`, head learning rate `0.001`, weight decay `0.01`, linear decay with 3%
+warmup, and gradient clipping at 1.0 for two epochs. All these settings are
+configurable in `qwen3_4b_lora`.
+
+For smaller GPUs, lower `max_length` or the relevant `training_batch_size` /
+`inference_batch_size`. Increase `gradient_accumulation_steps` when reducing
+the training batch to retain the desired effective batch. Larger GPUs can use
+larger batches. Memory fit for the 16,384-token preset on a 32 GB GPU has not
+been measured; execution reports OOM without silently lowering context length.
+
+Builds atomically save adapters, the classifier, and compatibility metadata in
+`models/qwen3_4b_lora/adapter.pt`. `--checkpoint-tag TAG` selects
+`adapter_TAG.pt`. Base weights and optimizer state are not stored. The checkpoint
+records the resolved Hub base revision so inference reloads matching weights
+and tokenizer files. Architecture, serialization, LoRA settings, and context
+must match; CUDA index, GPU model, precision, attention implementation, TF32,
+batch sizes, and accumulation settings can change between build and inference.
+There are no persistent LoRA embedding caches.
 
 ## Generate validation reports
 
@@ -180,7 +234,7 @@ directory as unavailable.
 | `records.xlsx` | One row per source ID with fold, expected and actual labels, incorrect count, and log loss |
 
 The workbook supports filtering; its `AVG` row recalculates over visible rows.
-For Qwen3-4B and averaged mono-input runs, each ID contributes one prediction,
+For frozen/LoRA Qwen3-4B and averaged mono-input runs, each ID contributes one prediction,
 one confusion matrix count, and the log loss of its averaged distribution.
 Older runs retain their two-orientation report behavior.
 
@@ -199,19 +253,24 @@ For example, from the project root:
 uv run model qwen3-4b --config configs/experiment.yaml
 ```
 
-To cross-validate and build a separate head for every `.yaml` or `.yml` file in
+To cross-validate and build a separate checkpoint for every `.yaml` or `.yml` file in
 `configs/`, run:
 
 ```shell
-uv run python scripts/run_all_configs.py
+uv run python scripts/build_all_config.py
 ```
 
-The script runs cross-validation and then a full-data build for each config.
-The current `config_aug.yaml` and `config_inf.yaml` write
-`models/qwen3_4b/head_config_aug.pt` and
-`models/qwen3_4b/head_config_inf.pt`, respectively. It continues after a failed
-mode or config and exits with a nonzero status if any step fails. To use one of
-these heads for test inference, pass its config and matching checkpoint tag, for
+The script runs cross-validation and then a full-data build for each config,
+using only its configured model sections. `config.yaml`, `config_aug.yaml`, and
+`config_inf.yaml` each contain both `qwen3_4b` and `qwen3_4b_lora`; `model ALL`
+runs them sequentially on the shared single GPU. The aug/inf configurations
+select the frozen model's A/B policy; LoRA uses `A/B_swap: aug` in both.
+
+For each file in `configs/`, the script writes
+`models/qwen3_4b/head_CONFIG_STEM.pt` and
+`models/qwen3_4b_lora/adapter_CONFIG_STEM.pt`. It continues after a failed mode
+or config and exits with a nonzero status if any step fails. To use a tagged
+checkpoint for test inference, pass its config and matching checkpoint tag, for
 example:
 
 ```shell
@@ -222,8 +281,12 @@ uv run model qwen3-4b --test --config configs/config_inf.yaml --checkpoint-tag c
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count and random seed |
-| `gpu` | CUDA devices, precision, attention implementation, and TF32 |
+| `gpu` | One CUDA `device`, precision, attention implementation, and TF32, shared by both models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap: aug` |
+
+Model sections are optional. Explicitly selecting a profile without its section
+reports a configuration error; `ALL` requires at least one configured profile.
 
 ## Troubleshooting
 
@@ -234,6 +297,9 @@ uv run model qwen3-4b --test --config configs/config_inf.yaml --checkpoint-tag c
 - **`train.csv` is missing:** Run `uv run data`, or use `uv run init` for both
   download and preprocessing.
 - **CUDA or precision is unsupported:** Select an available `cuda:N` device and
-  use `fp16` or `fp32` if the GPU does not support `bf16`.
+  set it in `gpu.device`; use `fp16` or `fp32` if the GPU does not support `bf16`.
 - **Embedding extraction runs out of memory:** Reduce
   `extraction_batch_size` or `max_length` in the selected model's section.
+- **LoRA runs out of memory:** Lower `qwen3_4b_lora.training_batch_size` or
+  `inference_batch_size`; at batch size 1, lower `max_length`. Enable
+  `gradient_checkpointing` and use FP16/BF16 instead of FP32 where supported.

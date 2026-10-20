@@ -1,0 +1,156 @@
+"""Coordinate live LoRA cross-validation, production builds, and inference."""
+
+from __future__ import annotations
+
+import gc
+from pathlib import Path
+
+import pandas as pd
+import torch
+
+from ...config import AppConfig, LoRAModelConfig
+from ...errors import ModelExecutionError
+from ..common import (
+	GPUEnvironment,
+	ModelBuildResult,
+	ModelDataRepository,
+	ModelExecutionResult,
+	ModelMode,
+	ModelResultPublisher,
+	ModelRunResult,
+	ModelSubmissionPublisher,
+	ModelTestDataRepository,
+	ModelTestResult,
+)
+from ..profile import ModelProfile
+from .checkpoint import LoRACheckpointCompatibility, LoRACheckpointStore
+from .trainer import LoRATrainer
+
+
+class LoRAModelPipeline:
+	"""Run the selected adapter workflow on any single configured CUDA device."""
+
+	def __init__(
+		self,
+		config: AppConfig,
+		project_root: Path,
+		profile: ModelProfile,
+		checkpoint_tag: str | None = None,
+	) -> None:
+		self._config = config
+		self._profile = profile
+		model_config = profile.resolve_config(config)
+		if not isinstance(model_config, LoRAModelConfig):
+			raise TypeError("LoRA execution requires a LoRAModelConfig.")
+		self._model_config = model_config
+		self._training_repository = ModelDataRepository(
+			config.data.processed_path, config.cross_validation.n_splits
+		)
+		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
+		project_root = project_root.resolve()
+		checkpoint_name = (
+			f"adapter_{checkpoint_tag}.pt" if checkpoint_tag else "adapter.pt"
+		)
+		build_command = f"uv run model {profile.selector} --build"
+		if checkpoint_tag:
+			build_command += f" --checkpoint-tag {checkpoint_tag}"
+		self._checkpoint_store = LoRACheckpointStore(
+			project_root / "models" / profile.artifact_stem / checkpoint_name,
+			build_command,
+		)
+		self._result_publisher = ModelResultPublisher(
+			project_root / "results", profile.result_prefix
+		)
+		self._submission_publisher = ModelSubmissionPublisher(
+			project_root / "results" / "test", profile.result_prefix
+		)
+
+	def run(
+		self,
+		*,
+		mode: ModelMode = ModelMode.CROSS_VALIDATION,
+		refresh_cache: bool = False,
+	) -> ModelExecutionResult:
+		"""Run without persistent embeddings; refresh_cache intentionally has no effect."""
+		try:
+			device = GPUEnvironment(self._config.gpu).configure()
+			trainer = LoRATrainer(self._model_config, self._config.gpu, device)
+			if mode is ModelMode.TEST:
+				return self._run_test(trainer)
+			if mode not in (ModelMode.CROSS_VALIDATION, ModelMode.BUILD):
+				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
+			data = self._training_repository.load()
+			if mode is ModelMode.BUILD:
+				model = trainer.create_model(seed=self._model_config.random_state)
+				try:
+					history = trainer.fit(
+						model,
+						data.reference,
+						data.canonical_texts,
+						seed=self._model_config.random_state,
+					)
+					self._checkpoint_store.save(
+						model,
+						self._compatibility(
+							self._training_repository.serializer_version
+						),
+						training_source_sha256=data.fingerprint,
+						gpu=self._config.gpu,
+					)
+					return ModelBuildResult(
+						checkpoint_path=self._checkpoint_store.path,
+						training_rows=len(data.reference),
+						epochs=len(history.training_losses),
+						final_training_loss=history.training_losses[-1],
+					)
+				finally:
+					del model
+			folds = trainer.cross_validate(data, self._config.cross_validation.n_splits)
+			output_dir, average_loss, predictions = self._result_publisher.publish(
+				folds,
+				self._model_config.model_name,
+				prediction_aggregation="ab_swap_average",
+			)
+			return ModelRunResult(output_dir, len(folds), predictions, average_loss)
+		except torch.cuda.OutOfMemoryError as error:
+			raise ModelExecutionError(
+				"CUDA ran out of memory during LoRA execution. Lower "
+				"qwen3_4b_lora.training_batch_size or inference_batch_size; if already 1, "
+				"lower qwen3_4b_lora.max_length. Enable gradient_checkpointing for training, "
+				"or use fp16/bf16 instead of fp32. Increase gradient_accumulation_steps "
+				"to preserve the effective training batch when lowering the micro-batch."
+			) from error
+		except ModelExecutionError:
+			raise
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not execute {self._profile.selector}: {error}"
+			) from error
+		finally:
+			gc.collect()
+			if torch.cuda.is_initialized():
+				torch.cuda.empty_cache()
+
+	def _run_test(self, trainer: LoRATrainer) -> ModelTestResult:
+		data = self._test_repository.load()
+		checkpoint = self._checkpoint_store.load(
+			self._compatibility(self._test_repository.serializer_version)
+		)
+		model = trainer.create_model(
+			seed=self._model_config.random_state, revision=checkpoint.base_revision
+		)
+		try:
+			self._checkpoint_store.restore(model, checkpoint)
+			reference = pd.DataFrame({"id": data.ids, "is_swapped": False})
+			_, probabilities = trainer.evaluate(model, reference, data.canonical_texts)
+			output_dir, submission_path = self._submission_publisher.publish(
+				data.ids, probabilities
+			)
+			return ModelTestResult(output_dir, submission_path, len(data.ids))
+		finally:
+			del model
+
+	def _compatibility(self, serializer_version: str) -> LoRACheckpointCompatibility:
+		return LoRACheckpointCompatibility.from_config(
+			self._model_config, serializer_version
+		)

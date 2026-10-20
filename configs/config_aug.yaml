@@ -8,10 +8,8 @@ cross_validation:
   random_state: 42
 
 gpu:
-  devices:
-    - cuda:0
-    - cuda:1
-  precision: fp16
+  device: cuda:0
+  precision: bf16
   attention_implementation: sdpa
   allow_tf32: false
 
@@ -26,5 +24,35 @@ qwen3_4b:
   epochs: 3
   learning_rate: 0.001
   weight_decay: 0.01
+  random_state: 42
+  dataloader_workers: 0
+
+qwen3_4b_lora:
+  A/B_swap: aug
+  model_name: Qwen/Qwen3-4B
+  max_length: 16384
+  training_batch_size: 1
+  inference_batch_size: 1
+  gradient_accumulation_steps: 16
+  gradient_checkpointing: true
+  hidden_size: 512
+  dropout: 0.1
+  epochs: 4
+  learning_rate: 0.0001
+  head_learning_rate: 0.00001
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+  lora_rank: 32
+  lora_alpha: 64
+  lora_dropout: 0.05
+  lora_target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
   random_state: 42
   dataloader_workers: 0
