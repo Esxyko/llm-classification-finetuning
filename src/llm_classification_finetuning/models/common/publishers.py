@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import pandas as pd
 
 from ...errors import ModelExecutionError
 from ...timing import format_duration
+from .hardware import GPUMemoryPeak
 from .trainer import FoldTrainingResult
 
 
@@ -156,8 +158,10 @@ class ModelResultPublisher:
 		output_dir: Path,
 		config_path: Path,
 		elapsed_seconds: float,
+		*,
+		gpu_memory: GPUMemoryPeak | None = None,
 	) -> None:
-		"""Atomically record this model's complete duration under the selected config."""
+		"""Atomically record complete duration and optional GPU peaks for this model."""
 		metrics_path = output_dir / "metrics.json"
 		try:
 			metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
@@ -165,6 +169,8 @@ class ModelResultPublisher:
 			metrics["config"] = str(config_path)
 			metrics.pop("config_total_time", None)
 			metrics["config_total_time"] = format_duration(elapsed_seconds)
+			if gpu_memory is not None:
+				metrics["gpu_memory"] = asdict(gpu_memory)
 			with tempfile.TemporaryDirectory(
 				dir=output_dir, prefix=".metrics-"
 			) as temporary_dir:
@@ -175,7 +181,7 @@ class ModelResultPublisher:
 				os.replace(staged_metrics, metrics_path)
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not record model timing in {metrics_path}: {error}"
+				f"Could not record model runtime metrics in {metrics_path}: {error}"
 			) from error
 
 	def _validate_probabilities(self, predictions: pd.DataFrame, fold: int) -> None:

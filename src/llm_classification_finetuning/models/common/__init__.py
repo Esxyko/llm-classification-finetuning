@@ -15,7 +15,7 @@ from .data import (
 	ModelTestDataRepository,
 	PairwiseText,
 )
-from .hardware import GPUEnvironment
+from .hardware import GPUEnvironment, GPUMemoryMonitor, GPUMemoryPeak
 from .inputs import TestInputLoader, TrainingInputLoader
 from .model import PairwiseClassificationHead, PairwiseQwenClassifier
 from .orientation import ABSwapAverager
@@ -30,6 +30,8 @@ __all__ = (
 	"EpochMetrics",
 	"FoldTrainingResult",
 	"GPUEnvironment",
+	"GPUMemoryMonitor",
+	"GPUMemoryPeak",
 	"ModelBuildResult",
 	"ModelCompatibility",
 	"ModelData",

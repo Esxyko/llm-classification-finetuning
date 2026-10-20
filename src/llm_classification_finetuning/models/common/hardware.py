@@ -1,7 +1,8 @@
-"""Configure CUDA devices and build the Qwen3 submission layer map."""
+"""Configure CUDA devices, monitor peak memory, and map submission layers."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 import torch
@@ -93,3 +94,51 @@ class GPUEnvironment:
 		torch.cuda.set_device(devices[0])
 		torch.backends.cuda.matmul.allow_tf32 = self._config.allow_tf32
 		return devices
+
+
+@dataclass(frozen=True, slots=True)
+class GPUMemoryPeak:
+	"""Absolute allocator peaks in bytes for one device and model run."""
+
+	device: str
+	peak_allocated_bytes: int
+	peak_reserved_bytes: int
+
+
+class GPUMemoryMonitor:
+	"""Track one model run's allocator peaks without clearing cached memory."""
+
+	def __init__(self, config: GPUConfig) -> None:
+		self._config = config
+		self._device: torch.device | None = None
+
+	def start(self) -> None:
+		"""Validate the configured GPU, finish prior work, and reset peaks once."""
+		if self._device is not None:
+			raise ModelExecutionError("GPU memory monitoring has already started.")
+		device = GPUEnvironment(self._config).configure()
+		try:
+			torch.cuda.synchronize(device)
+			torch.cuda.reset_peak_memory_stats(device)
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not start GPU memory monitoring on {device}: {error}"
+			) from error
+		self._device = device
+
+	def snapshot(self, *, synchronize: bool = True) -> GPUMemoryPeak:
+		"""Read peaks, optionally skipping synchronization after execution fails."""
+		if self._device is None:
+			raise ModelExecutionError("GPU memory monitoring has not started.")
+		try:
+			if synchronize:
+				torch.cuda.synchronize(self._device)
+			return GPUMemoryPeak(
+				device=str(self._device),
+				peak_allocated_bytes=torch.cuda.max_memory_allocated(self._device),
+				peak_reserved_bytes=torch.cuda.max_memory_reserved(self._device),
+			)
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not read GPU memory peaks on {self._device}: {error}"
+			) from error

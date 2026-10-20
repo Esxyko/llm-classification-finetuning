@@ -81,7 +81,8 @@ and print summaries. Business logic belongs below the CLI layer.
   - `augmentation.py`: Appends one A/B-swapped counterpart per source row.
 - `models/`
   - `__init__.py`: Registers each selector with its profile and pipeline.
-  - `cli.py`: Selects a registered Qwen model and an execution mode.
+  - `cli.py`: Selects a registered Qwen model and an execution mode; wraps each
+    cross-validation model run in complete-run GPU peak monitoring.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: Adapter model with single-GPU training and dual-GPU submission.
@@ -120,10 +121,11 @@ and print summaries. Business logic belongs below the CLI layer.
     - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
     - `publishers.py`: Stages and publishes validation runs with epoch/fold
       durations and test submissions; atomically records each model's complete
-      runtime under its selected config.
+      runtime and optional GPU memory peaks under its selected config.
     - `hardware.py`: Validates the training GPU or both submission GPUs, activates
       the first selected device, and maps complete Qwen3 decoder layers across
-      the two submission devices.
+      the two submission devices. Owns the immutable GPU peak summary and
+      per-run allocator monitoring without clearing caches.
     - `extractor.py`: Resolve pinned backbone/token identities on CPU, hash local
       weights when needed, and lazily encode only missing frozen branches on GPU.
     - `cache.py`: Persist per-branch embeddings by effective tokens and backbone
@@ -297,6 +299,14 @@ modules. Do not make application logic depend on a particular timestamped run.
   count as half a unit each. Extraction, preparation, caches, and publication are
   excluded. Dynamic micro-batches preserve update-group boundaries. See
   [training progress](docs/models.md#training-progress).
+- Cross-validation monitors PyTorch allocated and reserved memory peaks on
+  `gpu.device` from before pipeline initialization through cleanup and result
+  publication. Each model/config resets peaks once; folds and epochs share that
+  interval. Monitoring does not clear caches or subtract initial occupancy.
+  Successful runs print GiB values and atomically append integer byte counts
+  alongside complete runtime in `metrics.json`; failed runs only attempt a
+  terminal peak summary without masking the execution error. Builds and
+  submissions do not enable monitoring. See [GPU memory peaks](docs/reports.md#gpu-memory-peaks).
 - Generated files and directories are staged before publication. Report
   publication restores the previous directory after a recoverable promotion
   failure and reports the backup path if restoration fails.

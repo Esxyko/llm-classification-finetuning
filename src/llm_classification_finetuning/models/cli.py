@@ -7,6 +7,7 @@ import re
 import sys
 import traceback
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 from time import perf_counter
 from typing import NoReturn
@@ -17,6 +18,8 @@ from ..errors import ConfigurationError, DataPreparationError
 from ..timing import format_duration
 from . import MODEL_REGISTRY, ModelRegistration
 from .common import (
+	GPUMemoryMonitor,
+	GPUMemoryPeak,
 	ModelBuildResult,
 	ModelExecutionResult,
 	ModelMode,
@@ -122,22 +125,55 @@ def _run_registered_model(
 	checkpoint_tag: str | None,
 ) -> ModelExecutionResult:
 	model_started = perf_counter()
-	result = registration.pipeline_type(
-		config=config,
-		project_root=project_root,
-		profile=registration.profile,
-		checkpoint_tag=checkpoint_tag,
-	).run(mode=mode, refresh_cache=refresh_cache)
+	gpu_monitor = None
+	if mode is ModelMode.CROSS_VALIDATION:
+		gpu_monitor = GPUMemoryMonitor(config.gpu)
+		gpu_monitor.start()
+	try:
+		result = registration.pipeline_type(
+			config=config,
+			project_root=project_root,
+			profile=registration.profile,
+			checkpoint_tag=checkpoint_tag,
+		).run(mode=mode, refresh_cache=refresh_cache)
+		gpu_memory = gpu_monitor.snapshot() if gpu_monitor is not None else None
+	except BaseException:
+		if gpu_monitor is not None:
+			# Peak collection and terminal output must preserve the original error.
+			with suppress(Exception):
+				_print_gpu_memory(
+					registration.profile.selector,
+					gpu_monitor.snapshot(synchronize=False),
+					failed=True,
+				)
+		raise
 	elapsed_seconds = perf_counter() - model_started
+	if gpu_memory is not None:
+		_print_gpu_memory(registration.profile.selector, gpu_memory)
 	if isinstance(result, ModelRunResult):
 		ModelResultPublisher.record_model_time(
-			result.output_dir, config_path, elapsed_seconds
+			result.output_dir, config_path, elapsed_seconds, gpu_memory=gpu_memory
 		)
 	print(
 		f"Model total time ({registration.profile.selector}): "
 		f"{format_duration(elapsed_seconds)}"
 	)
 	return result
+
+
+def _print_gpu_memory(
+	selector: str, peak: GPUMemoryPeak, *, failed: bool = False
+) -> None:
+	"""Print absolute peaks in GiB, labeling observations from failed runs."""
+	gib = 1024**3
+	status = " before failure" if failed else ""
+	print(
+		f"GPU memory peak{status} ({selector}, {peak.device}): "
+		f"allocated={peak.peak_allocated_bytes / gib:.2f} GiB "
+		f"reserved={peak.peak_reserved_bytes / gib:.2f} GiB",
+		file=sys.stderr if failed else sys.stdout,
+		flush=True,
+	)
 
 
 def _run_all_models(

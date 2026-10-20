@@ -86,3 +86,43 @@ all folds, cleanup, and result publication. The final `config_total_time` field
 records the same duration for this model under the selected config. With
 `model ALL`, each model is timed separately and its metrics contain only its
 own elapsed time. The command also prints each model's duration at completion.
+
+## GPU memory peaks
+
+Cross-validation automatically monitors the configured `gpu.device` for each
+model's complete run. Monitoring begins before pipeline initialization and covers
+model loading, embedding preparation, all folds and epochs (including LoRA head
+warmup), training, validation, cleanup, and result publication. Both models,
+`model ALL`, and `scripts/validate_all_configs.py` use the same monitoring path.
+Builds and submissions do not enable this monitoring.
+
+After GPU work finishes, the command prints the model selector, device, and
+allocated/reserved peaks in GiB (`bytes / 1024**3`) with two decimal places. The
+same peaks are atomically recorded with the complete runtime in `metrics.json`
+as integer byte counts:
+
+```json
+"gpu_memory": {
+  "device": "cuda:0",
+  "peak_allocated_bytes": 123456789,
+  "peak_reserved_bytes": 234567890
+}
+```
+
+`peak_allocated_bytes` measures memory occupied by PyTorch tensors;
+`peak_reserved_bytes` measures memory managed by PyTorch's caching allocator,
+including unused cached blocks. These are separate maxima and need not occur
+at the same time. They do not measure total GPU usage, other processes, or
+allocations outside PyTorch's allocator. See the
+[PyTorch memory management reference](https://docs.pytorch.org/docs/2.14/notes/cuda.html#memory-management).
+
+Peaks are reset once per model run, never between folds, epochs, or phases.
+Monitoring does not clear cached memory or subtract the starting occupancy:
+memory still resident when a run begins contributes to its absolute peak. This
+also applies to sequential models in `model ALL`; a complete embedding-cache
+hit reports the actual work performed, including head training.
+
+If execution fails after monitoring starts, the command attempts to print the
+peaks observed before failure without waiting for GPU synchronization. Failure
+to read or print those peaks does not replace the original exception. Failed
+execution does not record final GPU peaks or complete runtime metrics.
