@@ -39,10 +39,11 @@ qwen3_4b_lora:
   dropout: 0.1
   epochs: 4
   learning_rate: 0.0001
-  head_learning_rate: 0.00001
+  head_learning_rate: 0.0001
   weight_decay: 0.01
   warmup_epochs: 1
-  warmup_training_batch_size: 256
+  warmup_extraction_batch_size: 1
+  warmup_training_batch_size: 8
   warmup_learning_rate: 0.001
   max_grad_norm: 1.0
   lora_rank: 32

@@ -200,25 +200,33 @@ rates linearly decaying to zero. All these settings are configurable in
 `qwen3_4b_lora`.
 
 `warmup_epochs` is a required nonnegative integer; `0` skips head warmup.
+`warmup_extraction_batch_size` is a required positive integer controlling the
+no-gradient backbone extraction batch size (default: `1`). Before the first
+warmup epoch, paired features for the selected training rows are extracted once
+with the backbone in evaluation mode and retained as FP32 tensors in CPU memory.
+All warmup epochs reuse these features; they are released when joint training
+starts and are never written to disk. With `warmup_epochs: 0`, extraction is
+skipped.
 `warmup_training_batch_size` is a required positive integer controlling only the
-head-warmup micro-batch size (default preset: `1`); joint training uses
+head-warmup micro-batch size over extracted features (default config: `1`).
+Joint training uses
 `training_batch_size`. Both stages use `gradient_accumulation_steps` and normalize
 loss by the actual row count of each accumulation group, including short final
 batches. The joint-training decay schedule uses only the joint-training batches.
 `warmup_learning_rate` is a required finite positive number, even when warmup is
-disabled. During warmup, the backbone runs in evaluation mode without gradient
-tracking, while the classifier remains in training mode. Joint training restores
-backbone training mode and retains the head's AdamW state. The joint-training
+disabled. During warmup, only the classifier runs in training mode; validation
+still uses live backbone encodings and `inference_batch_size`. Joint training
+restores backbone training mode and retains the head's AdamW state. The joint-training
 schedule starts at `learning_rate` / `head_learning_rate` without a learning-rate
 ramp. Total training lasts `warmup_epochs + epochs` rounds (three by default),
 and training histories and build summaries include both stages. Each validation
 fold and full-data build follows these stages; validation still runs after each
 epoch. Replace the removed `warmup_ratio` key with `warmup_epochs`,
-`warmup_training_batch_size`, and `warmup_learning_rate`; old keys are rejected
-as unknown configuration options.
+`warmup_extraction_batch_size`, `warmup_training_batch_size`, and
+`warmup_learning_rate`; old keys are rejected as unknown configuration options.
 
-For smaller GPUs, lower `max_length` or the relevant `warmup_training_batch_size`,
-`training_batch_size`, or `inference_batch_size`. Increase
+For smaller GPUs, lower `max_length` or the relevant `warmup_extraction_batch_size`,
+`warmup_training_batch_size`, `training_batch_size`, or `inference_batch_size`. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
 desired effective batch. Larger GPUs can use larger batches. Memory fit for the
 16,384-token preset on a 32 GB GPU has not been measured; execution reports OOM
@@ -355,6 +363,7 @@ reports a configuration error; `ALL` requires at least one configured profile.
   set it in `gpu.device`; use `fp16` or `fp32` if the GPU does not support `bf16`.
 - **Embedding extraction runs out of memory:** Reduce
   `extraction_batch_size` or `max_length` in the selected model's section.
-- **LoRA runs out of memory:** Lower `qwen3_4b_lora.training_batch_size` or
-  `inference_batch_size`; at batch size 1, lower `max_length`. Enable
+- **LoRA runs out of memory:** Lower `qwen3_4b_lora.warmup_extraction_batch_size`,
+  `warmup_training_batch_size`, `training_batch_size`, or `inference_batch_size`
+  for the affected stage; at batch size 1, lower `max_length`. Enable
   `gradient_checkpointing` and use FP16/BF16 instead of FP32 where supported.

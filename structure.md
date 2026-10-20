@@ -70,6 +70,8 @@ and print summaries. Business logic belongs below the CLI layer.
     - `data.py`: Orient canonical A/B texts and independently tokenize/pad branches.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       pool their last real tokens, and classify with the shared pairwise MLP.
+    - `extractor.py`: Extract no-gradient paired warmup features once per fold or
+      build, retaining FP32 tensors in CPU memory without persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
       adapters/heads per fold or all-data build with linear decay, mixed
       precision, accumulation, and averaged live inference.
@@ -163,7 +165,11 @@ modules. Do not make application logic depend on a particular timestamped run.
   Optional head-only warmup uses a no-gradient,
   evaluation-mode backbone at a fixed head learning rate, followed by joint
   training with gradients through both branches and linear learning-rate decay.
-  Warmup uses `warmup_training_batch_size`; joint training uses
+  Warmup extracts selected training rows once in evaluation mode using
+  `warmup_extraction_batch_size`, then reuses the temporary CPU features with
+  `warmup_training_batch_size`. Features are released at the start of joint
+  training; `warmup_epochs: 0` skips extraction. Validation continues to use
+  live encodings with `inference_batch_size`. Joint training uses
   `training_batch_size`, which also determines the joint schedule's step count.
   Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize accumulation by actual row counts, including

@@ -26,6 +26,7 @@ from ..common import (
 	PairwiseText,
 )
 from .data import PairwiseBatch, PairwiseCollator, PairwiseTextDataset
+from .extractor import WarmupEmbeddingExtractor
 from .model import LoRAQwenClassifier
 
 
@@ -137,17 +138,7 @@ class LoRATrainer:
 			training = training.loc[~training["is_swapped"]]
 		if training.empty:
 			raise ModelExecutionError("LoRA training received no rows.")
-		loader = self._create_loader(
-			training,
-			records,
-			training=True,
-			seed=seed,
-			batch_size=(
-				self._config.warmup_training_batch_size
-				if self._config.warmup_epochs
-				else self._config.training_batch_size
-			),
-		)
+		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		optimizer = AdamW(
 			[
 				{
@@ -179,10 +170,9 @@ class LoRATrainer:
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
 			if epoch == self._config.warmup_epochs + 1:
-				if self._config.warmup_epochs:
-					loader = self._create_loader(
-						training, records, training=True, seed=seed
-					)
+				loader = self._create_loader(
+					training, records, training=True, seed=seed
+				)
 				for group, learning_rate in zip(
 					optimizer.param_groups,
 					(self._config.learning_rate, self._config.head_learning_rate),
@@ -199,6 +189,8 @@ class LoRATrainer:
 					num_training_steps=steps,
 				)
 			training_started = self._timestamp()
+			if loader is None:
+				loader = self._create_warmup_loader(model, training, records, seed=seed)
 			loss = self._train_epoch(
 				model, loader, optimizer, scheduler, scaler, head_only=head_only
 			)
@@ -247,7 +239,7 @@ class LoRATrainer:
 	def _train_epoch(
 		self,
 		model: LoRAQwenClassifier,
-		loader: DataLoader[PairwiseBatch],
+		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]],
 		optimizer: AdamW,
 		scheduler: LambdaLR | None,
 		scaler: torch.amp.GradScaler,
@@ -271,11 +263,13 @@ class LoRATrainer:
 					accumulation * loader.batch_size,
 					total_rows - rows_total,
 				)
-			labels = batch.labels.to(self._device, non_blocking=True)
 			if head_only:
-				with torch.no_grad():
-					encodings = model.encode(batch)
+				features, labels = batch
+				features = features.to(self._device, non_blocking=True)
+				labels = labels.to(self._device, non_blocking=True)
+				encodings = (features[:, 0], features[:, 1])
 			else:
+				labels = batch.labels.to(self._device, non_blocking=True)
 				encodings = model.encode(batch)
 			if self._config.ab_swap == "inf":
 				log_probabilities = ABSwapAverager.log_probabilities(
@@ -314,6 +308,31 @@ class LoRATrainer:
 					flush=True,
 				)
 		return loss_total / rows_total
+
+	def _create_warmup_loader(
+		self,
+		model: LoRAQwenClassifier,
+		reference: pd.DataFrame,
+		records: tuple[PairwiseText, ...],
+		*,
+		seed: int,
+	) -> DataLoader[list[torch.Tensor]]:
+		"""Extract once in small batches, then shuffle features for head training."""
+		extraction_loader = self._create_loader(
+			reference,
+			records,
+			training=False,
+			seed=seed,
+			batch_size=self._config.warmup_extraction_batch_size,
+		)
+		embeddings = WarmupEmbeddingExtractor().extract(model, extraction_loader)
+		return DataLoader(
+			embeddings,
+			batch_size=self._config.warmup_training_batch_size,
+			shuffle=True,
+			pin_memory=True,
+			generator=torch.Generator().manual_seed(seed),
+		)
 
 	@torch.no_grad()
 	def evaluate(
