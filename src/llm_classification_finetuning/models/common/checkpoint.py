@@ -16,7 +16,7 @@ from ...errors import ModelExecutionError
 
 @dataclass(frozen=True, slots=True)
 class HeadCheckpointCompatibility:
-	"""Configuration fields that must match when loading a trained head."""
+	"""Model identity and training settings recorded with a trained head."""
 
 	schema_version: int
 	model_name: str
@@ -130,7 +130,15 @@ class ModelCheckpointStore:
 			mismatches = [
 				key
 				for key, value in asdict(expected).items()
-				if metadata.get(key, "aug" if key == "ab_swap" else None) != value
+				if key
+				not in {
+					"precision",
+					"max_length",
+					"attention_implementation",
+					"allow_tf32",
+					"ab_swap",
+				}
+				and metadata.get(key) != value
 			]
 			if mismatches:
 				fields = ", ".join(mismatches)

@@ -15,10 +15,11 @@ current model and releases them on return.
 The frozen model shares content-addressed embeddings between training and test
 under `embedding_cache/` beside the processed Parquet. Each SQLite shard
 identifies the model and exact Hub revision (or local checkpoint/configuration
-content), backbone hidden size, precision, attention implementation, TF32,
-pooling, storage format, and extraction version. Individual entries identify
-the effective token IDs of one branch, after any requested truncation. Different
-compute identities coexist without overwriting one another.
+content), backbone hidden size, precision, pooling, storage format, and
+extraction version. Attention implementation and TF32 do not affect cache reuse.
+Individual entries identify the effective token IDs of one branch, after any
+requested truncation. Different compute identities coexist without overwriting
+one another.
 Pooled vectors are stored as FP16 CPU tensors, including when backbone compute
 precision is BF16 or FP32; the classifier consumes them as FP32.
 
@@ -31,10 +32,14 @@ inputs hit, the backbone weights are not loaded. Local checkpoint identities
 require reading the selected weight files to hash their content.
 
 Missing branches are right-padded and encoded independently; changing batch
-composition can change floating-point rounding. The precision, attention, and
-TF32 boundaries remain separate. Corrupt vectors are recomputed, SQLite writes
-are transactional, and corrupt shards are archived before rebuilding. Older
-dataset-wide `.pt`/`.json` embedding caches, including `baseline_*`, are left
+composition, attention implementation, or TF32 can change floating-point
+rounding. Precision remains part of the cache identity. Reads validate blob
+length and checksum without scanning vectors for NaN/Inf; newly extracted
+vectors are checked for finite values before caching. Entries with invalid
+lengths or checksums are recomputed, SQLite writes are transactional, and
+corrupt shards are archived before rebuilding. SQLite shards keyed by the
+former attention/TF32 identity are left untouched and are no longer reused.
+Older dataset-wide `.pt`/`.json` embedding caches, including `baseline_*`, are left
 untouched and are no longer read; their metadata cannot establish the new
 backbone/input identities. Embedding reuse does not imply saved-head
 compatibility; see the separate [checkpoint rules](models.md#checkpoint-compatibility).
@@ -58,6 +63,8 @@ always validates the full cached lengths against `max_length` and rejects empty
 or over-limit branches without truncation. Changing length limits therefore
 keeps full tokens reusable. Corrupt entries are recomputed; corrupt SQLite
 shards are archived and rebuilt. SQLite transactions publish complete entries.
+Reads validate byte length, token count, and checksum without scanning token
+IDs for negative values; newly encoded IDs are checked before caching.
 
 ## LoRA batch plans
 

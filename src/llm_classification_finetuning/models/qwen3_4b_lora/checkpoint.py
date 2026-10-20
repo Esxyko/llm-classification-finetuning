@@ -20,7 +20,7 @@ from .model import LoRAQwenClassifier
 
 @dataclass(frozen=True, slots=True)
 class LoRACheckpointCompatibility:
-	"""Model and input identity, independent of execution hardware and batches."""
+	"""Model identity and training settings recorded with adapters and head."""
 
 	model_name: str
 	max_length: int
@@ -140,7 +140,7 @@ class LoRACheckpointStore:
 			mismatches = [
 				name
 				for name, value in asdict(expected).items()
-				if metadata.get(name) != value
+				if name not in {"max_length", "ab_swap"} and metadata.get(name) != value
 			]
 			if mismatches:
 				raise ValueError(

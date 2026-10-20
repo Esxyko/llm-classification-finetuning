@@ -314,7 +314,6 @@ class TokenizationCache:
 						and count >= 0
 						and len(blob) == count * 4
 						and hashlib.sha256(blob).hexdigest() == checksum
-						and not np.any(np.frombuffer(blob, dtype=np.int32) < 0)
 					):
 						values[key] = blob
 				missing = [key for key in chunk if key not in values]

@@ -10,14 +10,14 @@ cross_validation:
 gpu:
   device: cuda:0
   submit_devices: [cuda:0, cuda:1]
-  precision: bf16
+  precision: fp16
   attention_implementation: sdpa
   allow_tf32: false
 
 qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
-  max_length: 16384
+  max_length: 12288
   extraction_batch_size: 1
   training_batch_size: 256
   hidden_size: 512

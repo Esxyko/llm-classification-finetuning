@@ -92,10 +92,10 @@ checks CUDA availability and BF16 support on each selected device. It runs even
 when every frozen embedding is cached, so submissions still require two GPUs.
 
 Changing device placement preserves checkpoint and cache compatibility.
-Changing precision, attention implementation, or TF32 selects a different frozen
-embedding cache and is rejected by a saved frozen-head checkpoint. LoRA
-checkpoints allow those compute changes; shared tokens remain reusable when the
-tokenizer and encoding options match. See
+Changing precision selects a different frozen embedding cache; attention
+implementation and TF32 changes preserve cache compatibility. Both frozen-head
+and LoRA checkpoints allow those compute changes; shared tokens remain reusable
+when the tokenizer and encoding options match. See
 [frozen checkpoint compatibility](models.md#checkpoint-compatibility),
 [LoRA checkpoints](lora.md#checkpoints), and [caching](caching.md) for the exact
 boundaries.

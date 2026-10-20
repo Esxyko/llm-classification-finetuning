@@ -258,12 +258,12 @@ Builds atomically save adapters, the classifier, and compatibility metadata in
 `adapter_TAG.pt`. Base weights and optimizer state are not stored. The checkpoint
 records the resolved Hub base revision so inference reloads matching weights
 and tokenizer files. Model name, classifier size and dropout, serialization,
-LoRA settings, `max_length`, and `A/B_swap` must match. Changing the A/B training
-mode requires rebuilding the checkpoint. CUDA index, GPU model, precision,
-attention implementation, TF32, batch sizes, and accumulation settings can
-change between build and inference. Hub revision pinning does not verify local
-directory contents; the checkpoint neither includes nor fingerprints local
-base weights.
+and LoRA settings must match. `max_length` and `A/B_swap` remain recorded in
+checkpoint metadata but are not checked when loading. CUDA index, GPU model,
+precision, attention implementation, TF32, batch sizes, and accumulation settings
+can also change between build and inference. Inputs must still fit the current
+`max_length`. Hub revision pinning does not verify local directory contents;
+the checkpoint neither includes nor fingerprints local base weights.
 There are no persistent LoRA embedding caches.
 
 See [caching and Python APIs](caching.md) for shared token encodings and batch-plan

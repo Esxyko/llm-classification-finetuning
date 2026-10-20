@@ -37,10 +37,11 @@
 - **LoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
   token count to raise the limit before rerunning. Inputs are never silently
   truncated; lowering batch sizes or the token budget preserves their content.
-- **A checkpoint is incompatible:** Use the same model/input settings as its
-  build or rebuild with the current config. Frozen heads also check precision,
-  attention implementation, and TF32; LoRA checkpoints allow those changes but
-  check classifier dropout, adapter settings, context, and `A/B_swap`.
+- **A checkpoint is incompatible:** Match the model, serialization, and
+  classifier architecture used for its build or rebuild with the current config.
+  LoRA checkpoints also check classifier dropout and adapter settings. Both
+  checkpoint types allow changes to precision, attention implementation, TF32,
+  `max_length`, and `A/B_swap`.
 - **Report rows or aggregation do not match:** Use the processed Parquet and
   fold count corresponding to that run, preserve both orientations in each CSV,
   and keep `metrics.json` beside the CSVs. See [report requirements](reports.md).

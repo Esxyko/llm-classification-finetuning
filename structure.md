@@ -194,8 +194,10 @@ modules. Do not make application logic depend on a particular timestamped run.
   token IDs after truncation, independent of labels, folds, IDs, reference order,
   source files, serializers, and configured length caps when effective IDs match.
   Namespaces retain the exact Hub model revision or local weight/configuration
-  content, backbone hidden size, precision, attention implementation, TF32,
-  pooling/storage format, and extraction version. Different identities coexist.
+  content, backbone hidden size, precision, pooling/storage format, and extraction
+  version. Attention implementation and TF32 are excluded. Different identities
+  coexist. Reads check blob length and checksum without scanning for NaN/Inf;
+  newly extracted vectors are checked for finite values before caching.
   Returned feature rows follow current canonical IDs and order. Duplicate inputs
   share entries; only missing/corrupt branches are encoded. Complete hits do not
   load backbone weights. Missing branches are independently right-padded, so
@@ -211,7 +213,9 @@ modules. Do not make application logic depend on a particular timestamped run.
   limits. Frozen extraction separately caches exact tokenizer truncations only
   for overflowing texts, then right-pads missing branches for feature extraction.
   Missing/corrupt entries are recomputed transactionally; corrupt shards are
-  archived before rebuilding. Refresh replaces only requested encodings.
+  archived before rebuilding. Reads check token count, byte length, and checksum
+  without scanning IDs for negative values; newly encoded IDs are checked before
+  caching. Refresh replaces only requested encodings.
 - Both active profiles serialize aligned prompt/response turns as
   `prompt\nresponse`, joined by blank lines. There is no active mono-input
   serialization or training path; archived implementations are outside the
@@ -286,13 +290,15 @@ modules. Do not make application logic depend on a particular timestamped run.
   cache compatibility, and complete frozen cache hits skip backbone loading.
 - LoRA checkpoint compatibility excludes hardware, compute precision, and batch
   settings; model name, classifier size/dropout, LoRA settings, input format,
-  context, and A/B training mode are checked. Hub base revisions are retained;
-  local base weights are neither stored nor content-fingerprinted.
-- Frozen head compatibility includes model name, context, serializer, compute
-  precision, attention implementation, TF32, classifier hidden size, and A/B
-  training mode, as well as schema/class count. It does not pin the backbone
-  revision or local weight contents; embedding cache identity is stricter in
-  those respects. Inference additionally checks backbone hidden size.
+  schema/class count, pooling, truncation side, and bias are checked. Context
+  and A/B training mode are recorded but not checked. Hub base revisions are
+  retained; local base weights are neither stored nor content-fingerprinted.
+- Frozen head compatibility includes model name, serializer, classifier hidden
+  size, and schema/class count. Context, compute precision, attention
+  implementation, TF32, and A/B training mode are recorded but not checked.
+  It does not pin the backbone revision or local weight contents; embedding
+  cache identity is stricter in those respects. Inference additionally checks
+  backbone hidden size.
 - Model sections are optional. `model ALL` runs only configured profiles in
   registry order and rejects configurations with no model sections.
 - Frozen full-data builds save only the classifier head; LoRA builds save

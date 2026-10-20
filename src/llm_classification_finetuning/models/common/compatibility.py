@@ -32,8 +32,6 @@ class ModelCompatibility:
 			local_weights_sha256=local_weights_sha256,
 			hidden_size=hidden_size,
 			precision=self.gpu.precision,
-			attention_implementation=self.gpu.attention_implementation,
-			allow_tf32=self.gpu.allow_tf32,
 		)
 
 	def checkpoint(self, serializer_version: str) -> HeadCheckpointCompatibility:

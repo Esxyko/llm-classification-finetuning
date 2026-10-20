@@ -100,10 +100,12 @@ the [command reference](commands.md). To run every configuration, see
 
 ## Checkpoint compatibility
 
-The frozen head requires matching model name, `max_length`, serialization
-format, `gpu.precision`, `gpu.attention_implementation`, `gpu.allow_tf32`,
-classifier `hidden_size`, `A/B_swap`, schema version, and class count. Inference
-also checks the backbone hidden size. Batch sizes and GPU indices can change.
+The frozen head requires matching model name, serialization format, classifier
+`hidden_size`, schema version, and class count. Inference also checks the
+backbone hidden size. `max_length`, `gpu.precision`,
+`gpu.attention_implementation`, `gpu.allow_tf32`, and `A/B_swap` remain recorded
+in checkpoint metadata but are not checked when loading. Batch sizes and GPU
+indices can also change.
 An incompatible configuration requires rebuilding the head with that config.
 
 The head checkpoint does not store a pinned backbone revision or local weight

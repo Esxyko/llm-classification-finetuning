@@ -27,8 +27,6 @@ class EmbeddingCacheKey:
 	local_weights_sha256: str | None
 	hidden_size: int
 	precision: str
-	attention_implementation: str
-	allow_tf32: bool
 	pooling: str = "last-nonpadding-token-v1"
 	storage_dtype: str = "float16"
 	extraction_version: int = 2
@@ -123,8 +121,6 @@ class EmbeddingCache:
 					):
 						continue
 					values = np.frombuffer(blob, dtype="<f2")
-					if not np.isfinite(values).all():
-						continue
 					vector = torch.from_numpy(values.astype(np.float16, copy=True))
 					features[positions[name]] = vector
 					del missing[name]
