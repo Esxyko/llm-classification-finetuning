@@ -287,32 +287,42 @@ For example, from the project root:
 uv run model qwen3-4b --config configs/experiment.yaml
 ```
 
-To cross-validate and build a separate checkpoint for every `.yaml` or `.yml` file in
-`configs/`, run:
+To cross-validate selected models for every `.yaml` or `.yml` file in `configs/`,
+run:
 
 ```shell
-uv run python scripts/build_all_config.py
+uv run python scripts/validate_all_configs.py
 ```
 
-The script runs cross-validation and then a full-data build for each config,
-using only its configured model sections. `config.yaml`, `config_aug.yaml`, and
-`config_inf.yaml` each contain both `qwen3_4b` and `qwen3_4b_lora`; `model ALL`
-runs them sequentially on the shared single GPU. The aug/inf configurations
-select the frozen model's A/B policy; LoRA uses `A/B_swap: aug` in both.
-The script does not create a separate `metrics.json`: each model's validation
-run publishes its own file. Its `config_total_time` covers only that model's
-cross-validation run under the selected config, excluding the later build
-command. The full-data build itself does not produce `metrics.json`.
-
-For each file in `configs/`, the script writes
-`models/qwen3_4b/head_CONFIG_STEM.pt` and
-`models/qwen3_4b_lora/adapter_CONFIG_STEM.pt`. It continues after a failed mode
-or config and exits with a nonzero status if any step fails. To use a tagged
-checkpoint for test inference, pass its config and matching checkpoint tag, for
-example:
+To train selected models on all folds and build a separate checkpoint for each
+config, run:
 
 ```shell
-uv run model qwen3-4b --test --config configs/config_inf.yaml --checkpoint-tag config_inf
+uv run python scripts/build_all_configs.py
+```
+
+Both scripts define `MODELS = ("qwen3-4b-lora",)` near the top. Edit each script's
+tuple independently to select models and their execution order; supported model
+selectors are `qwen3-4b` and `qwen3-4b-lora`. Config files run in filename order,
+with the selected models running sequentially for each config. The scripts are
+independent: the build script does not run or require cross-validation.
+
+Each model's validation run publishes its own `metrics.json`; `config_total_time`
+covers only that model's cross-validation run under the selected config.
+The full-data build does not produce `metrics.json`. By default, it writes
+`models/qwen3_4b_lora/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
+also writes `models/qwen3_4b/head_CONFIG_STEM.pt`. Before starting any builds,
+the script rejects config stems that are invalid checkpoint tags or duplicate
+another stem case-insensitively.
+
+Both scripts continue after a failed config/model task, including a missing
+model section in the YAML, and summarize successful and failed tasks. They exit
+with status `1` if any task fails, no YAML files are found, or `MODELS` is empty.
+To use a tagged checkpoint for test inference, pass its config and matching
+checkpoint tag, for example:
+
+```shell
+uv run model qwen3-4b-lora --test --config configs/config_aug.yaml --checkpoint-tag config_aug
 ```
 
 | Section | Controls |

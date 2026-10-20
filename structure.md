@@ -123,7 +123,8 @@ exports over importing private helpers across package boundaries.
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Human setup and usage guide |
-| `scripts/build_all_config.py` | Cross-validate and build `model ALL` for each YAML file in `configs/`, with separate tagged checkpoints |
+| `scripts/validate_all_configs.py` | Cross-validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
+| `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all folds for each YAML file in `configs/`, with separate tagged checkpoints |
 | `configs/` | Complete aug/inf YAML configurations, each including both models and one shared CUDA device |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
