@@ -154,7 +154,13 @@ modules. Do not make application logic depend on a particular timestamped run.
 - Qwen3-4B `A/B_swap: aug` trains on both orientations with per-row loss;
   `A/B_swap: inf` optimizes the averaged probability of both orientations for
   each original ID. Both modes average probabilities for validation and test.
-- LoRA supports `A/B_swap: aug`. Optional head-only warmup uses a no-gradient,
+- LoRA supports `A/B_swap: aug` with per-row cross-entropy on both orientations,
+  and `A/B_swap: inf` with negative log-likelihood of averaged, A/B-restored
+  probabilities once per original ID. Both warmup and joint training use the
+  selected objective and reuse each branch encoding for both head orientations.
+  Training batches, accumulation, scheduler steps, and build row counts use
+  the selected training rows (original IDs only for `inf`).
+  Optional head-only warmup uses a no-gradient,
   evaluation-mode backbone at a fixed head learning rate, followed by joint
   training with gradients through both branches and linear learning-rate decay.
   Warmup uses `warmup_training_batch_size`; joint training uses

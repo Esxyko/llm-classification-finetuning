@@ -36,6 +36,7 @@ class LoRATrainingHistory:
 	training_losses: tuple[float, ...]
 	epochs: tuple[EpochMetrics, ...]
 	validation_probabilities: np.ndarray | None
+	training_rows: int
 
 
 class LoRATrainer:
@@ -132,6 +133,8 @@ class LoRATrainer:
 		description: str = "Build",
 	) -> LoRATrainingHistory:
 		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
+		if self._config.ab_swap == "inf":
+			training = training.loc[~training["is_swapped"]]
 		if training.empty:
 			raise ModelExecutionError("LoRA training received no rows.")
 		loader = self._create_loader(
@@ -228,7 +231,12 @@ class LoRATrainer:
 			if validation is not None:
 				message += f" validation_loss={validation_loss:.6f}"
 			print(message, flush=True)
-		return LoRATrainingHistory(tuple(losses), tuple(metrics), probabilities)
+		return LoRATrainingHistory(
+			training_losses=tuple(losses),
+			epochs=tuple(metrics),
+			validation_probabilities=probabilities,
+			training_rows=len(training),
+		)
 
 	def _timestamp(self) -> float:
 		"""Wait for this device's GPU work before reading the monotonic clock."""
@@ -267,10 +275,16 @@ class LoRATrainer:
 			if head_only:
 				with torch.no_grad():
 					encodings = model.encode(batch)
-				logits = model.classifier(*encodings)
 			else:
-				logits = model(batch)
-			loss_sum = F.cross_entropy(logits, labels, reduction="sum")
+				encodings = model.encode(batch)
+			if self._config.ab_swap == "inf":
+				log_probabilities = ABSwapAverager.log_probabilities(
+					model.classifier, *encodings
+				)
+				loss_sum = F.nll_loss(log_probabilities, labels, reduction="sum")
+			else:
+				logits = model.classifier(*encodings)
+				loss_sum = F.cross_entropy(logits, labels, reduction="sum")
 			if not torch.isfinite(loss_sum):
 				raise ModelExecutionError("LoRA training produced a non-finite loss.")
 			scaler.scale(loss_sum / group_rows).backward()

@@ -307,7 +307,7 @@ def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
 		),
 		dataloader_workers=workers,
 		ab_swap=_require_choice(
-			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug"}
+			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
 		),
 	)
 

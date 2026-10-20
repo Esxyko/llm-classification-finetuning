@@ -166,8 +166,15 @@ uv run model qwen3-4b-lora --test
 
 The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
 prompt+B separately. LoRA adapters and the pairwise MLP are trained together;
-original backbone parameters remain frozen. `A/B_swap: aug` trains on both
-processed orientations. Validation loss, fold predictions, and test submissions
+original backbone parameters remain frozen. `A/B_swap: aug` (the default) trains
+on both processed orientations with per-row cross-entropy. Set
+`qwen3_4b_lora.A/B_swap` to `inf` to train once per original ID using the negative
+log-likelihood of the averaged original and A/B-restored swapped probabilities.
+Both head-only warmup and joint training use the selected objective. Each branch
+is encoded once per sample and reused for both head orientations; joint training
+retains gradients through both encodings. In `inf` mode, training batch sizes,
+accumulation counts, and build row counts refer to original samples.
+Validation loss, fold predictions, and test submissions
 average original and A/B-restored swapped probabilities. Each validation fold
 starts with fresh adapters and a fresh classifier. Cross-validation saves no
 model checkpoints.
@@ -331,7 +338,7 @@ uv run model qwen3-4b-lora --test --config configs/config_aug.yaml --checkpoint-
 | `cross_validation` | Fold count and random seed |
 | `gpu` | One CUDA `device`, precision, attention implementation, and TF32, shared by both models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap: aug` |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.

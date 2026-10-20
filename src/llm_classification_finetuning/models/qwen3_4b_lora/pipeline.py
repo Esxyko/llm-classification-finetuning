@@ -99,7 +99,7 @@ class LoRAModelPipeline:
 					)
 					return ModelBuildResult(
 						checkpoint_path=self._checkpoint_store.path,
-						training_rows=len(data.reference),
+						training_rows=history.training_rows,
 						epochs=len(history.training_losses),
 						final_training_loss=history.training_losses[-1],
 					)
