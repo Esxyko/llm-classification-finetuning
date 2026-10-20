@@ -98,7 +98,8 @@ and print summaries. Business logic belongs below the CLI layer.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
       adapters/heads per fold or all-data build with linear decay, mixed
       precision, row-normalized update groups, frozen-feature warmup validation,
-      and averaged live joint/test inference.
+      averaged live joint/test inference, and one weighted progress counter
+      shared across training/validation stages and folds.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
     - `pipeline.py`: Orchestrate cross-validation, builds, and dual-GPU submissions
@@ -134,7 +135,10 @@ and print summaries. Business logic belongs below the CLI layer.
     - `model.py`: Defines backbone pooling and the pairwise MLP head.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed fold rows.
-    - `trainer.py`: Trains fold-specific heads or one full-data head.
+    - `progress.py`: Counts weighted training update groups and validation batches,
+      flushing progress logs at ten-percent milestones using CPU-only counters.
+    - `trainer.py`: Trains fold-specific heads or one full-data head, sharing a
+      training/validation progress counter across all folds and epochs.
     - `checkpoint.py`: Saves and validates the production head and compatibility
       metadata.
     - `predictor.py`: Runs no-gradient inference from a saved head.
@@ -285,6 +289,14 @@ modules. Do not make application logic depend on a particular timestamped run.
   does not save checkpoints. Full-data builds have no validation set;
   cross-validation publishes the final epoch's predictions, with validation
   after every epoch (including LoRA head warmup).
+- Training progress uses one counter across all stages, folds, and epochs of a
+  model run, including validation batches after every epoch. Totals use
+  A/B-selected training rows and original validation IDs, rounding batches/groups
+  separately per fold. Training groups (including FP16-skipped updates) and
+  validation batches count as one unit, except LoRA warmup training/validation
+  count as half a unit each. Extraction, preparation, caches, and publication are
+  excluded. Dynamic micro-batches preserve update-group boundaries. See
+  [training progress](docs/models.md#training-progress).
 - Generated files and directories are staged before publication. Report
   publication restores the previous directory after a recoverable promotion
   failure and reports the backup path if restoration fails.

@@ -26,6 +26,7 @@ from ..common import (
 	PairwiseText,
 	PairwiseTokenStore,
 	TokenizationCache,
+	TrainingProgress,
 )
 from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
 from .data import (
@@ -49,6 +50,8 @@ class LoRATrainingHistory:
 
 class LoRATrainer:
 	"""Run adapter optimization on one configured CUDA device."""
+
+	WARMUP_PROGRESS_WEIGHT = 0.5
 
 	def __init__(
 		self,
@@ -102,6 +105,19 @@ class LoRATrainer:
 	) -> tuple[FoldTrainingResult, ...]:
 		"""Train a fresh model per fold and restore augmented prediction row order."""
 		data = batches.data
+		selected = data.reference
+		if self._config.ab_swap == "inf":
+			selected = selected.loc[~selected["is_swapped"]]
+		training_rows = tuple(
+			int(selected["fold"].ne(fold).sum()) for fold in range(batches.n_splits)
+		)
+		originals = data.reference.loc[~data.reference["is_swapped"]]
+		validation_rows = tuple(
+			int(originals["fold"].eq(fold).sum()) for fold in range(batches.n_splits)
+		)
+		progress = self._create_progress(
+			training_rows, mode="cross-validation", validation_rows=validation_rows
+		)
 		results: list[FoldTrainingResult] = []
 		for fold in range(batches.n_splits):
 			fold_started = self._timestamp()
@@ -123,6 +139,7 @@ class LoRATrainer:
 					seed=self._config.random_state + fold,
 					validation=originals,
 					description=f"Fold {fold}",
+					progress=progress,
 				)
 				if history.validation_probabilities is None:
 					raise ModelExecutionError(
@@ -159,6 +176,7 @@ class LoRATrainer:
 		seed: int,
 		validation: pd.DataFrame | None = None,
 		description: str = "Build",
+		progress: TrainingProgress | None = None,
 	) -> LoRATrainingHistory:
 		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
 		reference = training.reference
@@ -173,6 +191,13 @@ class LoRATrainer:
 		self._tokens = training.tokens
 		# Cached tokens have already been checked, including every validation branch.
 		self._tokens_for(records)
+		mode = "cross-validation" if validation is not None else "build"
+		if progress is None:
+			progress = self._create_progress(
+				(len(reference),),
+				mode=mode,
+				validation_rows=() if validation is None else (len(validation),),
+			)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
 		optimizer = AdamW(
@@ -205,6 +230,15 @@ class LoRATrainer:
 		for epoch in range(1, total_epochs + 1):
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
+			stage = "head warmup" if head_only else "joint training"
+			stage_epoch = epoch if head_only else epoch - self._config.warmup_epochs
+			stage_epochs = (
+				self._config.warmup_epochs if head_only else self._config.epochs
+			)
+			epoch_description = (
+				f"{description} epoch {stage_epoch}/{stage_epochs} "
+				f"(total {epoch}/{total_epochs})"
+			)
 			if epoch == self._config.warmup_epochs + 1:
 				# Drop both views of the shared CPU feature store before joint training.
 				loader = None
@@ -248,11 +282,18 @@ class LoRATrainer:
 				optimizer_group_rows=None
 				if head_only
 				else training.optimizer_group_rows,
+				progress=progress,
+				description=epoch_description,
 			)
 			training_finished = self._timestamp()
 			if validation is not None:
 				validation_loss, probabilities = self.evaluate(
-					model, validation, records, feature_loader=warmup_validation
+					model,
+					validation,
+					records,
+					feature_loader=warmup_validation,
+					progress=progress,
+					description=epoch_description,
 				)
 				validation_finished = self._timestamp()
 				metrics.append(
@@ -266,11 +307,6 @@ class LoRATrainer:
 					)
 				)
 			losses.append(loss)
-			stage = "head warmup" if head_only else "joint training"
-			stage_epoch = epoch if head_only else epoch - self._config.warmup_epochs
-			stage_epochs = (
-				self._config.warmup_epochs if head_only else self._config.epochs
-			)
 			message = (
 				f"{description} {stage} epoch {stage_epoch}/{stage_epochs} "
 				f"(total {epoch}/{total_epochs}): train_loss={loss:.6f}"
@@ -283,6 +319,44 @@ class LoRATrainer:
 			epochs=tuple(metrics),
 			validation_probabilities=probabilities,
 			training_rows=len(reference),
+		)
+
+	def _create_progress(
+		self,
+		training_rows: tuple[int, ...],
+		*,
+		mode: str,
+		validation_rows: tuple[int, ...] = (),
+	) -> TrainingProgress:
+		"""Combine training and validation work, weighting all warmup work by half."""
+		warmup_batch_size = (
+			self._config.warmup_training_batch_size
+			* self._config.gradient_accumulation_steps
+		)
+		joint_batch_size = (
+			self._config.training_batch_size * self._config.gradient_accumulation_steps
+		)
+		warmup_steps = sum(
+			(rows + warmup_batch_size - 1) // warmup_batch_size
+			for rows in training_rows
+		)
+		joint_steps = sum(
+			(rows + joint_batch_size - 1) // joint_batch_size for rows in training_rows
+		)
+		validation_batches = sum(
+			(rows + self._config.inference_batch_size - 1)
+			// self._config.inference_batch_size
+			for rows in validation_rows
+		)
+		return TrainingProgress(
+			model="qwen3_4b_lora",
+			mode=mode,
+			total_steps=(
+				self.WARMUP_PROGRESS_WEIGHT
+				* self._config.warmup_epochs
+				* (warmup_steps + validation_batches)
+				+ self._config.epochs * (joint_steps + validation_batches)
+			),
 		)
 
 	def _timestamp(self) -> float:
@@ -301,6 +375,8 @@ class LoRATrainer:
 		*,
 		head_only: bool = False,
 		optimizer_group_rows: tuple[int, ...] | None = None,
+		progress: TrainingProgress | None = None,
+		description: str = "Build",
 	) -> float:
 		"""Optimize one epoch, optionally retaining gradients only for the head."""
 		model.train()
@@ -325,7 +401,7 @@ class LoRATrainer:
 		planned_groups = (
 			None if optimizer_group_rows is None else iter(optimizer_group_rows)
 		)
-		for index, batch in enumerate(loader):
+		for batch in loader:
 			if group_processed == 0:
 				# A cached short group may occur anywhere after shuffling update groups.
 				if planned_groups is None:
@@ -378,14 +454,13 @@ class LoRATrainer:
 					scheduler.step()
 				optimizer.zero_grad(set_to_none=True)
 				group_processed = 0
-			if index == 0 or (index + 1) % 100 == 0:
-				stage = "head warmup" if head_only else "joint training"
-				print(
-					f"LoRA {stage} batch {index + 1:,} "
-					f"(rows {rows_total:,}/{total_rows:,}): "
-					f"train_loss={loss_total.item() / rows_total:.6f}",
-					flush=True,
-				)
+				if progress is not None:
+					# A consumed group advances progress even if FP16 skips its update.
+					progress.advance(
+						description,
+						stage="head warmup" if head_only else "joint training",
+						weight=self.WARMUP_PROGRESS_WEIGHT if head_only else 1.0,
+					)
 		if (
 			group_processed
 			or rows_total != total_rows
@@ -447,6 +522,8 @@ class LoRATrainer:
 		records: tuple[PairwiseText, ...],
 		*,
 		feature_loader: DataLoader[list[torch.Tensor]] | None = None,
+		progress: TrainingProgress | None = None,
+		description: str = "",
 	) -> tuple[float, np.ndarray]:
 		"""Evaluate live encodings or temporary frozen features in reference order."""
 		if reference.empty:
@@ -462,6 +539,14 @@ class LoRATrainer:
 		)
 		loss_total = torch.zeros((), device=self._device, dtype=torch.float64)
 		finite_probabilities = torch.ones((), device=self._device, dtype=torch.bool)
+		progress_stage = (
+			"head warmup validation"
+			if feature_loader is not None
+			else "joint validation"
+		)
+		progress_weight = (
+			self.WARMUP_PROGRESS_WEIGHT if feature_loader is not None else 1.0
+		)
 		start = 0
 		for batch in loader:
 			if feature_loader is not None:
@@ -480,11 +565,21 @@ class LoRATrainer:
 			stop = start + log_probabilities.shape[0]
 			probabilities[start:stop].copy_(log_probabilities.exp())
 			start = stop
+			if progress is not None and stop < len(reference):
+				progress.advance(
+					description,
+					stage=progress_stage,
+					weight=progress_weight,
+				)
 		if not bool(finite_probabilities):
 			raise ModelExecutionError(
 				"LoRA inference produced non-finite probabilities."
 			)
-		return loss_total.item() / len(reference), probabilities.cpu().numpy()
+		result = loss_total.item() / len(reference), probabilities.cpu().numpy()
+		if progress is not None and start == len(reference):
+			# Complete the last batch only after the existing result checks succeed.
+			progress.advance(description, stage=progress_stage, weight=progress_weight)
+		return result
 
 	def _tokens_for(self, records: tuple[PairwiseText, ...]) -> PairwiseTokenStore:
 		"""Reuse token storage across folds while keeping tokenizer revisions aligned."""

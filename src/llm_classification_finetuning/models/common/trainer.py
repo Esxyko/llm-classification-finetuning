@@ -20,6 +20,7 @@ from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
 from .model import PairwiseClassificationHead
 from .orientation import ABSwapAverager
+from .progress import TrainingProgress
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +135,19 @@ class ModelCrossValidator:
 		embeddings: CachedEmbeddings,
 	) -> tuple[FoldTrainingResult, ...]:
 		"""Train all folds in order and return final validation probabilities."""
+		selected = self._training_reference(reference)
+		originals = reference.loc[~reference["is_swapped"]]
+		batch_size = self._config.training_batch_size
+		progress = TrainingProgress(
+			model=self._config_key,
+			mode="cross-validation",
+			total_steps=self._config.epochs
+			* sum(
+				(int(selected["fold"].ne(fold).sum()) + batch_size - 1) // batch_size
+				+ (int(originals["fold"].eq(fold).sum()) + batch_size - 1) // batch_size
+				for fold in range(self._n_splits)
+			),
+		)
 		results: list[FoldTrainingResult] = []
 		for fold in range(self._n_splits):
 			training_reference = reference.loc[reference["fold"].ne(fold)]
@@ -148,6 +162,7 @@ class ModelCrossValidator:
 					training_reference,
 					validation_reference,
 					embeddings,
+					progress=progress,
 				)
 			)
 		return tuple(results)
@@ -172,10 +187,21 @@ class ModelCrossValidator:
 		head = self._create_head(embeddings.hidden_size)
 		optimizer = self._create_optimizer(head)
 		training_losses: list[float] = []
+		progress = TrainingProgress(
+			model=self._config_key,
+			mode="build",
+			total_steps=len(training_loader) * self._config.epochs,
+		)
 
 		try:
 			for epoch in range(1, self._config.epochs + 1):
-				training_loss = self._train_epoch(head, optimizer, training_loader)
+				training_loss = self._train_epoch(
+					head,
+					optimizer,
+					training_loader,
+					progress=progress,
+					description=f"Build epoch {epoch}/{self._config.epochs}",
+				)
 				training_losses.append(training_loss)
 				print(
 					f"Build epoch {epoch}/{self._config.epochs}: "
@@ -199,6 +225,8 @@ class ModelCrossValidator:
 		training_reference: pd.DataFrame,
 		validation_reference: pd.DataFrame,
 		embeddings: CachedEmbeddings,
+		*,
+		progress: TrainingProgress,
 	) -> FoldTrainingResult:
 		fold_started = self._timestamp()
 		seed = self._config.random_state + fold
@@ -231,9 +259,16 @@ class ModelCrossValidator:
 					head,
 					optimizer,
 					training_loader,
+					progress=progress,
+					description=f"Fold {fold} epoch {epoch}/{self._config.epochs}",
 				)
 				training_finished = self._timestamp()
-				validation_loss, probabilities = self._evaluate(head, validation_loader)
+				validation_loss, probabilities = self._evaluate(
+					head,
+					validation_loader,
+					progress=progress,
+					description=f"Fold {fold} epoch {epoch}/{self._config.epochs}",
+				)
 				validation_finished = self._timestamp()
 				final_probabilities = probabilities
 				metrics = EpochMetrics(
@@ -303,6 +338,9 @@ class ModelCrossValidator:
 		head: PairwiseClassificationHead,
 		optimizer: AdamW,
 		loader: DataLoader[tuple[Tensor, Tensor, Tensor]],
+		*,
+		progress: TrainingProgress,
+		description: str,
 	) -> float:
 		head.train()
 		loss_total = 0.0
@@ -333,6 +371,7 @@ class ModelCrossValidator:
 			rows = int(labels.shape[0])
 			loss_total += float(loss.detach()) * rows
 			rows_total += rows
+			progress.advance(description, stage="head training")
 		if rows_total == 0:
 			raise ModelExecutionError("Model training loader produced no rows.")
 		return loss_total / rows_total
@@ -362,6 +401,9 @@ class ModelCrossValidator:
 		self,
 		head: PairwiseClassificationHead,
 		loader: DataLoader[tuple[Tensor, Tensor, Tensor]],
+		*,
+		progress: TrainingProgress | None = None,
+		description: str = "",
 	) -> tuple[float, np.ndarray]:
 		head.eval()
 		loss_total = 0.0
@@ -387,6 +429,8 @@ class ModelCrossValidator:
 				loss_total += float(loss) * rows
 				rows_total += rows
 				probabilities.append(log_probabilities.exp().to(device="cpu").numpy())
+				if progress is not None:
+					progress.advance(description, stage="validation")
 		return loss_total / rows_total, np.concatenate(probabilities, axis=0)
 
 	@staticmethod

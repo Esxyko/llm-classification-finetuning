@@ -132,6 +132,40 @@ not run validation. Replace the removed `warmup_ratio` key with `warmup_epochs`,
 `warmup_extraction_batch_size`, `warmup_training_batch_size`, and
 `warmup_learning_rate`; old keys are rejected as unknown configuration options.
 
+## Training progress
+
+Head warmup, joint training, and the validation batches after every epoch share
+one progress counter across all epochs and folds. Progress is printed at
+approximately 10% intervals, with the current stage identified in each line.
+Each warmup training update group and warmup validation batch counts as **0.5**
+work units; each joint-training update group and joint validation batch counts as
+**1**. With `warmup_epochs: 0`, the total contains only joint training and its
+validation.
+
+For each fold, let `W` be
+`ceil(training_rows / (warmup_training_batch_size * gradient_accumulation_steps))`,
+`J` be `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`,
+and `V` be `ceil(validation_rows / inference_batch_size)` using original validation
+IDs. The fold contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
+units. Cross-validation sums the separately rounded fold counts; a build uses
+all selected training rows with `V = 0`. Training counts respect `A/B_swap`,
+including original IDs only for `inf`.
+
+Training advances the counter after a complete accumulation group, including
+short groups and groups whose FP16 parameter update is skipped. Evaluation
+advances it once per validation batch, using the corresponding stage's weight.
+Dynamic token batches retain the same group counts regardless of how many
+micro-batches each group contains.
+Percentage logs replace the previous first-batch/every-100-batches training logs;
+epoch loss summaries and warmup feature-extraction logs are retained. Feature
+extraction, cache work, and saving are excluded, as described in the
+[shared progress behavior](models.md#training-progress).
+
+Python callers of `LoRATrainer.fit()` may supply one `progress` object from
+`llm_classification_finetuning.models.common` to share the total across calls.
+If omitted, a counter is created for that fit's training rows, optional
+validation rows, and both stages' epochs.
+
 ## Optional token-budget training batches
 
 `training_token_budget` is an optional nonnegative integer, defaulting to `0`.

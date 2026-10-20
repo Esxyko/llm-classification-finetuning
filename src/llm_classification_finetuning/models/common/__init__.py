@@ -20,6 +20,7 @@ from .inputs import TestInputLoader, TrainingInputLoader
 from .model import PairwiseClassificationHead, PairwiseQwenClassifier
 from .orientation import ABSwapAverager
 from .pipeline import ModelPipeline
+from .progress import TrainingProgress
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
 from .token_cache import PairwiseTokenStore, TokenizationCache, TokenizedTexts
 from .trainer import EpochMetrics, FoldTrainingResult
@@ -50,4 +51,5 @@ __all__ = (
 	"TokenizationCache",
 	"TokenizedTexts",
 	"TrainingInputLoader",
+	"TrainingProgress",
 )

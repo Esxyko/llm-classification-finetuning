@@ -35,6 +35,38 @@ orientations for validation predictions and loss, and for test submissions.
 Changing modes requires rebuilding the saved head;
 [embedding caches](caching.md#frozen-embeddings) are shared.
 
+## Training progress
+
+Cross-validation and full-data builds print progress whenever processed work
+reaches or crosses the next 10% milestone. Each model uses one counter across all
+stages and epochs, including all folds in cross-validation. Each line identifies
+the model, mode, stage, fold or build, current epoch, actual percentage, and
+processed/total weighted work units. Output is flushed immediately:
+
+```text
+qwen3_4b build head training Build epoch 1/2: progress=10.0% work=110.0/1,100.0
+```
+
+For the frozen model, each training batch and each validation batch count as one
+work unit. A cross-validation fold contributes
+`epochs * (ceil(training_rows / training_batch_size) + ceil(validation_rows / training_batch_size))`;
+builds contribute only `epochs * ceil(training_rows / training_batch_size)`.
+Training rows follow `A/B_swap`: both orientations for `aug`, original IDs only
+for `inf`. Validation always uses original IDs, with both probability orientations
+averaged inside each batch. Rounding each fold separately accounts for uneven
+folds and short final batches. [LoRA progress](lora.md#training-progress) includes
+gradient accumulation and merges warmup at half weight into the same counter.
+
+Training update groups and the validation batches after every epoch advance the
+same counter. Feature extraction, token/batch-plan preparation, cache operations,
+and checkpoint saving are excluded. Thus 100% covers the final epoch's validation
+when present; saving and result publication may still follow. Existing epoch loss
+and extraction logs remain available. With few work units, one group or batch may
+cross several milestones; they produce one line with the actual percentage.
+Each model prints 100% once when its final work unit is processed, with no forced
+completion log on failure. The counters run on the CPU without adding GPU
+synchronization.
+
 ## Build and submit
 
 To train a production head and generate a submission:
