@@ -99,7 +99,8 @@ rates linearly decaying to zero. All these settings are configurable in
 
 `warmup_epochs` is a required nonnegative integer; `0` skips head warmup.
 `warmup_extraction_batch_size` is a required positive integer controlling the
-no-gradient backbone extraction batch size (root preset: `1`). Before the first
+no-gradient backbone extraction batch size for warmup, joint validation, and
+submissions (root preset: `1`). Before the first
 warmup epoch, each unique ID needed by training or validation is encoded once
 in its canonical orientation with the backbone in evaluation mode. Its paired
 FP32 features remain in CPU memory; training rows select the appropriate A/B
@@ -108,8 +109,9 @@ augmented feature copies. Warmup validation averages the two head orientations
 over these same frozen features. All warmup epochs reuse the features; both
 training and validation views are released when joint training starts, and
 features are never written to disk or reused between folds. The full 57,477-ID
-feature pool occupies about 1.10 GiB. With `warmup_epochs: 0`, feature extraction
-is skipped; the shared training token cache is still used.
+feature pool occupies about 1.10 GiB. With `warmup_epochs: 0`, warmup feature
+extraction is skipped; joint validation and submission still extract features,
+and the shared training token cache is still used.
 `warmup_training_batch_size` is a required positive integer controlling only the
 head-warmup micro-batch size over extracted features (root preset: `1`).
 Joint training uses `training_batch_size` and the
@@ -119,9 +121,9 @@ actual row count of each update group, including short final batches. The
 joint-training decay schedule uses only joint optimizer updates.
 `warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
-uses frozen features in `inference_batch_size` batches. Joint training restores
-live validation encodings and backbone training mode while retaining the head's
-AdamW state. The joint-training schedule starts at the adapter `learning_rate`
+reuses frozen features in `head_inference_batch_size` batches. Joint training
+restores backbone training mode while retaining the head's AdamW state.
+The joint-training schedule starts at the adapter `learning_rate`
 and classifier `head_learning_rate`, without a learning-rate ramp.
 Total training lasts `warmup_epochs + epochs` rounds (three in the root
 preset), and training histories and build summaries include both stages.
@@ -131,6 +133,28 @@ the final epoch's predictions. Full-data builds have no validation set and do
 not run validation. Replace the removed `warmup_ratio` key with `warmup_epochs`,
 `warmup_extraction_batch_size`, `warmup_training_batch_size`, and
 `warmup_learning_rate`; old keys are rejected as unknown configuration options.
+
+## Two-stage validation and submission
+
+`head_inference_batch_size` is a required positive integer controlling the
+classifier batch size for all validation and submission predictions. Rename the
+old `inference_batch_size` key while preserving its value; the old key is rejected.
+This setting does not control backbone extraction or checkpoint compatibility.
+
+After every joint-training epoch, validation first extracts each needed ID once
+in canonical A/B orientation using the current adapters. Submission extracts test
+features after restoring the checkpoint. Both use `warmup_extraction_batch_size`,
+evaluation mode, and no gradients, even with `warmup_epochs: 0`. Extraction
+finishes before head inference starts. Paired FP32 features stay in temporary CPU
+memory; the head selects reference-ordered feature views, averages original and
+A/B-restored swapped probabilities, and computes validation loss when labels
+exist. Submission inputs do not require labels.
+
+Warmup validation reuses its existing features. Each joint-validation call and
+submission extracts fresh features and releases them on return; features are
+never persisted or reused across joint epochs or folds. Joint-validation timing
+includes both extraction and head inference. Extraction logs identify warmup,
+joint validation, or submission separately.
 
 ## Training progress
 
@@ -145,7 +169,7 @@ validation.
 For each fold, let `W` be
 `ceil(training_rows / (warmup_training_batch_size * gradient_accumulation_steps))`,
 `J` be `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`,
-and `V` be `ceil(validation_rows / inference_batch_size)` using original validation
+and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
 IDs. The fold contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
 units. Cross-validation sums the separately rounded fold counts; a build uses
 all selected training rows with `V = 0`. Training counts respect `A/B_swap`,
@@ -153,11 +177,11 @@ including original IDs only for `inf`.
 
 Training advances the counter after a complete accumulation group, including
 short groups and groups whose FP16 parameter update is skipped. Evaluation
-advances it once per validation batch, using the corresponding stage's weight.
+advances it once per head-validation batch, using the corresponding stage's weight.
 Dynamic token batches retain the same group counts regardless of how many
 micro-batches each group contains.
 Percentage logs replace the previous first-batch/every-100-batches training logs;
-epoch loss summaries and warmup feature-extraction logs are retained. Feature
+epoch loss summaries and stage-specific feature-extraction logs are retained. Feature
 extraction, cache work, and saving are excluded, as described in the
 [shared progress behavior](models.md#training-progress).
 
@@ -218,7 +242,9 @@ run on the target 32 GB virtual GPU.
 
 For smaller GPUs, lower an enabled token budget or the relevant
 `warmup_extraction_batch_size`, `warmup_training_batch_size`,
-`training_batch_size`, or `inference_batch_size`. Increase
+`training_batch_size`, or `head_inference_batch_size`. The extraction setting
+controls backbone memory for warmup, joint validation, and submission; the head
+setting controls only classifier batches over CPU features. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
 desired effective batch. Keep `max_length` at least as large as the longest
 required input. Larger GPUs can use larger batches. Memory fit for the

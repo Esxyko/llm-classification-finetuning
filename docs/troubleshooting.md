@@ -25,8 +25,11 @@
   `qwen3_4b.training_batch_size`; the frozen profile uses it for head training,
   validation, and submission inference.
 - **LoRA runs out of memory:** Lower `qwen3_4b_lora.warmup_extraction_batch_size`,
-  `warmup_training_batch_size`, `training_batch_size`, or `inference_batch_size`
-  for the affected stage, or lower `training_token_budget` when enabled. Keep
+  `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
+  for the affected stage, or lower `training_token_budget` when enabled.
+  `warmup_extraction_batch_size` also controls validation/submission backbone
+  extraction; `head_inference_batch_size` controls only head inference over the
+  extracted CPU features. Keep
   `max_length` at least as large as the longest required branch. Enable
   `gradient_checkpointing` and use FP16/BF16 instead of FP32 where supported.
   Token budgets do not cap an over-budget singleton, and checkpointing applies

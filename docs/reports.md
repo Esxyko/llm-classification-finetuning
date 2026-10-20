@@ -78,7 +78,9 @@ Training and validation times measure each phase's elapsed wall time after
 waiting for GPU work to finish. Fold totals also include initialization,
 prediction alignment, and LoRA fold cleanup; epoch totals include epoch setup.
 LoRA's first warmup training time includes canonical feature extraction for
-both training and validation IDs. Full-data builds do not write `metrics.json`.
+both training and validation IDs. Each LoRA joint-validation time includes fresh
+backbone extraction followed by head inference; warmup validation reuses the
+existing features. Full-data builds do not write `metrics.json`.
 Top-level `training_time` and `validation_time` sum that model's corresponding
 phases across all folds. Top-level `total_time` measures the model's complete
 run, including pipeline initialization, input loading, embedding preparation,

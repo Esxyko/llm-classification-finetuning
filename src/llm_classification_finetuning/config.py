@@ -66,7 +66,7 @@ class LoRAModelConfig:
 	model_name: str
 	max_length: int
 	training_batch_size: int
-	inference_batch_size: int
+	head_inference_batch_size: int
 	gradient_accumulation_steps: int
 	gradient_checkpointing: bool
 	hidden_size: int
@@ -309,7 +309,7 @@ def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
 		),
 		max_length=positive_integer("max_length"),
 		training_batch_size=positive_integer("training_batch_size"),
-		inference_batch_size=positive_integer("inference_batch_size"),
+		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),
 		gradient_checkpointing=_require_boolean(
 			section.get("gradient_checkpointing"), field("gradient_checkpointing")

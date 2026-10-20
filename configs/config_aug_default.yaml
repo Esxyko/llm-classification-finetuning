@@ -34,7 +34,7 @@ qwen3_4b_lora:
   max_length: 16384
   training_token_budget: 16384
   training_batch_size: 1
-  inference_batch_size: 1
+  head_inference_batch_size: 256
   gradient_accumulation_steps: 32
   gradient_checkpointing: true
   epochs: 4

@@ -5,7 +5,10 @@
 Caches sit beside the processed Parquet selected by
 [`data.processed_path`](configuration.md#configuration-files-and-paths).
 Frozen embeddings, shared text encodings, and LoRA batch plans have separate
-compatibility rules. LoRA warmup features stay in CPU memory and are not persisted.
+compatibility rules. LoRA warmup, joint-validation, and submission features stay
+in temporary FP32 CPU memory and are not persisted. Warmup reuses its feature
+pool; each joint-validation or submission call extracts fresh features with the
+current model and releases them on return.
 
 ## Frozen embeddings
 

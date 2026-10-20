@@ -94,12 +94,13 @@ and print summaries. Business logic belongs below the CLI layer.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       pool their last real tokens, and classify with the shared pairwise MLP.
     - `extractor.py`: Extract one no-gradient canonical feature pair per needed
-      ID for each fold/build, retaining shared FP32 CPU features without
-      persistent caches.
+      ID for warmup, each joint-validation pass, or submission, retaining shared
+      temporary FP32 CPU features with stage-specific logs and no persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
       adapters/heads per fold or all-data build with linear decay, mixed
       precision, row-normalized update groups, frozen-feature warmup validation,
-      averaged live joint/test inference, and one weighted progress counter
+      fresh-feature extraction followed by averaged head inference for joint
+      validation/test, and one weighted progress counter
       shared across training/validation stages and folds.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
@@ -239,9 +240,17 @@ modules. Do not make application logic depend on a particular timestamped run.
   the offending ID and branch. Warmup extracts each training/validation ID once
   in canonical orientation using `warmup_extraction_batch_size`, then selects
   oriented feature views with `warmup_training_batch_size`. Warmup validation
-  reuses the frozen CPU features in `inference_batch_size` batches. Both feature
+  reuses the frozen CPU features in `head_inference_batch_size` batches. Both feature
   views are released at the start of joint training; `warmup_epochs: 0` skips
-  feature extraction. Joint validation and test inference use live encodings.
+  warmup feature extraction. Each joint-validation pass and test submission
+  extracts fresh canonical features from the current model in eval/no-gradient
+  mode using the same `warmup_extraction_batch_size`, then runs the head in
+  `head_inference_batch_size` batches. Temporary FP32 CPU inference features are
+  released on return, never persisted or reused across joint epochs/folds.
+  Joint-validation timing includes extraction, which is excluded from progress;
+  progress counts head batches with the original stage weights independently
+  of whether a feature loader was supplied. Zero warmup epochs still permit
+  validation/submission extraction.
   The default `training_token_budget: 0` retains fixed micro-batches and the
   original seeded shuffle, while reusing cached tokens. A positive budget
   compares three stable global A/B length sorts for each selected training set,

@@ -10,7 +10,7 @@ cross_validation:
 gpu:
   device: cuda:0
   submit_devices: [cuda:0, cuda:1]
-  precision: fp16
+  precision: bf16
   attention_implementation: sdpa
   allow_tf32: false
 
@@ -22,7 +22,7 @@ qwen3_4b:
   training_batch_size: 256
   hidden_size: 512
   dropout: 0.1
-  epochs: 2
+  epochs: 3
   learning_rate: 0.001
   weight_decay: 0.01
   random_state: 42
@@ -32,25 +32,25 @@ qwen3_4b_lora:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 16384
+  training_token_budget: 16384
   training_batch_size: 1
-  inference_batch_size: 1
-  gradient_accumulation_steps: 16
-  training_token_budget: 0
+  head_inference_batch_size: 256
+  gradient_accumulation_steps: 32
   gradient_checkpointing: true
-  hidden_size: 512
-  dropout: 0.1
-  epochs: 2
-  learning_rate: 0.0002
-  head_learning_rate: 0.001
-  weight_decay: 0.01
+  epochs: 4
   warmup_epochs: 1
   warmup_extraction_batch_size: 1
-  warmup_training_batch_size: 1
+  warmup_training_batch_size: 8
   warmup_learning_rate: 0.001
+  learning_rate: 0.0001
+  head_learning_rate: 0.0001
+  hidden_size: 512
+  weight_decay: 0.01
+  dropout: 0.1
   max_grad_norm: 1.0
-  lora_rank: 16
-  lora_alpha: 32
   lora_dropout: 0.05
+  lora_rank: 32
+  lora_alpha: 64
   lora_target_modules:
     - q_proj
     - k_proj

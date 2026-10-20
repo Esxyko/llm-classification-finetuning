@@ -150,7 +150,7 @@ class PairwiseFeatureDataset(Dataset[tuple[Tensor, int]]):
 
 
 class PairwiseFeatureStore:
-	"""Share one CPU feature pair per ID across warmup training and validation."""
+	"""Share one CPU feature pair per ID across oriented head-training/inference views."""
 
 	def __init__(self, row_ids: tuple[int, ...], features: Tensor) -> None:
 		self._positions = {row_id: index for index, row_id in enumerate(row_ids)}

@@ -1,4 +1,4 @@
-"""Train independent LoRA adapters and heads, and predict with live encodings."""
+"""Train independent LoRA adapters and heads, then infer over temporary features."""
 
 from __future__ import annotations
 
@@ -32,9 +32,10 @@ from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
 from .data import (
 	PairwiseBatch,
 	PairwiseCollator,
+	PairwiseFeatureStore,
 	PairwiseTokenDataset,
 )
-from .extractor import WarmupEmbeddingExtractor
+from .extractor import LoRAEmbeddingExtractor
 from .model import LoRAQwenClassifier
 
 
@@ -292,6 +293,7 @@ class LoRATrainer:
 					validation,
 					records,
 					feature_loader=warmup_validation,
+					head_only=head_only,
 					progress=progress,
 					description=epoch_description,
 				)
@@ -344,8 +346,8 @@ class LoRATrainer:
 			(rows + joint_batch_size - 1) // joint_batch_size for rows in training_rows
 		)
 		validation_batches = sum(
-			(rows + self._config.inference_batch_size - 1)
-			// self._config.inference_batch_size
+			(rows + self._config.head_inference_batch_size - 1)
+			// self._config.head_inference_batch_size
 			for rows in validation_rows
 		)
 		return TrainingProgress(
@@ -484,15 +486,12 @@ class LoRATrainer:
 		ids = reference["id"]
 		if validation is not None:
 			ids = pd.concat((ids, validation["id"]), ignore_index=True)
-		canonical = pd.DataFrame({"id": ids.drop_duplicates(), "is_swapped": False})
-		extraction_loader = self._create_loader(
-			canonical,
+		embeddings = self._extract_features(
+			model,
+			ids,
 			records,
 			seed=seed,
-			batch_size=self._config.warmup_extraction_batch_size,
-		)
-		embeddings = WarmupEmbeddingExtractor().extract(
-			model, extraction_loader, tuple(int(row_id) for row_id in canonical["id"])
+			stage="warmup",
 		)
 		training_loader = DataLoader(
 			embeddings.dataset(reference),
@@ -502,17 +501,47 @@ class LoRATrainer:
 			generator=torch.Generator().manual_seed(seed),
 		)
 		validation_loader = (
-			DataLoader(
-				embeddings.dataset(validation),
-				batch_size=self._config.inference_batch_size,
-				shuffle=False,
-				pin_memory=True,
-				generator=torch.Generator().manual_seed(self._config.random_state),
-			)
+			self._create_feature_loader(embeddings, validation)
 			if validation is not None
 			else None
 		)
 		return training_loader, validation_loader
+
+	def _extract_features(
+		self,
+		model: LoRAQwenClassifier,
+		row_ids: pd.Series,
+		records: tuple[PairwiseText, ...],
+		*,
+		seed: int,
+		stage: str,
+	) -> PairwiseFeatureStore:
+		"""Encode each requested ID once in canonical orientation with current weights."""
+		canonical = pd.DataFrame({"id": row_ids.drop_duplicates(), "is_swapped": False})
+		loader = self._create_loader(
+			canonical,
+			records,
+			seed=seed,
+			batch_size=self._config.warmup_extraction_batch_size,
+		)
+		return LoRAEmbeddingExtractor().extract(
+			model,
+			loader,
+			tuple(int(row_id) for row_id in canonical["id"]),
+			stage=stage,
+		)
+
+	def _create_feature_loader(
+		self, embeddings: PairwiseFeatureStore, reference: pd.DataFrame
+	) -> DataLoader[list[torch.Tensor]]:
+		"""Select reference-ordered feature views for head-only inference."""
+		return DataLoader(
+			embeddings.dataset(reference),
+			batch_size=self._config.head_inference_batch_size,
+			shuffle=False,
+			pin_memory=True,
+			generator=torch.Generator().manual_seed(self._config.random_state),
+		)
 
 	@torch.no_grad()
 	def evaluate(
@@ -522,42 +551,42 @@ class LoRATrainer:
 		records: tuple[PairwiseText, ...],
 		*,
 		feature_loader: DataLoader[list[torch.Tensor]] | None = None,
+		head_only: bool = False,
 		progress: TrainingProgress | None = None,
 		description: str = "",
 	) -> tuple[float, np.ndarray]:
-		"""Evaluate live encodings or temporary frozen features in reference order."""
+		"""Extract current features or reuse warmup views, then run head inference."""
 		if reference.empty:
 			raise ModelExecutionError("LoRA inference received no rows.")
 		model.eval()
-		loader = (
-			feature_loader
-			if feature_loader is not None
-			else self._create_loader(reference, records, seed=self._config.random_state)
+		progress_stage = (
+			"head warmup validation"
+			if head_only
+			else "joint validation"
+			if "label" in reference
+			else "submission"
 		)
+		if feature_loader is None:
+			embeddings = self._extract_features(
+				model,
+				reference["id"],
+				records,
+				seed=self._config.random_state,
+				stage=progress_stage,
+			)
+			feature_loader = self._create_feature_loader(embeddings, reference)
 		probabilities = torch.empty(
 			(len(reference), 3), device=self._device, dtype=torch.float32
 		)
 		loss_total = torch.zeros((), device=self._device, dtype=torch.float64)
 		finite_probabilities = torch.ones((), device=self._device, dtype=torch.bool)
-		progress_stage = (
-			"head warmup validation"
-			if feature_loader is not None
-			else "joint validation"
-		)
-		progress_weight = (
-			self.WARMUP_PROGRESS_WEIGHT if feature_loader is not None else 1.0
-		)
+		progress_weight = self.WARMUP_PROGRESS_WEIGHT if head_only else 1.0
 		start = 0
-		for batch in loader:
-			if feature_loader is not None:
-				features, labels = batch
-				features = features.to(self._device, non_blocking=True)
-				log_probabilities = ABSwapAverager.log_probabilities(
-					model.classifier, features[:, 0], features[:, 1]
-				)
-			else:
-				labels = batch.labels
-				log_probabilities = model.log_probabilities(batch)
+		for features, labels in feature_loader:
+			features = features.to(self._device, non_blocking=True)
+			log_probabilities = ABSwapAverager.log_probabilities(
+				model.classifier, features[:, 0], features[:, 1]
+			)
 			finite_probabilities.logical_and_(torch.isfinite(log_probabilities).all())
 			if "label" in reference:
 				labels = labels.to(self._device, non_blocking=True)
@@ -608,12 +637,10 @@ class LoRATrainer:
 		records: tuple[PairwiseText, ...],
 		*,
 		seed: int,
-		batch_size: int | None = None,
+		batch_size: int,
 	) -> DataLoader[PairwiseBatch]:
 		tokens = self._tokens_for(records)
 		dataset = PairwiseTokenDataset(reference, tokens)
-		if batch_size is None:
-			batch_size = self._config.inference_batch_size
 		workers = self._config.dataloader_workers
 		generator = torch.Generator().manual_seed(seed)
 		options = {

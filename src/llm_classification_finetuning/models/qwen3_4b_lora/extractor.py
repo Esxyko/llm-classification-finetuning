@@ -1,4 +1,4 @@
-"""Extract temporary frozen-backbone features for head-only warmup."""
+"""Extract temporary pooled features for head-only warmup and inference."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from .data import PairwiseBatch, PairwiseFeatureStore
 from .model import LoRAQwenClassifier
 
 
-class WarmupEmbeddingExtractor:
-	"""Keep paired warmup features in CPU memory until joint training starts."""
+class LoRAEmbeddingExtractor:
+	"""Keep paired features from the current backbone in temporary CPU memory."""
 
 	@torch.no_grad()
 	def extract(
@@ -19,6 +19,8 @@ class WarmupEmbeddingExtractor:
 		model: LoRAQwenClassifier,
 		loader: DataLoader[PairwiseBatch],
 		row_ids: tuple[int, ...],
+		*,
+		stage: str,
 	) -> PairwiseFeatureStore:
 		model.eval()
 		features = torch.empty(
@@ -32,12 +34,12 @@ class WarmupEmbeddingExtractor:
 			del pooled
 			if not torch.isfinite(features[start:stop]).all():
 				raise ModelExecutionError(
-					"LoRA warmup extraction produced non-finite features."
+					f"LoRA {stage} extraction produced non-finite features."
 				)
 			start = stop
 			if index == 0 or (index + 1) % 100 == 0:
 				print(
-					f"LoRA warmup extraction batch {index + 1:,}/{len(loader):,}.",
+					f"LoRA {stage} extraction batch {index + 1:,}/{len(loader):,}.",
 					flush=True,
 				)
 		return PairwiseFeatureStore(row_ids, features)

@@ -25,7 +25,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `cross_validation` | Fold count and random seed |
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by both models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `warmup_extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -48,6 +48,12 @@ All other fields in a present section are required, including `gpu.device`,
 `warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys are
 rejected. Numeric values described as presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
+
+For LoRA, `head_inference_batch_size` is a required positive integer replacing
+`inference_batch_size`; rename the old key while preserving its value. The old
+key is rejected. `warmup_extraction_batch_size` controls backbone extraction for
+warmup, every joint-validation pass, and submissions, including when warmup is
+disabled. Head inference uses its own batch size after extraction completes.
 
 ## GPU configuration
 
