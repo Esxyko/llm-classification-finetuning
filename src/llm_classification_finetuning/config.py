@@ -86,6 +86,7 @@ class LoRAModelConfig:
 	random_state: int
 	dataloader_workers: int
 	ab_swap: str
+	training_token_budget: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,6 +265,13 @@ def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
 	)
 	if workers < 0:
 		raise ConfigurationError(f"{field('dataloader_workers')} cannot be negative.")
+	token_budget = _require_integer(
+		section.get("training_token_budget", 0), field("training_token_budget")
+	)
+	if token_budget < 0:
+		raise ConfigurationError(
+			f"{field('training_token_budget')} cannot be negative."
+		)
 	targets = section.get("lora_target_modules")
 	if not isinstance(targets, list) or not targets:
 		raise ConfigurationError(
@@ -311,6 +319,7 @@ def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
 		ab_swap=_require_choice(
 			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
 		),
+		training_token_budget=token_budget,
 	)
 
 

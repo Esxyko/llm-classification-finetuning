@@ -186,10 +186,51 @@ settings. Set `gpu.device` to a single `cuda:N` identifier and choose
 GPU's capabilities. FP16 uses gradient scaling; adapters and classifier weights
 remain FP32 in all three modes. GPU model names and VRAM sizes are not restricted.
 
-The default configuration caps **each branch** at 16,384 tokens, dynamically pads
-A and B independently, processes branches sequentially, and enables non-reentrant
+The default configuration allows **each branch** up to 16,384 tokens, dynamically
+pads A and B independently, processes branches sequentially, and enables non-reentrant
 activation checkpointing with KV caching disabled. It uses micro-batches of one
 pair and 16 accumulation steps, giving an effective batch of 16 augmented rows.
+LoRA never truncates inputs: all canonical branches are tokenized and checked
+before training, and inference checks its inputs before encoding them. An input
+longer than `max_length` raises an error with its ID, branch, actual token count,
+and required minimum setting. Empty token sequences are also rejected.
+
+Tokenization runs once per unique ID's A/B branches, with temporary int32 CPU
+tokens reused across epochs and folds. Swapped rows select the opposite branch
+views. A cross-validation run pins the first fold's resolved base revision for
+subsequent folds and their tokenizer. Tokens are not written to disk. Pooling
+positions are computed on the CPU; branches without padding omit the attention
+mask. Encoding releases the full hidden-state tensor after pooling, while joint
+training still retains both branches' gradient graphs. Training loss statistics
+stay on the GPU until logging or epoch completion; non-finite losses are checked
+at each update boundary before the optimizer can modify weights.
+
+### Measured input lengths
+
+The local processed training data was inspected on 2026-10-20 using the actual
+`aligned-prompt-newline-response-v1` serialization and the `Qwen/Qwen3-4B`
+tokenizer at revision `1cfa9a7208912126459214e8b04321603b3df60c`, with no truncation
+and the tokenizer's default special-token behavior.
+
+| Training input statistic | Value |
+| --- | ---: |
+| Original source IDs | 57,477 IDs |
+| Median branch length | 283 tokens |
+| 99th-percentile branch length | 2,193 tokens |
+| Longest branch | **13,514 tokens** |
+
+The longest branch is A for ID `2995198009` (the corresponding B branch has
+4,225 tokens). The processed Parquet file's SHA-256 fingerprint is
+`0db037aac8f94bf68d3f6e02b2bf4214e6bf4817ed01d4c475af5c2f41fab4ff`.
+The 16,384-token default therefore preserves every training branch in this
+snapshot. New training or test data is checked independently; these measurements
+do not establish its maximum length. The 43,035,297 canonical tokens occupy about
+164 MiB of int32 payload, excluding offsets and other runtime objects. At batch
+size one, lowering the configured ceiling does not reduce work for inputs already
+below that ceiling.
+
+### Optimization and head warmup
+
 LoRA rank is 16, alpha is 32, and dropout is 0.05, targeting attention
 `q_proj`, `k_proj`, `v_proj`, `o_proj` and MLP `gate_proj`, `up_proj`, `down_proj`.
 The 512-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
@@ -202,22 +243,28 @@ rates linearly decaying to zero. All these settings are configurable in
 `warmup_epochs` is a required nonnegative integer; `0` skips head warmup.
 `warmup_extraction_batch_size` is a required positive integer controlling the
 no-gradient backbone extraction batch size (default: `1`). Before the first
-warmup epoch, paired features for the selected training rows are extracted once
-with the backbone in evaluation mode and retained as FP32 tensors in CPU memory.
-All warmup epochs reuse these features; they are released when joint training
-starts and are never written to disk. With `warmup_epochs: 0`, extraction is
-skipped.
+warmup epoch, each unique ID needed by training or validation is encoded once
+in its canonical orientation with the backbone in evaluation mode. Its paired
+FP32 features remain in CPU memory; training rows select the appropriate A/B
+orientation and retain their original labels and row order without storing
+augmented feature copies. Warmup validation averages the two head orientations
+over these same frozen features. All warmup epochs reuse the features; both
+training and validation views are released when joint training starts, and
+features are never written to disk or reused between folds. The full 57,477-ID
+feature pool occupies about 1.10 GiB. With `warmup_epochs: 0`, feature extraction
+is skipped; temporary token storage is still used.
 `warmup_training_batch_size` is a required positive integer controlling only the
 head-warmup micro-batch size over extracted features (default config: `1`).
-Joint training uses
-`training_batch_size`. Both stages use `gradient_accumulation_steps` and normalize
-loss by the actual row count of each accumulation group, including short final
-batches. The joint-training decay schedule uses only the joint-training batches.
+Joint training uses `training_batch_size` and the optional token budget described
+below. Both stages use `gradient_accumulation_steps` and normalize loss by the
+actual row count of each update group, including short final batches. The
+joint-training decay schedule uses only joint optimizer updates.
 `warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
-still uses live backbone encodings and `inference_batch_size`. Joint training
-restores backbone training mode and retains the head's AdamW state. The joint-training
-schedule starts at `learning_rate` / `head_learning_rate` without a learning-rate
+uses frozen features in `inference_batch_size` batches. Joint training restores
+live validation encodings and backbone training mode while retaining the head's
+AdamW state. The joint-training schedule starts at `learning_rate` /
+`head_learning_rate` without a learning-rate
 ramp. Total training lasts `warmup_epochs + epochs` rounds (three by default),
 and training histories and build summaries include both stages. Each validation
 fold and full-data build follows these stages; validation still runs after each
@@ -225,10 +272,43 @@ epoch. Replace the removed `warmup_ratio` key with `warmup_epochs`,
 `warmup_extraction_batch_size`, `warmup_training_batch_size`, and
 `warmup_learning_rate`; old keys are rejected as unknown configuration options.
 
-For smaller GPUs, lower `max_length` or the relevant `warmup_extraction_batch_size`,
-`warmup_training_batch_size`, `training_batch_size`, or `inference_batch_size`. Increase
+### Optional token-budget training batches
+
+`training_token_budget` is an optional nonnegative integer, defaulting to `0`.
+Zero preserves fixed micro-batches. A positive value enables dynamic micro-batches
+for joint training only; warmup and inference keep their configured batch sizes.
+For example, add this key to the existing `qwen3_4b_lora` section:
+
+```yaml
+training_token_budget: 4096
+```
+
+Each optimizer update still receives the next
+`training_batch_size * gradient_accumulation_steps` rows from the same seeded
+shuffle. Within that group, consecutive rows are combined while
+`rows * (longest_A + longest_B)` padded tokens fit the budget. Dynamic
+micro-batches can contain more than `training_batch_size` rows, up to the update
+group's size. A single over-budget pair is processed alone without truncation.
+Losses are divided by the actual update-group row count; gradient clipping and
+optimizer/scaler/scheduler handling occur once per group, including the short
+final group. The planned joint schedule has
+`ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`
+updates per epoch; FP16 overflow can still skip an update as before.
+
+This keeps update-group membership, effective batch size, and schedule length;
+floating-point accumulation order and dropout draws can differ. Both shipped
+active configs leave the budget at `0`. The example budget of `4096` is a starting
+point to try, not a measured recommendation for a particular GPU. Padded batches
+can change SDPA kernel selection, so dynamic batching is not guaranteed to be
+faster or use less peak memory. No throughput or peak-VRAM benchmark has been
+run on the target 32 GB virtual GPU.
+
+For smaller GPUs, lower an enabled token budget or the relevant
+`warmup_extraction_batch_size`, `warmup_training_batch_size`,
+`training_batch_size`, or `inference_batch_size`. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
-desired effective batch. Larger GPUs can use larger batches. Memory fit for the
+desired effective batch. Keep `max_length` at least as large as the longest
+required input. Larger GPUs can use larger batches. Memory fit for the
 16,384-token preset on a 32 GB GPU has not been measured; execution reports OOM
 without silently lowering context length.
 
@@ -346,7 +426,7 @@ uv run model qwen3-4b-lora --test --config configs/config_aug.yaml --checkpoint-
 | `cross_validation` | Fold count and random seed |
 | `gpu` | One CUDA `device`, precision, attention implementation, and TF32, shared by both models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -365,5 +445,9 @@ reports a configuration error; `ALL` requires at least one configured profile.
   `extraction_batch_size` or `max_length` in the selected model's section.
 - **LoRA runs out of memory:** Lower `qwen3_4b_lora.warmup_extraction_batch_size`,
   `warmup_training_batch_size`, `training_batch_size`, or `inference_batch_size`
-  for the affected stage; at batch size 1, lower `max_length`. Enable
+  for the affected stage, or lower `training_token_budget` when enabled. Keep
+  `max_length` at least as large as the longest required branch. Enable
   `gradient_checkpointing` and use FP16/BF16 instead of FP32 where supported.
+- **LoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
+  token count to raise the limit before rerunning. Inputs are never silently
+  truncated; lowering batch sizes or the token budget preserves their content.

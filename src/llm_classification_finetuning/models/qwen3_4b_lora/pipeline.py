@@ -115,9 +115,11 @@ class LoRAModelPipeline:
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				"CUDA ran out of memory during LoRA execution. Lower "
-				"qwen3_4b_lora.warmup_extraction_batch_size, warmup_training_batch_size, "
-				"training_batch_size, or inference_batch_size; if already 1, "
-				"lower qwen3_4b_lora.max_length. Enable gradient_checkpointing for training, "
+				"qwen3_4b_lora.training_token_budget when enabled, or lower "
+				"warmup_extraction_batch_size, warmup_training_batch_size, "
+				"training_batch_size, or inference_batch_size. Keep max_length at least "
+				"as large as the longest required input; LoRA inputs are never truncated. "
+				"Enable gradient_checkpointing for training, "
 				"or use fp16/bf16 instead of fp32. Increase gradient_accumulation_steps "
 				"to preserve the effective training batch when lowering the micro-batch."
 			) from error

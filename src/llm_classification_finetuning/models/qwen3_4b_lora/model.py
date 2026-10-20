@@ -60,8 +60,13 @@ class LoRAQwenClassifier(nn.Module):
 		"""Pool the last real token of each branch, retaining both gradient graphs."""
 		pooled: list[Tensor] = []
 		for branch in (batch.branch_a, batch.branch_b):
-			input_ids = branch["input_ids"].to(self.device, non_blocking=True)
-			mask = branch["attention_mask"].to(self.device, non_blocking=True)
+			input_ids = branch.input_ids.to(self.device, non_blocking=True)
+			mask = (
+				branch.attention_mask.to(self.device, non_blocking=True)
+				if branch.attention_mask is not None
+				else None
+			)
+			last_positions = branch.last_positions.to(self.device, non_blocking=True)
 			with torch.autocast(
 				device_type="cuda",
 				dtype=self.dtype,
@@ -73,16 +78,9 @@ class LoRAQwenClassifier(nn.Module):
 					use_cache=False,
 					return_dict=True,
 				).last_hidden_state
-				positions = torch.arange(mask.shape[1], device=self.device)
-				last_positions = (
-					positions.expand_as(mask).masked_fill(mask.eq(0), -1).amax(-1)
-				)
-				if last_positions.lt(0).any():
-					raise ValueError(
-						"Every response branch must contain at least one token."
-					)
 				rows = torch.arange(hidden.shape[0], device=self.device)
 				pooled.append(hidden[rows, last_positions].float())
+				del hidden
 		return pooled[0], pooled[1]
 
 	def forward(self, batch: PairwiseBatch) -> Tensor:

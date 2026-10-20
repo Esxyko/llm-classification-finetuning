@@ -34,6 +34,7 @@ qwen3_4b_lora:
   training_batch_size: 1
   inference_batch_size: 1
   gradient_accumulation_steps: 32
+  training_token_budget: 0
   gradient_checkpointing: true
   hidden_size: 512
   dropout: 0.1

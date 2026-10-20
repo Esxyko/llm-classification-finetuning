@@ -25,7 +25,13 @@ from ..common import (
 	ModelData,
 	PairwiseText,
 )
-from .data import PairwiseBatch, PairwiseCollator, PairwiseTextDataset
+from .data import (
+	OptimizerGroupBatchSampler,
+	PairwiseBatch,
+	PairwiseCollator,
+	PairwiseTokenDataset,
+	PairwiseTokenStore,
+)
 from .extractor import WarmupEmbeddingExtractor
 from .model import LoRAQwenClassifier
 
@@ -49,7 +55,9 @@ class LoRATrainer:
 		self._config = config
 		self._gpu = gpu
 		self._device = device
-		self._collator: PairwiseCollator | None = None
+		self._tokens: PairwiseTokenStore | None = None
+		self._base_revision: str | None = None
+		self._model_initialized = False
 
 	def create_model(
 		self, *, seed: int, revision: str | None = None
@@ -57,11 +65,13 @@ class LoRATrainer:
 		"""Initialize fresh adapter/head parameters and a matching tokenizer."""
 		set_seed(seed)
 		model = LoRAQwenClassifier(
-			self._config, self._gpu, self._device, revision=revision
+			self._config,
+			self._gpu,
+			self._device,
+			revision=revision if revision is not None else self._base_revision,
 		)
-		self._collator = PairwiseCollator(
-			self._config.model_name, self._config.max_length, model.base_revision
-		)
+		self._base_revision = model.base_revision
+		self._model_initialized = True
 		trainable = sum(
 			parameter.numel()
 			for parameter in model.parameters()
@@ -138,7 +148,12 @@ class LoRATrainer:
 			training = training.loc[~training["is_swapped"]]
 		if training.empty:
 			raise ModelExecutionError("LoRA training received no rows.")
+		if validation is not None and validation.empty:
+			raise ModelExecutionError("LoRA inference received no rows.")
+		# Validate every canonical branch before any optimizer update, including validation.
+		self._tokens_for(records)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
+		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
 		optimizer = AdamW(
 			[
 				{
@@ -170,6 +185,9 @@ class LoRATrainer:
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
 			if epoch == self._config.warmup_epochs + 1:
+				# Drop both views of the shared CPU feature store before joint training.
+				loader = None
+				warmup_validation = None
 				loader = self._create_loader(
 					training, records, training=True, seed=seed
 				)
@@ -180,7 +198,13 @@ class LoRATrainer:
 				):
 					group["lr"] = learning_rate
 				steps = (
-					math.ceil(len(loader) / self._config.gradient_accumulation_steps)
+					math.ceil(
+						len(training)
+						/ (
+							self._config.training_batch_size
+							* self._config.gradient_accumulation_steps
+						)
+					)
 					* self._config.epochs
 				)
 				scheduler = get_linear_schedule_with_warmup(
@@ -190,14 +214,16 @@ class LoRATrainer:
 				)
 			training_started = self._timestamp()
 			if loader is None:
-				loader = self._create_warmup_loader(model, training, records, seed=seed)
+				loader, warmup_validation = self._create_warmup_loaders(
+					model, training, records, validation=validation, seed=seed
+				)
 			loss = self._train_epoch(
 				model, loader, optimizer, scheduler, scaler, head_only=head_only
 			)
 			training_finished = self._timestamp()
 			if validation is not None:
 				validation_loss, probabilities = self.evaluate(
-					model, validation, records
+					model, validation, records, feature_loader=warmup_validation
 				)
 				validation_finished = self._timestamp()
 				metrics.append(
@@ -251,18 +277,25 @@ class LoRATrainer:
 		if head_only:
 			model.backbone.eval()
 		optimizer.zero_grad(set_to_none=True)
-		accumulation = self._config.gradient_accumulation_steps
+		batch_size = (
+			self._config.warmup_training_batch_size
+			if head_only
+			else self._config.training_batch_size
+		)
+		effective_batch_size = batch_size * self._config.gradient_accumulation_steps
 		total_rows = len(loader.dataset)
-		loss_total = 0.0
+		loss_total = torch.zeros((), device=self._device, dtype=torch.float64)
+		finite_losses = torch.ones((), device=self._device, dtype=torch.bool)
+		trainable_parameters = [
+			parameter for parameter in model.parameters() if parameter.requires_grad
+		]
 		rows_total = 0
 		group_rows = 0
+		group_processed = 0
 		for index, batch in enumerate(loader):
-			if index % accumulation == 0:
+			if group_processed == 0:
 				# Use actual row counts, including a short final micro-batch or group.
-				group_rows = min(
-					accumulation * loader.batch_size,
-					total_rows - rows_total,
-				)
+				group_rows = min(effective_batch_size, total_rows - rows_total)
 			if head_only:
 				features, labels = batch
 				features = features.to(self._device, non_blocking=True)
@@ -279,19 +312,23 @@ class LoRATrainer:
 			else:
 				logits = model.classifier(*encodings)
 				loss_sum = F.cross_entropy(logits, labels, reduction="sum")
-			if not torch.isfinite(loss_sum):
-				raise ModelExecutionError("LoRA training produced a non-finite loss.")
+			finite_losses.logical_and_(torch.isfinite(loss_sum.detach()))
 			scaler.scale(loss_sum / group_rows).backward()
-			loss_total += float(loss_sum.detach())
+			loss_total.add_(loss_sum.detach())
 			rows_total += int(labels.shape[0])
-			if (index + 1) % accumulation == 0 or index + 1 == len(loader):
+			group_processed += int(labels.shape[0])
+			if group_processed > group_rows:
+				raise RuntimeError(
+					"A LoRA micro-batch crossed an optimizer update boundary."
+				)
+			if group_processed == group_rows:
+				if not bool(finite_losses):
+					raise ModelExecutionError(
+						"LoRA training produced a non-finite loss."
+					)
 				scaler.unscale_(optimizer)
 				torch.nn.utils.clip_grad_norm_(
-					[
-						parameter
-						for parameter in model.parameters()
-						if parameter.requires_grad
-					],
+					trainable_parameters,
 					self._config.max_grad_norm,
 				)
 				old_scale = scaler.get_scale()
@@ -300,39 +337,60 @@ class LoRATrainer:
 				if scheduler is not None and scaler.get_scale() >= old_scale:
 					scheduler.step()
 				optimizer.zero_grad(set_to_none=True)
+				group_processed = 0
 			if index == 0 or (index + 1) % 100 == 0:
 				stage = "head warmup" if head_only else "joint training"
 				print(
-					f"LoRA {stage} batch {index + 1:,}/{len(loader):,}: "
-					f"train_loss={loss_total / rows_total:.6f}",
+					f"LoRA {stage} batch {index + 1:,} "
+					f"(rows {rows_total:,}/{total_rows:,}): "
+					f"train_loss={loss_total.item() / rows_total:.6f}",
 					flush=True,
 				)
-		return loss_total / rows_total
+		return loss_total.item() / rows_total
 
-	def _create_warmup_loader(
+	def _create_warmup_loaders(
 		self,
 		model: LoRAQwenClassifier,
 		reference: pd.DataFrame,
 		records: tuple[PairwiseText, ...],
 		*,
+		validation: pd.DataFrame | None,
 		seed: int,
-	) -> DataLoader[list[torch.Tensor]]:
-		"""Extract once in small batches, then shuffle features for head training."""
+	) -> tuple[DataLoader[list[torch.Tensor]], DataLoader[list[torch.Tensor]] | None]:
+		"""Extract each needed ID once, then share oriented features for head warmup."""
+		ids = reference["id"]
+		if validation is not None:
+			ids = pd.concat((ids, validation["id"]), ignore_index=True)
+		canonical = pd.DataFrame({"id": ids.drop_duplicates(), "is_swapped": False})
 		extraction_loader = self._create_loader(
-			reference,
+			canonical,
 			records,
 			training=False,
 			seed=seed,
 			batch_size=self._config.warmup_extraction_batch_size,
 		)
-		embeddings = WarmupEmbeddingExtractor().extract(model, extraction_loader)
-		return DataLoader(
-			embeddings,
+		embeddings = WarmupEmbeddingExtractor().extract(
+			model, extraction_loader, tuple(int(row_id) for row_id in canonical["id"])
+		)
+		training_loader = DataLoader(
+			embeddings.dataset(reference),
 			batch_size=self._config.warmup_training_batch_size,
 			shuffle=True,
 			pin_memory=True,
 			generator=torch.Generator().manual_seed(seed),
 		)
+		validation_loader = (
+			DataLoader(
+				embeddings.dataset(validation),
+				batch_size=self._config.inference_batch_size,
+				shuffle=False,
+				pin_memory=True,
+				generator=torch.Generator().manual_seed(self._config.random_state),
+			)
+			if validation is not None
+			else None
+		)
+		return training_loader, validation_loader
 
 	@torch.no_grad()
 	def evaluate(
@@ -340,29 +398,63 @@ class LoRATrainer:
 		model: LoRAQwenClassifier,
 		reference: pd.DataFrame,
 		records: tuple[PairwiseText, ...],
+		*,
+		feature_loader: DataLoader[list[torch.Tensor]] | None = None,
 	) -> tuple[float, np.ndarray]:
-		"""Return averaged probabilities in reference order and optional label loss."""
+		"""Evaluate live encodings or temporary frozen features in reference order."""
 		if reference.empty:
 			raise ModelExecutionError("LoRA inference received no rows.")
 		model.eval()
-		loader = self._create_loader(
-			reference, records, training=False, seed=self._config.random_state
+		loader = (
+			feature_loader
+			if feature_loader is not None
+			else self._create_loader(
+				reference, records, training=False, seed=self._config.random_state
+			)
 		)
-		probabilities: list[np.ndarray] = []
-		loss_total = 0.0
+		probabilities = torch.empty(
+			(len(reference), 3), device=self._device, dtype=torch.float32
+		)
+		loss_total = torch.zeros((), device=self._device, dtype=torch.float64)
+		finite_probabilities = torch.ones((), device=self._device, dtype=torch.bool)
+		start = 0
 		for batch in loader:
-			log_probabilities = model.log_probabilities(batch)
-			if not torch.isfinite(log_probabilities).all():
-				raise ModelExecutionError(
-					"LoRA inference produced non-finite probabilities."
+			if feature_loader is not None:
+				features, labels = batch
+				features = features.to(self._device, non_blocking=True)
+				log_probabilities = ABSwapAverager.log_probabilities(
+					model.classifier, features[:, 0], features[:, 1]
 				)
+			else:
+				labels = batch.labels
+				log_probabilities = model.log_probabilities(batch)
+			finite_probabilities.logical_and_(torch.isfinite(log_probabilities).all())
 			if "label" in reference:
-				labels = batch.labels.to(self._device, non_blocking=True)
-				loss_total += float(
-					F.nll_loss(log_probabilities, labels, reduction="sum")
-				)
-			probabilities.append(log_probabilities.exp().cpu().numpy())
-		return loss_total / len(reference), np.concatenate(probabilities, axis=0)
+				labels = labels.to(self._device, non_blocking=True)
+				loss_total.add_(F.nll_loss(log_probabilities, labels, reduction="sum"))
+			stop = start + log_probabilities.shape[0]
+			probabilities[start:stop].copy_(log_probabilities.exp())
+			start = stop
+		if not bool(finite_probabilities):
+			raise ModelExecutionError(
+				"LoRA inference produced non-finite probabilities."
+			)
+		return loss_total.item() / len(reference), probabilities.cpu().numpy()
+
+	def _tokens_for(self, records: tuple[PairwiseText, ...]) -> PairwiseTokenStore:
+		"""Reuse token storage across folds while keeping tokenizer revisions aligned."""
+		if not self._model_initialized:
+			raise RuntimeError("Initialize a LoRA model before creating its loaders.")
+		if self._tokens is None or not self._tokens.matches(
+			records, self._base_revision
+		):
+			self._tokens = PairwiseTokenStore(
+				records,
+				self._config.model_name,
+				self._config.max_length,
+				self._base_revision,
+			)
+		return self._tokens
 
 	def _create_loader(
 		self,
@@ -373,8 +465,8 @@ class LoRATrainer:
 		seed: int,
 		batch_size: int | None = None,
 	) -> DataLoader[PairwiseBatch]:
-		if self._collator is None:
-			raise RuntimeError("Initialize a LoRA model before creating its loaders.")
+		tokens = self._tokens_for(records)
+		dataset = PairwiseTokenDataset(reference, tokens)
 		if batch_size is None:
 			batch_size = (
 				self._config.training_batch_size
@@ -382,13 +474,29 @@ class LoRATrainer:
 				else self._config.inference_batch_size
 			)
 		workers = self._config.dataloader_workers
+		generator = torch.Generator().manual_seed(seed)
+		options = {
+			"collate_fn": PairwiseCollator(tokens.pad_token_id),
+			"num_workers": workers,
+			"pin_memory": True,
+			"persistent_workers": workers > 0,
+			"generator": generator,
+		}
+		if training and self._config.training_token_budget > 0:
+			return DataLoader(
+				dataset,
+				batch_sampler=OptimizerGroupBatchSampler(
+					dataset,
+					batch_size,
+					self._config.gradient_accumulation_steps,
+					self._config.training_token_budget,
+					generator,
+				),
+				**options,
+			)
 		return DataLoader(
-			PairwiseTextDataset(reference, records),
+			dataset,
 			batch_size=batch_size,
 			shuffle=training,
-			collate_fn=self._collator,
-			num_workers=workers,
-			pin_memory=True,
-			persistent_workers=workers > 0,
-			generator=torch.Generator().manual_seed(seed),
+			**options,
 		)

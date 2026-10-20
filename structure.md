@@ -67,14 +67,18 @@ and print summaries. Business logic belongs below the CLI layer.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: Single-CUDA-GPU adapter model and profile.
-    - `data.py`: Orient canonical A/B texts and independently tokenize/pad branches.
+    - `data.py`: Store canonical tokens once per run, orient token/feature views,
+      independently pad branches with CPU pooling positions, and split shuffled
+      optimizer groups into fixed or optional token-budget micro-batches.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       pool their last real tokens, and classify with the shared pairwise MLP.
-    - `extractor.py`: Extract no-gradient paired warmup features once per fold or
-      build, retaining FP32 tensors in CPU memory without persistent caches.
+    - `extractor.py`: Extract one no-gradient canonical feature pair per needed
+      ID for each fold/build, retaining shared FP32 CPU features without
+      persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
       adapters/heads per fold or all-data build with linear decay, mixed
-      precision, accumulation, and averaged live inference.
+      precision, row-normalized update groups, frozen-feature warmup validation,
+      and averaged live joint/test inference.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
     - `pipeline.py`: Orchestrate cross-validation, builds, and test submissions
@@ -165,12 +169,22 @@ modules. Do not make application logic depend on a particular timestamped run.
   Optional head-only warmup uses a no-gradient,
   evaluation-mode backbone at a fixed head learning rate, followed by joint
   training with gradients through both branches and linear learning-rate decay.
-  Warmup extracts selected training rows once in evaluation mode using
-  `warmup_extraction_batch_size`, then reuses the temporary CPU features with
-  `warmup_training_batch_size`. Features are released at the start of joint
-  training; `warmup_epochs: 0` skips extraction. Validation continues to use
-  live encodings with `inference_batch_size`. Joint training uses
-  `training_batch_size`, which also determines the joint schedule's step count.
+  Canonical A/B token IDs are stored once in temporary int32 CPU memory and
+  reused across epochs/folds with a pinned base/tokenizer revision. No LoRA input
+  is truncated: empty or over-limit branches fail before training/encoding with
+  the offending ID and branch. Warmup extracts each training/validation ID once
+  in canonical orientation using `warmup_extraction_batch_size`, then selects
+  oriented feature views with `warmup_training_batch_size`. Warmup validation
+  reuses the frozen CPU features in `inference_batch_size` batches. Both feature
+  views are released at the start of joint training; `warmup_epochs: 0` skips
+  feature extraction. Joint validation and test inference use live encodings.
+  Joint training groups the seeded shuffle into
+  `training_batch_size * gradient_accumulation_steps` rows per update. The default
+  `training_token_budget: 0` uses fixed micro-batches; a positive budget packs
+  consecutive rows within each update group by independently padded A/B token
+  cost. Over-budget singletons retain all tokens. Update-group row counts,
+  clipping/update boundaries, and the joint scheduler's step count are preserved,
+  including incomplete final groups; floating-point order/dropout draws may vary.
   Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize accumulation by actual row counts, including
   incomplete groups. Validation and test average both orientations' probabilities.
