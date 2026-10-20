@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+from transformers import AutoConfig
 
 from ...config import AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
@@ -18,8 +19,8 @@ from ..common import (
 	ModelResultPublisher,
 	ModelRunResult,
 	ModelSubmissionPublisher,
+	ModelSubmitResult,
 	ModelTestDataRepository,
-	ModelTestResult,
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository
@@ -28,7 +29,7 @@ from .trainer import LoRATrainer
 
 
 class LoRAModelPipeline:
-	"""Run the selected adapter workflow on any single configured CUDA device."""
+	"""Run single-GPU training or dual-GPU submission with portable adapters."""
 
 	def __init__(
 		self,
@@ -59,7 +60,7 @@ class LoRAModelPipeline:
 			project_root / "results", profile.result_prefix
 		)
 		self._submission_publisher = ModelSubmissionPublisher(
-			project_root / "results" / "test", profile.result_prefix
+			project_root / "results" / "submit", profile.result_prefix
 		)
 
 	def run(
@@ -70,7 +71,11 @@ class LoRAModelPipeline:
 	) -> ModelExecutionResult:
 		"""Use cached training tokens/plans while retaining live backbone encodings."""
 		try:
-			device = GPUEnvironment(self._config.gpu).configure()
+			environment = GPUEnvironment(self._config.gpu)
+			submit_devices = (
+				environment.configure_submit() if mode is ModelMode.SUBMIT else None
+			)
+			device = submit_devices[0] if submit_devices else environment.configure()
 			trainer = LoRATrainer(
 				self._model_config,
 				self._config.gpu,
@@ -78,8 +83,8 @@ class LoRAModelPipeline:
 				token_cache_dir=self._config.data.processed_path.parent / "token_cache",
 				refresh_cache=refresh_cache,
 			)
-			if mode is ModelMode.TEST:
-				return self._run_test(trainer)
+			if submit_devices is not None:
+				return self._run_submit(trainer, submit_devices)
 			if mode not in (ModelMode.CROSS_VALIDATION, ModelMode.BUILD):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			batches = LoRATrainingBatchRepository.from_config(
@@ -140,13 +145,24 @@ class LoRAModelPipeline:
 			if torch.cuda.is_initialized():
 				torch.cuda.empty_cache()
 
-	def _run_test(self, trainer: LoRATrainer) -> ModelTestResult:
+	def _run_submit(
+		self,
+		trainer: LoRATrainer,
+		submit_devices: tuple[torch.device, torch.device],
+	) -> ModelSubmitResult:
 		data = self._test_repository.load()
 		checkpoint = self._checkpoint_store.load(
 			self._compatibility(self._test_repository.serializer_version)
 		)
+		base_config = AutoConfig.from_pretrained(
+			self._model_config.model_name, revision=checkpoint.base_revision
+		)
 		model = trainer.create_model(
-			seed=self._model_config.random_state, revision=checkpoint.base_revision
+			seed=self._model_config.random_state,
+			revision=checkpoint.base_revision,
+			device_map=GPUEnvironment.submission_device_map(
+				base_config, submit_devices
+			),
 		)
 		try:
 			self._checkpoint_store.restore(model, checkpoint)
@@ -155,7 +171,7 @@ class LoRAModelPipeline:
 			output_dir, submission_path = self._submission_publisher.publish(
 				data.ids, probabilities
 			)
-			return ModelTestResult(output_dir, submission_path, len(data.ids))
+			return ModelSubmitResult(output_dir, submission_path, len(data.ids))
 		finally:
 			del model
 

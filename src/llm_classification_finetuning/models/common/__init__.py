@@ -7,7 +7,7 @@ from .contracts import (
 	ModelMode,
 	ModelPipelineInterface,
 	ModelRunResult,
-	ModelTestResult,
+	ModelSubmitResult,
 )
 from .data import (
 	ModelData,
@@ -40,8 +40,8 @@ __all__ = (
 	"ModelResultPublisher",
 	"ModelRunResult",
 	"ModelSubmissionPublisher",
+	"ModelSubmitResult",
 	"ModelTestDataRepository",
-	"ModelTestResult",
 	"PairwiseClassificationHead",
 	"PairwiseQwenClassifier",
 	"PairwiseText",

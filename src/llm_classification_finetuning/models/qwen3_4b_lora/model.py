@@ -22,6 +22,7 @@ class LoRAQwenClassifier(nn.Module):
 		device: torch.device,
 		*,
 		revision: str | None = None,
+		device_map: dict[str, str] | None = None,
 	) -> None:
 		super().__init__()
 		self.device = device
@@ -31,6 +32,7 @@ class LoRAQwenClassifier(nn.Module):
 			revision=revision,
 			dtype=self.dtype,
 			attn_implementation=gpu.attention_implementation,
+			device_map=device_map,
 		)
 		backbone.config.use_cache = False
 		backbone.requires_grad_(False)
@@ -47,11 +49,15 @@ class LoRAQwenClassifier(nn.Module):
 				bias="none",
 			),
 			autocast_adapter_dtype=True,
-		).to(device)
-		if config.gradient_checkpointing:
+		)
+		if device_map is None:
+			self.backbone.to(device)
+		if config.gradient_checkpointing and device_map is None:
 			self.backbone.get_base_model().gradient_checkpointing_enable(
 				gradient_checkpointing_kwargs={"use_reentrant": False}
 			)
+		if device_map is not None:
+			self.backbone.get_base_model().gradient_checkpointing_disable()
 		self.classifier = PairwiseClassificationHead(
 			self.backbone_hidden_size, config.hidden_size, config.dropout
 		).to(device=device, dtype=torch.float32)
@@ -59,14 +65,14 @@ class LoRAQwenClassifier(nn.Module):
 	def encode(self, batch: PairwiseBatch) -> tuple[Tensor, Tensor]:
 		"""Pool the last real token of each branch, retaining both gradient graphs."""
 		pooled: list[Tensor] = []
+		input_device = self.backbone.get_input_embeddings().weight.device
 		for branch in (batch.branch_a, batch.branch_b):
-			input_ids = branch.input_ids.to(self.device, non_blocking=True)
+			input_ids = branch.input_ids.to(input_device, non_blocking=True)
 			mask = (
-				branch.attention_mask.to(self.device, non_blocking=True)
+				branch.attention_mask.to(input_device, non_blocking=True)
 				if branch.attention_mask is not None
 				else None
 			)
-			last_positions = branch.last_positions.to(self.device, non_blocking=True)
 			with torch.autocast(
 				device_type="cuda",
 				dtype=self.dtype,
@@ -78,8 +84,15 @@ class LoRAQwenClassifier(nn.Module):
 					use_cache=False,
 					return_dict=True,
 				).last_hidden_state
-				rows = torch.arange(hidden.shape[0], device=self.device)
-				pooled.append(hidden[rows, last_positions].float())
+				last_positions = branch.last_positions.to(
+					hidden.device, non_blocking=True
+				)
+				rows = torch.arange(hidden.shape[0], device=hidden.device)
+				pooled.append(
+					hidden[rows, last_positions].to(
+						device=self.device, dtype=torch.float32
+					)
+				)
 				del hidden
 		return pooled[0], pooled[1]
 

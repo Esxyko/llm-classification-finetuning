@@ -83,15 +83,17 @@ class ModelPredictor:
 					)
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
-				"GPU memory was exhausted during model test inference. Lower "
+				"GPU memory was exhausted during model submission inference. Lower "
 				f"{self._config_key}.training_batch_size in the selected configuration."
 			) from error
 
 		if not probabilities:
-			raise ModelExecutionError("Model test inference produced no predictions.")
+			raise ModelExecutionError(
+				"Model submission inference produced no predictions."
+			)
 		predictions = np.concatenate(probabilities, axis=0)
 		if not np.isfinite(predictions).all():
 			raise ModelExecutionError(
-				"Model test inference produced non-finite values."
+				"Model submission inference produced non-finite values."
 			)
 		return predictions

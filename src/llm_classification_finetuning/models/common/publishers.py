@@ -200,14 +200,14 @@ class ModelSubmissionPublisher:
 		ids: tuple[int, ...],
 		probabilities: np.ndarray,
 	) -> tuple[Path, Path]:
-		"""Write a submission CSV in a newly exposed test-run directory."""
+		"""Write a submission CSV in a newly exposed submission-run directory."""
 		if probabilities.shape != (len(ids), len(self.PROBABILITY_COLUMNS)):
 			raise ModelExecutionError(
 				"Test probabilities do not match the test ID count."
 			)
 		if not _probabilities_are_valid(probabilities):
 			raise ModelExecutionError(
-				"Model test inference produced invalid probabilities."
+				"Model submission inference produced invalid probabilities."
 			)
 
 		generated_at = datetime.now(UTC).astimezone()
@@ -219,7 +219,7 @@ class ModelSubmissionPublisher:
 			self._results_root.mkdir(parents=True, exist_ok=True)
 			if output_dir.exists():
 				raise ModelExecutionError(
-					"Model test result directory already exists for this second: "
+					"Model submission result directory already exists for this second: "
 					f"{output_dir}"
 				)
 			with tempfile.TemporaryDirectory(
@@ -241,7 +241,7 @@ class ModelSubmissionPublisher:
 			raise
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not publish model test results to {output_dir}: {error}"
+				f"Could not publish model submission results to {output_dir}: {error}"
 			) from error
 		return output_dir, submission_path
 

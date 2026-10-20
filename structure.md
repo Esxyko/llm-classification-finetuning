@@ -19,7 +19,7 @@ train_folds.parquet
      -> models/qwen3_4b_lora/adapter_TAG.pt
 
 head.pt or adapter.pt + data/raw/test.csv
-  -> model MODEL --test -> results/test/MODEL-.../submission.csv
+  -> model MODEL --submit -> results/submit/MODEL-.../submission.csv
 ```
 
 All commands accept `--config PATH` and default to `config.yaml` in the working
@@ -36,7 +36,7 @@ Console scripts are declared in `pyproject.toml`.
 | `init` | `cli.py` | Download missing raw files, then preprocess training data |
 | `data` | `data/cli.py` | Download missing Kaggle files only |
 | `preprocess` | `preprocess/cli.py` | Rebuild folds and augmentation from local raw data |
-| `model` | `models/cli.py` | Select configured models, cross-validate, build checkpoints, or run test inference |
+| `model` | `models/cli.py` | Select configured models, cross-validate, build checkpoints, or generate submissions |
 | `result` | `result/cli.py` | Reduce fold predictions into comprehensive reports |
 
 CLI modules parse arguments, translate expected domain errors into exit code `1`,
@@ -66,7 +66,7 @@ and print summaries. Business logic belongs below the CLI layer.
   - `cli.py`: Selects a registered Qwen model and an execution mode.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_4b/`: Active lightweight model profile definition.
-  - `qwen3_4b_lora/`: Single-CUDA-GPU adapter model and profile.
+  - `qwen3_4b_lora/`: Adapter model with single-GPU training and dual-GPU submission.
     - `data.py`: Orient shared canonical token/feature views and independently
       pad branches with CPU pooling positions.
     - `batching.py`: Prepare training loaders from config without model weights
@@ -83,16 +83,17 @@ and print summaries. Business logic belongs below the CLI layer.
       and averaged live joint/test inference.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
-    - `pipeline.py`: Orchestrate cross-validation, builds, and test submissions
+    - `pipeline.py`: Orchestrate cross-validation, builds, and dual-GPU submissions
       without persistent embedding caches.
   - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B model
     implementations and their configuration sections. Nothing imports these
     models from the active package.
-  - `common/pipeline.py`: Selects cross-validation, build, or test behavior for
+  - `common/pipeline.py`: Selects cross-validation, build, or submission behavior for
     frozen pairwise models.
   - `common/`
-    - `contracts.py`: Defines model modes, optional-cache result summaries, and
-      the shared registry pipeline interface.
+    - `contracts.py`: Defines model modes (including `ModelMode.SUBMIT`),
+      optional-cache result summaries (including `ModelSubmitResult`), and the
+      shared registry pipeline interface.
     - `inputs.py`: Validates training and test tables, IDs, folds, orientation
       pairs, and source fingerprints for both model input formats.
     - `data.py`: Serializes aligned conversation branches for pairwise models.
@@ -100,7 +101,9 @@ and print summaries. Business logic belongs below the CLI layer.
     - `publishers.py`: Stages and publishes validation runs with epoch/fold
       durations and test submissions; atomically records each model's complete
       runtime under its selected config.
-    - `hardware.py`: Validates and activates the single configured CUDA device.
+    - `hardware.py`: Validates the training GPU or both submission GPUs, activates
+      the first selected device, and maps complete Qwen3 decoder layers across
+      the two submission devices.
     - `extractor.py`: Resolve pinned backbone/token identities on CPU, hash local
       weights when needed, and lazily encode only missing frozen branches on GPU.
     - `cache.py`: Persist per-branch embeddings by effective tokens and backbone
@@ -132,13 +135,13 @@ exports over importing private helpers across package boundaries.
 
 | Path | Role |
 | --- | --- |
-| `config.yaml` | Data paths, folds, one shared `gpu.device`, and both frozen/LoRA model sections |
+| `config.yaml` | Data paths, folds, training `gpu.device`, two `gpu.submit_devices`, and both model sections |
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Human setup and usage guide |
 | `scripts/validate_all_configs.py` | Cross-validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all folds for each YAML file in `configs/`, with separate tagged checkpoints |
-| `configs/` | Complete aug/inf YAML configurations, each including both models and one shared CUDA device |
+| `configs/` | Complete YAML configurations with both models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Folded Parquet data and embedding caches |
 | `data/processed/token_cache/` | Shared per-text token encodings for both models and training/test inputs |
@@ -147,6 +150,7 @@ exports over importing private helpers across package boundaries.
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
+| `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source
 modules. Do not make application logic depend on a particular timestamped run.
@@ -233,9 +237,17 @@ modules. Do not make application logic depend on a particular timestamped run.
   Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize accumulation by actual row counts, including
   incomplete groups. Validation and test average both orientations' probabilities.
-- All models use one shared `gpu.device` without GPU-name or VRAM restrictions.
-  GPU configuration is a scalar CUDA identifier; there is no replica or
-  cross-device branch distribution logic.
+- Cross-validation and builds use one shared `gpu.device`. `--submit` requires
+  exactly two distinct `gpu.submit_devices`, defaulting to `[cuda:0, cuda:1]`,
+  independently of the training GPU. Both devices must support `gpu.precision`;
+  GPU names and VRAM sizes are unrestricted. Embedding/rotary modules and the
+  first `N // 2` decoder layers reside on the first GPU, remaining decoder layers
+  and final normalization on the second. The classifier head resides on the
+  first GPU; adapters follow their base layers. Submission uses no gradient
+  checkpointing, replicas, CPU/disk offload, or single-GPU fallback. Inputs follow
+  the embedding device, pooling indices follow hidden states, and pooled features
+  return to the head device. Hardware placement is excluded from checkpoint and
+  cache compatibility, and complete frozen cache hits skip backbone loading.
 - LoRA checkpoint compatibility excludes hardware, compute precision, and batch
   settings; architecture, input format, and context are checked.
 - Model sections are optional. `model ALL` runs only configured profiles in

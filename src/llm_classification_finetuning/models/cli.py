@@ -22,7 +22,7 @@ from .common import (
 	ModelMode,
 	ModelResultPublisher,
 	ModelRunResult,
-	ModelTestResult,
+	ModelSubmitResult,
 )
 
 ALL_MODELS = "ALL"
@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
 	"""Create the shared model command-line parser."""
 	parser = argparse.ArgumentParser(
 		prog="model",
-		description="Cross-validate, build, or test a Qwen comparison model.",
+		description="Cross-validate, build, or submit a Qwen comparison model.",
 	)
 	add_config_argument(parser)
 	parser.add_argument(
@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Train on all folds and save the classifier head and any LoRA adapters.",
 	)
 	modes.add_argument(
-		"--test",
+		"--submit",
 		action="store_true",
 		help="Load each selected model's checkpoint and generate a test submission.",
 	)
@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"--checkpoint-tag",
 		type=_checkpoint_tag,
 		metavar="TAG",
-		help="Select head_TAG.pt or adapter_TAG.pt (build and test only).",
+		help="Select head_TAG.pt or adapter_TAG.pt (build and submit only).",
 	)
 	return parser
 
@@ -77,9 +77,9 @@ def run(arguments: Sequence[str] | None = None) -> int:
 	"""Run the selected model mode and return a process exit code."""
 	parsed_arguments = build_parser().parse_args(arguments)
 	if parsed_arguments.checkpoint_tag and not (
-		parsed_arguments.build or parsed_arguments.test
+		parsed_arguments.build or parsed_arguments.submit
 	):
-		raise SystemExit("--checkpoint-tag requires --build or --test")
+		raise SystemExit("--checkpoint-tag requires --build or --submit")
 	try:
 		config = AppConfig.load(parsed_arguments.config)
 		project_root = Path.cwd()
@@ -191,8 +191,8 @@ def _run_all_models(
 def _selected_mode(arguments: argparse.Namespace) -> ModelMode:
 	if arguments.build:
 		return ModelMode.BUILD
-	if arguments.test:
-		return ModelMode.TEST
+	if arguments.submit:
+		return ModelMode.SUBMIT
 	return ModelMode.CROSS_VALIDATION
 
 
@@ -207,7 +207,7 @@ def _print_result(selector: str, result: ModelExecutionResult) -> None:
 		)
 		print(f"Final training loss: {result.final_training_loss:.6f}")
 		print(f"Wrote model checkpoint: {result.checkpoint_path}")
-	elif isinstance(result, ModelTestResult):
+	elif isinstance(result, ModelSubmitResult):
 		print(f"Generated {result.predictions:,} competition test predictions.")
 		print(f"Wrote model submission: {result.submission_path}")
 	elif isinstance(result, ModelRunResult):

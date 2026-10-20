@@ -185,7 +185,7 @@ class ResultSynthesizer:
 	"""Coordinate result discovery, validation, reduction, and publishing."""
 
 	OUTPUT_DIR_NAME = ResultPublisher.OUTPUT_DIR_NAME
-	RESERVED_SOURCE_DIR_NAMES = (OUTPUT_DIR_NAME, "test")
+	RESERVED_SOURCE_DIR_NAMES = (OUTPUT_DIR_NAME, "submit", "test")
 	WORKBOOK_NAME = ResultPublisher.WORKBOOK_NAME
 	CONFUSION_MATRIX_NAME = ResultPublisher.CONFUSION_MATRIX_NAME
 	REQUIRED_COLUMNS = (

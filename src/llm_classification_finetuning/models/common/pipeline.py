@@ -1,4 +1,4 @@
-"""Coordinate model cross-validation, builds, and test inference."""
+"""Coordinate model cross-validation, builds, and submission inference."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from .contracts import (
 	ModelExecutionResult,
 	ModelMode,
 	ModelRunResult,
-	ModelTestResult,
+	ModelSubmitResult,
 )
 from .data import (
 	ModelData,
@@ -34,7 +34,7 @@ from .trainer import ModelCrossValidator
 
 
 class ModelPipeline:
-	"""Run cross-validation, build, or test inference for one model profile."""
+	"""Run cross-validation, build, or submission inference for one model profile."""
 
 	CACHE_SCHEMA_VERSION = 2
 	CHECKPOINT_SCHEMA_VERSION = 2
@@ -77,7 +77,7 @@ class ModelPipeline:
 			result_prefix=profile.result_prefix,
 		)
 		self._submission_publisher = ModelSubmissionPublisher(
-			project_root / "results" / "test",
+			project_root / "results" / "submit",
 			result_prefix=profile.result_prefix,
 		)
 
@@ -88,8 +88,8 @@ class ModelPipeline:
 		refresh_cache: bool = False,
 	) -> ModelExecutionResult:
 		"""Execute the selected model mode and return its summary."""
-		if mode is ModelMode.TEST:
-			return self._run_test(refresh_cache=refresh_cache)
+		if mode is ModelMode.SUBMIT:
+			return self._run_submit(refresh_cache=refresh_cache)
 
 		device = GPUEnvironment(self._config.gpu).configure()
 		data = self._training_repository.load()
@@ -149,16 +149,18 @@ class ModelPipeline:
 			cache_reused=cache_reused,
 		)
 
-	def _run_test(self, *, refresh_cache: bool) -> ModelTestResult:
+	def _run_submit(self, *, refresh_cache: bool) -> ModelSubmitResult:
+		submit_devices = GPUEnvironment(self._config.gpu).configure_submit()
+		device = submit_devices[0]
 		data = self._test_repository.load()
 		checkpoint = self._checkpoint_store.load(
 			self._compatibility.checkpoint(self._test_repository.serializer_version)
 		)
-		device = GPUEnvironment(self._config.gpu).configure()
 		embeddings, cache_reused = self._load_or_extract_embeddings(
 			records=data.canonical_texts,
 			refresh_cache=refresh_cache,
 			device=device,
+			submit_devices=submit_devices,
 		)
 		probabilities = ModelPredictor(
 			config=self._model_config,
@@ -170,7 +172,7 @@ class ModelPipeline:
 			data.ids,
 			probabilities,
 		)
-		return ModelTestResult(
+		return ModelSubmitResult(
 			output_dir=output_dir,
 			submission_path=submission_path,
 			predictions=len(data.ids),
@@ -184,6 +186,7 @@ class ModelPipeline:
 		records: tuple[PairwiseText, ...],
 		refresh_cache: bool,
 		device: torch.device,
+		submit_devices: tuple[torch.device, torch.device] | None = None,
 	) -> tuple[CachedEmbeddings, bool]:
 		extractor = QwenEmbeddingExtractor(
 			gpu_config=self._config.gpu,
@@ -191,6 +194,7 @@ class ModelPipeline:
 			device=device,
 			token_cache_dir=self._config.data.processed_path.parent / "token_cache",
 			refresh_cache=refresh_cache,
+			submit_devices=submit_devices,
 		)
 		try:
 			tokens = extractor.prepare(records)

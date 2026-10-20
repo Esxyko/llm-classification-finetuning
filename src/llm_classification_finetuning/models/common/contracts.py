@@ -16,7 +16,7 @@ class ModelMode(Enum):
 
 	CROSS_VALIDATION = "cross-validation"
 	BUILD = "build"
-	TEST = "test"
+	SUBMIT = "submit"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,8 +44,8 @@ class ModelBuildResult:
 
 
 @dataclass(frozen=True, slots=True)
-class ModelTestResult:
-	"""Summary of a completed competition test inference run."""
+class ModelSubmitResult:
+	"""Summary of a completed competition submission run."""
 
 	output_dir: Path
 	submission_path: Path
@@ -54,7 +54,7 @@ class ModelTestResult:
 	cache_reused: bool = False
 
 
-ModelExecutionResult = ModelRunResult | ModelBuildResult | ModelTestResult
+ModelExecutionResult = ModelRunResult | ModelBuildResult | ModelSubmitResult
 
 
 class ModelPipelineInterface(Protocol):

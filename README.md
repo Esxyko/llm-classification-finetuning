@@ -9,8 +9,8 @@ generate reports or submissions for Kaggle's
 - Python 3.14 or newer
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
 - A Kaggle account with the competition rules accepted
-- A configured CUDA GPU to run a model (data preparation and report generation
-  do not require one)
+- One CUDA GPU for training and two CUDA GPUs for submission inference (data
+  preparation and report generation do not require a GPU)
 
 ## Quick start
 
@@ -57,19 +57,20 @@ Run these commands from the project root.
 | `uv run model qwen3-4b-lora` | Runs Qwen3-4B LoRA cross-validation | `results/qwen3-4b-lora-*/` |
 | `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the classifier and any adapters on all folds | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
-| `uv run model MODEL --test` | Creates a submission with the selected model's checkpoint | `results/test/MODEL-*/submission.csv` |
+| `uv run model MODEL --submit` | Creates a submission with the selected model's checkpoint | `results/submit/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
 Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, or exact uppercase `ALL`.
 Add `--refresh-cache` to rebuild requested shared token encodings and
 model-specific frozen embeddings or LoRA batch plans. Token encodings are shared
 by both models and by training, validation, and test inference.
-`--build` and `--test` are mutually exclusive; without either flag, the command
+`--build` and `--submit` are mutually exclusive; without either flag, the command
 runs cross-validation. `ALL` runs only profiles with a model section in the
 selected YAML, follows registry order, and accepts the same
-`--build`, `--test`, and `--refresh-cache` options. If one model fails, the
+`--build`, `--submit`, and `--refresh-cache` options. If one model fails, the
 remaining models still run; the command exits with status `1` if any failed.
-For builds and test inference, `--checkpoint-tag TAG` selects
+The old `--test` flag is no longer accepted. For builds and submission inference,
+`--checkpoint-tag TAG` selects
 `models/MODEL_SLUG/head_TAG.pt` for the frozen model or `adapter_TAG.pt` for
 LoRA; without it, the checkpoint is `head.pt` or `adapter.pt`, respectively.
 
@@ -131,10 +132,10 @@ To train a production head and generate a submission:
 
 ```shell
 uv run model qwen3-4b --build
-uv run model qwen3-4b --test
+uv run model qwen3-4b --submit
 ```
 
-Build mode replaces the saved classifier head and compatibility metadata. Test
+Build mode replaces the saved classifier head and compatibility metadata. Submit
 mode validates `test.csv` against `sample_submission.csv`, loads that head, and
 writes a timestamped submission. The Qwen backbone is not stored in the
 checkpoint.
@@ -168,11 +169,38 @@ dataset-wide `.pt`/`.json` embedding caches, including `baseline_*`, are left
 untouched and are no longer read; their metadata cannot establish the new
 backbone/input identities. Saved head checkpoint compatibility is unchanged.
 
-Both models share the single CUDA device selected by `gpu.device`, which defaults
-to `cuda:0`. The frozen model loads one backbone and encodes A and B sequentially
-on that device; classifier head training uses the same GPU. If extraction runs
-out of memory, reduce `qwen3_4b.extraction_batch_size` or `qwen3_4b.max_length`.
-Device lists, backbone replicas, and multi-GPU execution are not supported.
+Cross-validation and `--build` use the single CUDA device selected by
+`gpu.device`, which defaults to `cuda:0`. Both models encode A and B sequentially
+through one backbone; classifier head training uses the same GPU.
+
+`--submit` splits that backbone across the two devices in `gpu.submit_devices`,
+which defaults to `[cuda:0, cuda:1]` when omitted. The list must contain exactly
+two distinct `cuda:N` identifiers; it is independent of the training device.
+For two 16 GB GPUs, the default configuration is:
+
+```yaml
+gpu:
+  device: cuda:0
+  submit_devices: [cuda:0, cuda:1]
+  precision: fp16
+  attention_implementation: sdpa
+  allow_tf32: false
+```
+
+The embedding and rotary modules and the first half of the decoder layers reside
+on the first GPU; the remaining layers and final normalization reside on the
+second. Each decoder layer stays intact, LoRA adapters follow their base layers,
+and the FP32 classifier head resides on the first GPU. LoRA gradient checkpointing
+is disabled for submissions. Both GPUs must be available and support
+`gpu.precision`; there is no automatic precision change, single-GPU fallback, or
+CPU/disk offload. `ALL` still runs models sequentially, with each model split
+across both GPUs.
+
+Existing checkpoints and embedding/token caches remain compatible. Complete
+frozen embedding-cache hits still skip loading backbone weights. Submissions
+are written to `results/submit/MODEL-*/submission.csv`; historical `results/test`
+files remain untouched. If frozen extraction runs out of memory, reduce
+`qwen3_4b.extraction_batch_size` or `qwen3_4b.max_length`.
 
 ## Train with LoRA
 
@@ -181,7 +209,7 @@ Prepare the data, then use the LoRA section in the shared `config.yaml`:
 ```shell
 uv run model qwen3-4b-lora
 uv run model qwen3-4b-lora --build
-uv run model qwen3-4b-lora --test
+uv run model qwen3-4b-lora --submit
 ```
 
 The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
@@ -199,9 +227,10 @@ average original and A/B-restored swapped probabilities. Each validation fold
 starts with fresh adapters and a fresh classifier. Cross-validation saves no
 model checkpoints.
 
-The default LoRA settings target one 32 GB CUDA GPU. The model also
+The default LoRA training settings target one 32 GB CUDA GPU. Training also
 supports other single NVIDIA CUDA GPUs with sufficient memory for the selected
-settings. Set `gpu.device` to a single `cuda:N` identifier and choose
+settings; submission inference uses the two-GPU split described above.
+Set `gpu.device` to a single `cuda:N` identifier for training and choose
 `gpu.precision: fp16`, `bf16`, or `fp32`. BF16 is checked against the selected
 GPU's capabilities. FP16 uses gradient scaling; adapters and classifier weights
 remain FP32 in all three modes. GPU model names and VRAM sizes are not restricted.
@@ -442,7 +471,7 @@ uv run result qwen3-4b-YYYYMMDD-HHMMSS
 ```
 
 Without an argument, the command selects the most recently modified result
-subfolder, excluding `comprehensive` and `test`.
+subfolder, excluding `comprehensive`, `submit`, and historical `test` directories.
 
 The selected folder must contain exactly one CSV per configured fold. Each CSV
 must have these columns in order:
@@ -519,18 +548,18 @@ another stem case-insensitively.
 Both scripts continue after a failed config/model task, including a missing
 model section in the YAML, and summarize successful and failed tasks. They exit
 with status `1` if any task fails, no YAML files are found, or `MODELS` is empty.
-To use a tagged checkpoint for test inference, pass its config and matching
+To use a tagged checkpoint for submission inference, pass its config and matching
 checkpoint tag, for example:
 
 ```shell
-uv run model qwen3-4b-lora --test --config configs/config_aug.yaml --checkpoint-tag config_aug
+uv run model qwen3-4b-lora --submit --config configs/config_aug.yaml --checkpoint-tag config_aug
 ```
 
 | Section | Controls |
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count and random seed |
-| `gpu` | One CUDA `device`, precision, attention implementation, and TF32, shared by both models |
+| `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by both models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training/inference batches, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
@@ -546,7 +575,9 @@ reports a configuration error; `ALL` requires at least one configured profile.
 - **`train.csv` is missing:** Run `uv run data`, or use `uv run init` for both
   download and preprocessing.
 - **CUDA or precision is unsupported:** Select an available `cuda:N` device and
-  set it in `gpu.device`; use `fp16` or `fp32` if the GPU does not support `bf16`.
+  set it in `gpu.device` for training, or select two distinct available devices
+  in `gpu.submit_devices` for submissions. Both submission GPUs must support the
+  selected precision; use `fp16` or `fp32` if either does not support `bf16`.
 - **Embedding extraction runs out of memory:** Reduce
   `extraction_batch_size` or `max_length` in the selected model's section.
 - **LoRA runs out of memory:** Lower `qwen3_4b_lora.warmup_extraction_batch_size`,

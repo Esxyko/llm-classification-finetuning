@@ -69,7 +69,11 @@ class LoRATrainer:
 		self._model_initialized = False
 
 	def create_model(
-		self, *, seed: int, revision: str | None = None
+		self,
+		*,
+		seed: int,
+		revision: str | None = None,
+		device_map: dict[str, str] | None = None,
 	) -> LoRAQwenClassifier:
 		"""Initialize fresh adapter/head parameters and a matching tokenizer."""
 		set_seed(seed)
@@ -78,6 +82,7 @@ class LoRATrainer:
 			self._gpu,
 			self._device,
 			revision=revision if revision is not None else self._base_revision,
+			device_map=device_map,
 		)
 		self._base_revision = model.base_revision
 		self._model_initialized = True

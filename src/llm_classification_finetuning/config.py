@@ -32,12 +32,13 @@ class CrossValidationConfig:
 
 @dataclass(frozen=True, slots=True)
 class GPUConfig:
-	"""Project-wide settings for one configured CUDA device."""
+	"""Single-GPU training and two-GPU submission settings."""
 
 	device: str
 	precision: str
 	attention_implementation: str
 	allow_tf32: bool
+	submit_devices: tuple[str, str] = ("cuda:0", "cuda:1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +151,13 @@ class AppConfig:
 		gpu_section = _require_mapping(root.get("gpu"), "gpu")
 		_reject_unknown_keys(
 			gpu_section,
-			{"device", "precision", "attention_implementation", "allow_tf32"},
+			{
+				"device",
+				"submit_devices",
+				"precision",
+				"attention_implementation",
+				"allow_tf32",
+			},
 			"gpu",
 		)
 		qwen3_4b = _load_model_config(root, "qwen3_4b") if "qwen3_4b" in root else None
@@ -189,10 +196,19 @@ class AppConfig:
 			"cross_validation.random_state",
 		)
 
-		device = _require_non_empty_string(gpu_section.get("device"), "gpu.device")
-		if not device.startswith("cuda:") or not device.removeprefix("cuda:").isdigit():
+		device = _require_cuda_device(gpu_section.get("device"), "gpu.device")
+		submit_devices = gpu_section.get("submit_devices", ["cuda:0", "cuda:1"])
+		if not isinstance(submit_devices, list) or len(submit_devices) != 2:
 			raise ConfigurationError(
-				"gpu.device must identify one CUDA device, for example 'cuda:0'."
+				"gpu.submit_devices must be a list of exactly two CUDA devices."
+			)
+		first_submit_device, second_submit_device = (
+			_require_cuda_device(value, f"gpu.submit_devices[{index}]")
+			for index, value in enumerate(submit_devices)
+		)
+		if first_submit_device == second_submit_device:
+			raise ConfigurationError(
+				"gpu.submit_devices must contain distinct devices."
 			)
 
 		precision = _require_choice(
@@ -222,6 +238,7 @@ class AppConfig:
 				precision=precision,
 				attention_implementation=attention_implementation,
 				allow_tf32=allow_tf32,
+				submit_devices=(first_submit_device, second_submit_device),
 			),
 			qwen3_4b=qwen3_4b,
 			qwen3_4b_lora=qwen3_4b_lora,
@@ -399,6 +416,16 @@ def _require_non_empty_string(value: Any, field_name: str) -> str:
 	if not isinstance(value, str) or not value.strip():
 		raise ConfigurationError(f"{field_name} must be a non-empty string.")
 	return value.strip()
+
+
+def _require_cuda_device(value: Any, field_name: str) -> str:
+	device = _require_non_empty_string(value, field_name)
+	index = device.removeprefix("cuda:")
+	if not device.startswith("cuda:") or not index.isascii() or not index.isdigit():
+		raise ConfigurationError(
+			f"{field_name} must identify one CUDA device, for example 'cuda:0'."
+		)
+	return f"cuda:{int(index)}"
 
 
 def _require_integer(value: Any, field_name: str) -> int:
