@@ -3,6 +3,19 @@
 Use this file to locate ownership before changing code. Keep orchestration in
 pipelines, user interaction in CLI modules, and domain logic in focused classes.
 
+## Documentation boundaries
+
+| Document | Owns |
+| --- | --- |
+| [README.md](README.md) | Project overview, capabilities, and documentation index |
+| [docs/](docs/) | Setup, commands, configuration, model behavior, cache/API usage, reports, and troubleshooting |
+| [structure.md](structure.md) | Runtime flow, source-module responsibilities, artifact layout, and implementation invariants |
+
+Keep step-by-step instructions and detailed usage references in `docs/`, and link
+to them from the README. Update this file when code ownership, runtime flow,
+artifact layout, or implementation invariants change; use links to the relevant
+guide when a reader needs operational instructions.
+
 ## Runtime flow
 
 ```text
@@ -12,13 +25,13 @@ selected YAML config (defaults to config.yaml)
 
 train_folds.parquet
   -> model MODEL (default) -> fold CSVs + metrics -> result -> PNG + XLSX report
-  -> model MODEL --build -> models/MODEL_SLUG/head.pt
-  -> model MODEL --build --checkpoint-tag TAG -> models/MODEL_SLUG/head_TAG.pt
+  -> model qwen3-4b --build -> models/qwen3_4b/head.pt
+  -> model qwen3-4b --build --checkpoint-tag TAG -> models/qwen3_4b/head_TAG.pt
   -> model qwen3-4b-lora --build -> models/qwen3_4b_lora/adapter.pt
   -> model qwen3-4b-lora --build --checkpoint-tag TAG
      -> models/qwen3_4b_lora/adapter_TAG.pt
 
-head.pt or adapter.pt + data/raw/test.csv
+head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
   -> model MODEL --submit -> results/submit/MODEL-.../submission.csv
 ```
 
@@ -26,6 +39,9 @@ All commands accept `--config PATH` and default to `config.yaml` in the working
 directory. Relative config-file and data paths resolve from the working
 directory. `init` and `data` read `.env` there; model artifacts and reports are
 also rooted there, regardless of the config file's location.
+The paths shown in the flow are those in the root preset; raw/processed paths
+follow the selected YAML. Batch-config scripts instead run each model from the
+project root derived from their own file location.
 
 ## Entry points
 
@@ -52,11 +68,13 @@ and print summaries. Business logic belongs below the CLI layer.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
 - `timing.py`: Formats elapsed durations as unbounded `HH:MM:SS` values.
 - `pipeline.py`: Orchestrates the complete download-and-preprocess workflow and
-  returns both download and fold results without printing them.
+  returns both download and fold results; an optional download callback allows
+  the CLI to print download progress before preprocessing finishes.
 - `cli_output.py`: Formats shared download and fold summaries for CLI commands.
 - `data/`
   - `downloader.py`: Downloads the three required Kaggle CSVs, normalizes
-    single-file ZIP responses, and preserves existing raw files.
+    single-file ZIP responses (including existing wrappers), and skips downloads
+    for existing files.
 - `preprocess/`
   - `folds.py`: Derives labels and canonical prompt hashes, assigns stratified
     group folds, invokes augmentation, and atomically writes Parquet.
@@ -94,8 +112,9 @@ and print summaries. Business logic belongs below the CLI layer.
     - `contracts.py`: Defines model modes (including `ModelMode.SUBMIT`),
       optional-cache result summaries (including `ModelSubmitResult`), and the
       shared registry pipeline interface.
-    - `inputs.py`: Validates training and test tables, IDs, folds, orientation
-      pairs, and source fingerprints for both model input formats.
+    - `inputs.py`: Loads training/test tables, checks required columns, folds,
+      orientation counts and label mappings, and test/template ID order; computes
+      source fingerprints for both active profiles.
     - `data.py`: Serializes aligned conversation branches for pairwise models.
     - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
     - `publishers.py`: Stages and publishes validation runs with epoch/fold
@@ -122,8 +141,8 @@ and print summaries. Business logic belongs below the CLI layer.
 - `result/`
   - `synthesizer.py`: Discovers and validates fold CSVs, reverses swapped-row
     orientation, and reduces each pair to one source record.
-    Averaged Qwen3-4B and mono-input runs count one prediction per pair; older
-    runs retain separate original and swapped votes.
+    The `metrics.json` aggregation marker selects one already-averaged
+    prediction per pair or two legacy orientation votes, regardless of model name.
   - `publisher.py`: Stages both report files, replaces the report directory,
     and restores the previous report on a publication failure.
   - `writers.py`: Renders the confusion-matrix PNG and filterable Excel workbook.
@@ -138,12 +157,14 @@ exports over importing private helpers across package boundaries.
 | `config.yaml` | Data paths, folds, training `gpu.device`, two `gpu.submit_devices`, and both model sections |
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
-| `README.md` | Human setup and usage guide |
+| `README.md` | Project overview and documentation index |
+| `docs/` | Detailed setup, usage, configuration, and behavioral references |
+| `structure.md` | Code ownership, runtime flow, artifact layout, and implementation invariants |
 | `scripts/validate_all_configs.py` | Cross-validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all folds for each YAML file in `configs/`, with separate tagged checkpoints |
 | `configs/` | Complete YAML configurations with both models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
-| `data/processed/` | Folded Parquet data and embedding caches |
+| `data/processed/` | Default location for folded Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
 | `data/processed/token_cache/` | Shared per-text token encodings for both models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/qwen3_4b_lora_batches/` | LoRA fold/build batch-plan caches; legacy token files are unused |
@@ -172,8 +193,8 @@ modules. Do not make application logic depend on a particular timestamped run.
   share entries; only missing/corrupt branches are encoded. Complete hits do not
   load backbone weights. Missing branches are independently right-padded, so
   floating-point rounding may differ with batch composition. Old dataset-wide
-  embedding files remain untouched and are not reused. Checkpoint formats/checks
-  are unchanged.
+  embedding files remain untouched and are not reused. Head checkpoint
+  compatibility is validated independently of embedding reuse.
 - Token encodings are shared across models, training/test inputs, datasets, and
   configurations when their actual tokenizer/encoding content matches. Keys use
   individual text content, encoding options, cache schema, and tokenizer
@@ -184,20 +205,19 @@ modules. Do not make application logic depend on a particular timestamped run.
   for overflowing texts, then right-pads missing branches for feature extraction.
   Missing/corrupt entries are recomputed transactionally; corrupt shards are
   archived before rebuilding. Refresh replaces only requested encodings.
-- Mono-input rows are serialized as an instruction followed by an ordered JSON
-  turn list; original and swapped orientations have distinct cached states.
-  Overlong inputs use equal token caps for final responses and remove earlier
-  whole turns only when needed to preserve the final prompt, response prefixes,
-  and valid JSON.
-- Mono-input head training uses original rows only. Validation and test inference
-  average original and A/B-restored swapped probabilities per source ID.
+- Both active profiles serialize aligned prompt/response turns as
+  `prompt\nresponse`, joined by blank lines. There is no active mono-input
+  serialization or training path; archived implementations are outside the
+  current module contracts.
 - Qwen3-4B `A/B_swap: aug` trains on both orientations with per-row loss;
   `A/B_swap: inf` optimizes the averaged probability of both orientations for
   each original ID. Both modes average probabilities for validation and test.
 - LoRA supports `A/B_swap: aug` with per-row cross-entropy on both orientations,
   and `A/B_swap: inf` with negative log-likelihood of averaged, A/B-restored
   probabilities once per original ID. Both warmup and joint training use the
-  selected objective and reuse each branch encoding for both head orientations.
+  selected objective. Joint `aug` training encodes each oriented row separately;
+  joint `inf` training reuses each branch encoding for both head orientations.
+  Validation/test also reuse branch encodings for both head orientations.
   Training batches, accumulation, scheduler steps, and build row counts use
   the selected training rows (original IDs only for `inf`).
   Optional head-only warmup uses a no-gradient,
@@ -205,9 +225,10 @@ modules. Do not make application logic depend on a particular timestamped run.
   training with gradients through both branches and linear learning-rate decay.
   Canonical A/B token IDs are stored once in compact int32 CPU memory, cached on
   disk through the common text cache, and shared across epochs/folds/runs.
-  A pinned base/tokenizer revision is resolved before training model initialization,
-  while cache identities use the actual tokenizer content rather than model
-  revision. Each token-store preparation revalidates the configured context limit.
+  For Hub backbones, a pinned base/tokenizer revision is resolved before training
+  model initialization, while cache identities use the actual tokenizer content
+  rather than model revision. Each token-store preparation revalidates the
+  configured context limit.
   No LoRA input is truncated: empty or over-limit branches fail before training/encoding with
   the offending ID and branch. Warmup extracts each training/validation ID once
   in canonical orientation using `warmup_extraction_batch_size`, then selects
@@ -249,12 +270,21 @@ modules. Do not make application logic depend on a particular timestamped run.
   return to the head device. Hardware placement is excluded from checkpoint and
   cache compatibility, and complete frozen cache hits skip backbone loading.
 - LoRA checkpoint compatibility excludes hardware, compute precision, and batch
-  settings; architecture, input format, and context are checked.
+  settings; model name, classifier size/dropout, LoRA settings, input format,
+  context, and A/B training mode are checked. Hub base revisions are retained;
+  local base weights are neither stored nor content-fingerprinted.
+- Frozen head compatibility includes model name, context, serializer, compute
+  precision, attention implementation, TF32, classifier hidden size, and A/B
+  training mode, as well as schema/class count. It does not pin the backbone
+  revision or local weight contents; embedding cache identity is stricter in
+  those respects. Inference additionally checks backbone hidden size.
 - Model sections are optional. `model ALL` runs only configured profiles in
   registry order and rejects configurations with no model sections.
 - Frozen full-data builds save only the classifier head; LoRA builds save
   adapters and head without base weights or optimizer state. Cross-validation
-  does not save checkpoints.
+  does not save checkpoints. Full-data builds have no validation set;
+  cross-validation publishes the final epoch's predictions, with validation
+  after every epoch (including LoRA head warmup).
 - Generated files and directories are staged before publication. Report
   publication restores the previous directory after a recoverable promotion
   failure and reports the backup path if restoration fails.
