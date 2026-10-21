@@ -17,12 +17,27 @@ gpu:
   attention_implementation: sdpa
   allow_tf32: false
 
+warmup:
+  A/B_swap: aug
+  model_name: Qwen/Qwen3-4B
+  max_length: 13514
+  hidden_size: 512
+  dropout: 0.1
+  warmup_epochs: 1
+  extraction_batch_size: 8
+  warmup_training_batch_size: 1024
+  warmup_learning_rate: 0.001
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+
 qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 16384
-  extraction_batch_size: 1
-  training_batch_size: 256
+  extraction_batch_size: 8
+  training_batch_size: 1024
   hidden_size: 512
   dropout: 0.1
   epochs: 3
@@ -37,13 +52,13 @@ qwen3_4b_lora:
   max_length: 13514
   training_token_budget: 40960
   training_batch_size: 1
-  head_inference_batch_size: 256
+  head_inference_batch_size: 1024
   gradient_accumulation_steps: 32
   gradient_checkpointing: true
   epochs: 2
-  warmup_epochs: 0
-  warmup_extraction_batch_size: 1
-  warmup_training_batch_size: 256
+  warmup_epochs: 1
+  extraction_batch_size: 8
+  warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
   head_learning_rate: 0.0001
@@ -71,13 +86,13 @@ qwen3_4b_qlora:
   max_length: 13514
   training_token_budget: 57344
   training_batch_size: 1
-  head_inference_batch_size: 256
+  head_inference_batch_size: 1024
   gradient_accumulation_steps: 32
   gradient_checkpointing: true
   epochs: 2
-  warmup_epochs: 0
-  warmup_extraction_batch_size: 1
-  warmup_training_batch_size: 256
+  warmup_epochs: 1
+  extraction_batch_size: 1
+  warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
   head_learning_rate: 0.0001

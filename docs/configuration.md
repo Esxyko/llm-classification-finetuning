@@ -26,7 +26,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `warmup` | Independent non-quantized head-warmup model, input limit, classifier, optimization, and `A/B_swap` settings; used only by `model warmup --build` |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `warmup_extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_qlora` | Same fields as LoRA, with fixed 4-bit NF4 and double quantization for training/validation; submissions load a non-quantized base |
 
 Model sections are optional. Explicitly selecting a profile without its section
@@ -65,7 +65,7 @@ uv run model warmup --build --config config.yaml
 ```
 
 Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
-`warmup_epochs`, `warmup_extraction_batch_size`, `warmup_training_batch_size`,
+`warmup_epochs`, `extraction_batch_size`, `warmup_training_batch_size`,
 `warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
 `dataloader_workers`, and `A/B_swap`. All except `A/B_swap` are required;
 `A/B_swap` defaults to `aug`. Validation follows the corresponding LoRA fields,
@@ -114,9 +114,11 @@ replacing the processed dataset. See [data preparation](data-preparation.md).
 
 For LoRA and QLoRA, `head_inference_batch_size` is a required positive integer replacing
 `inference_batch_size`; rename the old key while preserving its value. The old
-key is rejected. `warmup_extraction_batch_size` controls backbone extraction for
+key is rejected. `extraction_batch_size` controls backbone extraction for
 warmup, every joint-validation pass, and submissions, including when warmup is
-disabled. Head inference uses its own batch size after extraction completes.
+disabled. It counts individual A/B branches per backbone forward, matching the
+frozen model's `extraction_batch_size`; the standalone warmup section uses the
+same definition. Head inference uses its own batch size after extraction completes.
 `gradient_accumulation_steps` applies only to joint training; warmup performs one
 optimizer update per `warmup_training_batch_size` batch.
 
@@ -125,8 +127,9 @@ optimizer update per `warmup_training_batch_size` batch.
 Holdout validation and `--build` use the single CUDA device selected by
 the required `gpu.device` field. The root preset selects `cuda:0`.
 All models use one backbone for A and B; classifier head training uses the
-same GPU. LoRA and QLoRA encode A and B sequentially, while frozen extraction batches
-unique missing branches from either side together.
+same GPU. LoRA and QLoRA joint training encode A and B sequentially. Their
+no-gradient extraction batches individual branches from either side together,
+as frozen extraction does for unique missing branches.
 
 `--submit` splits that backbone across the two devices in `gpu.submit_devices`,
 which defaults to `[cuda:0, cuda:1]` when omitted. The list must contain exactly

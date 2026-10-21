@@ -93,28 +93,49 @@ class PairwiseTokenDataset(Dataset[tuple[np.ndarray, np.ndarray, int]]):
 		return (int(b), int(a)) if self._swapped[index] else (int(a), int(b))
 
 
-class PairwiseCollator:
-	"""Right-pad A/B tokens without masks and compute their last real positions."""
+class BranchTokenDataset(Dataset[np.ndarray]):
+	"""Flatten canonical IDs into A/B branch views in A0, B0, A1, B1 order."""
+
+	def __init__(self, row_ids: Iterable[int], tokens: PairwiseTokenStore) -> None:
+		self._tokens = tokens.tokens
+		self._offsets = tokens.offsets
+		self._indices = _row_indices(row_ids, tokens.positions)
+
+	def __len__(self) -> int:
+		return 2 * len(self._indices)
+
+	def __getitem__(self, index: int) -> np.ndarray:
+		position = 2 * int(self._indices[index // 2]) + index % 2
+		start, stop = self._offsets[position : position + 2]
+		return self._tokens[start:stop]
+
+
+class BranchCollator:
+	"""Right-pad any A/B branch mix and compute CPU pooling positions."""
 
 	def __init__(self, pad_token_id: int) -> None:
 		self._pad_token_id = pad_token_id
 
+	def __call__(self, rows: list[np.ndarray]) -> BranchBatch:
+		lengths = [len(row) for row in rows]
+		input_ids = torch.full(
+			(len(rows), max(lengths)), self._pad_token_id, dtype=torch.long
+		)
+		for row_index, (row, length) in enumerate(zip(rows, lengths, strict=True)):
+			input_ids[row_index, :length].copy_(torch.from_numpy(row))
+		return BranchBatch(input_ids, torch.tensor(lengths, dtype=torch.long) - 1)
+
+
+class PairwiseCollator:
+	"""Right-pad A/B tokens without masks and compute their last real positions."""
+
+	def __init__(self, pad_token_id: int) -> None:
+		self._branch_collator = BranchCollator(pad_token_id)
+
 	def __call__(self, rows: list[tuple[np.ndarray, np.ndarray, int]]) -> PairwiseBatch:
-		branches: list[BranchBatch] = []
-		for index in (0, 1):
-			lengths = [len(row[index]) for row in rows]
-			longest = max(lengths)
-			input_ids = torch.full(
-				(len(rows), longest), self._pad_token_id, dtype=torch.long
-			)
-			for row_index, (row, length) in enumerate(zip(rows, lengths, strict=True)):
-				input_ids[row_index, :length].copy_(torch.from_numpy(row[index]))
-			branches.append(
-				BranchBatch(input_ids, torch.tensor(lengths, dtype=torch.long) - 1)
-			)
 		return PairwiseBatch(
-			branches[0],
-			branches[1],
+			self._branch_collator([row[0] for row in rows]),
+			self._branch_collator([row[1] for row in rows]),
 			torch.tensor([row[2] for row in rows], dtype=torch.long),
 		)
 

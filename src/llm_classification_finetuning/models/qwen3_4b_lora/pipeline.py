@@ -132,9 +132,9 @@ class LoRAModelPipeline:
 			raise ModelExecutionError(
 				f"CUDA ran out of memory during {self._model_label} execution. Lower "
 				f"{self._profile.config_key}.training_token_budget when enabled, or lower "
-				"warmup_extraction_batch_size, warmup_training_batch_size, "
+				"extraction_batch_size, warmup_training_batch_size, "
 				"training_batch_size, or head_inference_batch_size. "
-				"warmup_extraction_batch_size also controls validation/submission extraction. "
+				"extraction_batch_size also controls validation/submission extraction. "
 				"Keep max_length at least "
 				"as large as the longest required input; inputs are never truncated. "
 				"Enable gradient_checkpointing for training, "

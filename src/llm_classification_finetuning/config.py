@@ -76,7 +76,7 @@ class WarmupModelConfig:
 	dropout: float
 	weight_decay: float
 	warmup_epochs: int
-	warmup_extraction_batch_size: int
+	extraction_batch_size: int
 	warmup_training_batch_size: int
 	warmup_learning_rate: float
 	max_grad_norm: float
@@ -355,7 +355,7 @@ def _load_warmup_fields(
 		dropout=dropout,
 		weight_decay=weight_decay,
 		warmup_epochs=warmup_epochs,
-		warmup_extraction_batch_size=positive_integer("warmup_extraction_batch_size"),
+		extraction_batch_size=positive_integer("extraction_batch_size"),
 		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
 		warmup_learning_rate=positive_float("warmup_learning_rate"),
 		max_grad_norm=positive_float("max_grad_norm"),

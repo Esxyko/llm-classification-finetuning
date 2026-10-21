@@ -103,8 +103,9 @@ and print summaries. Business logic belongs below the CLI layer.
   - `qwen3_4b_lora/`: Shared LoRA/QLoRA adapter implementation with single-GPU
     training and dual-GPU submission. The selected profile controls training
     quantization, configuration keys, logs, and artifact namespaces.
-    - `data.py`: Orient shared canonical token/feature views and independently
-      right-pad branches without padding masks, with CPU pooling positions.
+    - `data.py`: Orient shared canonical token/feature views, flatten canonical
+      A/B branches for extraction, and independently right-pad branch batches
+      without padding masks, with CPU pooling positions.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist holdout/build
       global batch plans, supply optional warmup identity contexts, and shuffle
@@ -117,8 +118,9 @@ and print summaries. Business logic belongs below the CLI layer.
       The `warmup_only` path loads a non-quantized frozen base without adapter
       injection. Own BF16 frozen embedding/norm restoration, feature dtype, and head
       autocast with FP32 logits. Quantized weights are placed during loading.
-    - `extractor.py`: Extract one no-gradient canonical feature pair per needed
-      ID for warmup, each joint-validation pass, or submission, retaining shared
+    - `extractor.py`: Batch individual A/B branches and reconstruct one
+      no-gradient canonical feature pair per needed ID for warmup, each
+      joint-validation pass, or submission, retaining shared
       temporary CPU features (BF16 in BF16 mode, otherwise FP32) with
       stage-specific logs and no persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
@@ -296,9 +298,10 @@ remain ignored. Do not make application logic depend on a particular timestamped
   Validation/test also reuse branch encodings for both head orientations.
   Training batches, accumulation, scheduler steps, and build row counts use
   the selected training rows (original IDs only for `inf`).
-  Optional head-only warmup uses a no-gradient,
-  evaluation-mode backbone at a fixed head learning rate, followed by joint
-  training with gradients through both branches and linear learning-rate decay.
+  Optional head-only warmup trains the head at a fixed learning rate over features
+  from a no-gradient, evaluation-mode backbone with adapter forward computation
+  disabled. Joint training then uses gradients through both branches and linear
+  learning-rate decay.
   Canonical A/B token IDs are stored once in compact int32 CPU memory, cached on
   disk through the common text cache, and shared across epochs/stages/runs.
   For Hub backbones, a pinned base/tokenizer revision is resolved before training
@@ -307,15 +310,19 @@ remain ignored. Do not make application logic depend on a particular timestamped
   configured context limit.
   No LoRA input is truncated: empty or over-limit branches fail before training/encoding with
   the offending ID and branch. Warmup extracts each training/validation ID once
-  in canonical orientation using `warmup_extraction_batch_size`, then selects
-  oriented feature views with `warmup_training_batch_size`. Each warmup batch
+  in canonical orientation using `extraction_batch_size`, then selects
+  oriented feature views with `warmup_training_batch_size`. All no-gradient
+  extraction counts individual A/B branches per forward, matching frozen-model
+  extraction, and reconstructs pairs even across odd-sized batches. Warmup
+  extraction completes before epoch timing starts; complete-run timing includes
+  it. Adapter state is restored after warmup extraction. Each warmup batch
   performs one optimizer update without `gradient_accumulation_steps`, which
   applies only to joint training. Warmup validation reuses the frozen CPU features
   in `head_inference_batch_size` batches. Both feature
   views are released at the start of joint training; `warmup_epochs: 0` skips
   warmup feature extraction. Each joint-validation pass and test submission
   extracts fresh canonical features from the current model in eval/no-gradient
-  mode using the same `warmup_extraction_batch_size`, then runs the head in
+  mode using the same `extraction_batch_size`, then runs the head in
   `head_inference_batch_size` batches. Temporary CPU inference features use BF16
   in BF16 mode and FP32 otherwise; they are released on return, never persisted
   or reused across joint epochs/runs.

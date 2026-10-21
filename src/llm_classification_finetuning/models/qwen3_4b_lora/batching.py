@@ -559,7 +559,7 @@ class LoRATrainingBatchRepository:
 			loader = DataLoader(
 				dataset,
 				batch_size=(
-					self._config.warmup_extraction_batch_size
+					self._config.extraction_batch_size
 					if self._warmup_only
 					else self._config.training_batch_size
 				),

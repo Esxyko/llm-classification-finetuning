@@ -24,7 +24,7 @@ warmup:
   hidden_size: 512
   dropout: 0.1
   warmup_epochs: 1
-  warmup_extraction_batch_size: 1
+  extraction_batch_size: 8
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   weight_decay: 0.01
@@ -36,7 +36,7 @@ qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 16384
-  extraction_batch_size: 1
+  extraction_batch_size: 8
   training_batch_size: 1024
   hidden_size: 512
   dropout: 0.1
@@ -57,7 +57,7 @@ qwen3_4b_lora:
   gradient_checkpointing: true
   epochs: 2
   warmup_epochs: 1
-  warmup_extraction_batch_size: 1
+  extraction_batch_size: 8
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
@@ -91,7 +91,7 @@ qwen3_4b_qlora:
   gradient_checkpointing: true
   epochs: 2
   warmup_epochs: 1
-  warmup_extraction_batch_size: 1
+  extraction_batch_size: 1
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001

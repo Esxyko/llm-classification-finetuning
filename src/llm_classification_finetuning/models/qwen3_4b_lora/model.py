@@ -13,7 +13,7 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ..common import ABSwapAverager, GPUEnvironment, PairwiseClassificationHead
-from .data import PairwiseBatch
+from .data import BranchBatch, PairwiseBatch
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -139,37 +139,35 @@ class LoRAQwenClassifier(nn.Module):
 
 	def encode(self, batch: PairwiseBatch) -> tuple[Tensor, Tensor]:
 		"""Pool the last real token of each branch, retaining both gradient graphs."""
-		pooled: list[Tensor] = []
+		return self.encode_branch(batch.branch_a), self.encode_branch(batch.branch_b)
+
+	def encode_branch(self, branch: BranchBatch) -> Tensor:
+		"""Encode one batch of branches for extraction or differentiable training."""
 		input_device = self.backbone.get_input_embeddings().weight.device
-		for branch in (batch.branch_a, batch.branch_b):
-			input_ids = branch.input_ids.to(input_device, non_blocking=True)
-			with (
-				self._attention_context(),
-				torch.autocast(
-					device_type="cuda",
-					dtype=self.dtype,
-					enabled=self.dtype != torch.float32,
-				),
-			):
-				# Qwen retains causal attention, so real tokens cannot see right padding.
-				# Omitting the padding mask lets SDPA use native GQA.
-				hidden = self.backbone(
-					input_ids=input_ids,
-					attention_mask=None,
-					use_cache=False,
-					return_dict=True,
-				).last_hidden_state
-				last_positions = branch.last_positions.to(
-					hidden.device, non_blocking=True
-				)
-				rows = torch.arange(hidden.shape[0], device=hidden.device)
-				pooled.append(
-					hidden[rows, last_positions].to(
-						device=self.device, dtype=self.feature_dtype
-					)
-				)
-				del hidden
-		return pooled[0], pooled[1]
+		input_ids = branch.input_ids.to(input_device, non_blocking=True)
+		with (
+			self._attention_context(),
+			torch.autocast(
+				device_type="cuda",
+				dtype=self.dtype,
+				enabled=self.dtype != torch.float32,
+			),
+		):
+			# Qwen retains causal attention, so real tokens cannot see right padding.
+			# Omitting the padding mask lets SDPA use native GQA.
+			hidden = self.backbone(
+				input_ids=input_ids,
+				attention_mask=None,
+				use_cache=False,
+				return_dict=True,
+			).last_hidden_state
+			last_positions = branch.last_positions.to(hidden.device, non_blocking=True)
+			rows = torch.arange(hidden.shape[0], device=hidden.device)
+			pooled = hidden[rows, last_positions].to(
+				device=self.device, dtype=self.feature_dtype
+			)
+			del hidden
+		return pooled
 
 	def forward(self, batch: PairwiseBatch) -> Tensor:
 		"""Return FP32 A-win, B-win, and tie logits for the supplied orientation."""

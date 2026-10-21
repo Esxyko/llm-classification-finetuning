@@ -44,8 +44,11 @@ both forward execution and backward recomputation.
 QLoRA reuses the [LoRA training workflow](lora.md): head-only warmup, joint
 adapter/head training, AdamW, linear decay, gradient accumulation, token-budget
 batch planning, and `A/B_swap: aug` or `inf`. On a warmup cache miss, warmup
-extraction uses the quantized base; a compatible LoRA cache skips that stage.
-Every joint-validation pass uses the current quantized base. Inputs are independently
+extraction uses the quantized base with adapter forward computation disabled;
+a compatible LoRA cache skips that stage. Warmup epoch timing excludes this
+preparation. Extraction batches count individual A/B branches, as in the frozen
+model. Every joint-validation pass uses the current quantized base and trained
+adapters. Inputs are independently
 right-padded without padding masks and are never truncated. Batch sizes,
 sequence limits, epochs, and learning rates are not automatically changed.
 

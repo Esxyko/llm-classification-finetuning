@@ -24,10 +24,10 @@
 - **Frozen head training or inference runs out of memory:** Reduce
   `qwen3_4b.training_batch_size`; the frozen profile uses it for head training,
   validation, and submission inference.
-- **LoRA or QLoRA runs out of memory:** Lower the selected model section's `warmup_extraction_batch_size`,
+- **LoRA or QLoRA runs out of memory:** Lower the selected model section's `extraction_batch_size`,
   `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
   for the affected stage, or lower `training_token_budget` when enabled.
-  `warmup_extraction_batch_size` also controls validation/submission backbone
+  `extraction_batch_size` also controls validation/submission backbone
   extraction; `head_inference_batch_size` controls only head inference over the
   extracted CPU features. Keep
   `max_length` at least as large as the longest required branch. Enable

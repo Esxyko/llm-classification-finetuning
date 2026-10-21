@@ -142,11 +142,20 @@ warmup result is reused; only FP16-to-FP16 restores the gradient scaler.
 
 On a cache miss, warmup uses the extraction and training settings below.
 
-`warmup_extraction_batch_size` is a required positive integer controlling the
+`extraction_batch_size` is a required positive integer controlling the
 no-gradient backbone extraction batch size for warmup, joint validation, and
-submissions (root preset: `1`). Before the first
+submissions (root preset: `1`). Like the frozen model's `extraction_batch_size`,
+it counts individual branches, with canonical inputs flattened as A0, B0, A1,
+B1, and so on. A batch size of `1` encodes one branch per forward; `2` can
+encode one ID's A/B branches together. Short final batches and odd batch sizes
+preserve the original pair alignment. Joint-training batches still count
+selected sample pairs. Before the first
 warmup epoch, each unique ID needed by training or validation is encoded once
-in its canonical orientation with the backbone in evaluation mode. Its paired
+in its canonical orientation with the backbone in evaluation mode and adapter
+forward computation disabled. The adapter state is restored after extraction;
+QLoRA retains its quantized base during this step. Extraction completes before
+epoch timing starts, so warmup training and total epoch times exclude it;
+complete-run timing still includes it. Its paired
 features remain in CPU memory, using BF16 for `gpu.precision: bf16` and FP32
 otherwise; training rows select the appropriate A/B
 orientation and retain their original labels and row order without storing
@@ -183,7 +192,7 @@ Each holdout run and full-data build follows these stages. Holdout validation
 evaluates the same saved validation set after every executed warmup and joint epoch, and
 publishes the final epoch's predictions. Full-data builds have no validation set and do
 not run validation. Replace the removed `warmup_ratio` key with `warmup_epochs`,
-`warmup_extraction_batch_size`, `warmup_training_batch_size`, and
+`extraction_batch_size`, `warmup_training_batch_size`, and
 `warmup_learning_rate`; old keys are rejected as unknown configuration options.
 
 ## Two-stage validation and submission
@@ -195,7 +204,7 @@ This setting does not control backbone extraction or checkpoint compatibility.
 
 After every joint-training epoch, validation first extracts each needed ID once
 in canonical A/B orientation using the current adapters. Submission extracts test
-features after restoring the checkpoint. Both use `warmup_extraction_batch_size`,
+features after restoring the checkpoint. Both use `extraction_batch_size`,
 evaluation mode, and no gradients, even with `warmup_epochs: 0`. Extraction
 finishes before head inference starts. Paired features stay in temporary CPU
 memory in BF16 for `gpu.precision: bf16` and FP32 otherwise; the head selects
@@ -296,7 +305,7 @@ run on the target 32 GB virtual GPU.
 ## Memory tuning
 
 For smaller GPUs, lower an enabled token budget or the relevant
-`warmup_extraction_batch_size`, `warmup_training_batch_size`,
+`extraction_batch_size`, `warmup_training_batch_size`,
 `training_batch_size`, or `head_inference_batch_size`. The extraction setting
 controls backbone memory for warmup, joint validation, and submission; the head
 setting controls only classifier batches over CPU features. Increase

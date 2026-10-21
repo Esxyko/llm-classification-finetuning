@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import math
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -32,10 +33,11 @@ from ..common import (
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
 from .data import (
+	BranchBatch,
+	BranchCollator,
+	BranchTokenDataset,
 	PairwiseBatch,
-	PairwiseCollator,
 	PairwiseFeatureStore,
-	PairwiseTokenDataset,
 )
 from .extractor import LoRAEmbeddingExtractor
 from .model import LoRAQwenClassifier
@@ -335,6 +337,11 @@ class LoRATrainer:
 			0 if self._warmup_only else self._config.epochs
 		)
 		first_epoch = self._config.warmup_epochs + 1 if reused_warmup else 1
+		if self._config.warmup_epochs and not reused_warmup:
+			# Feature extraction belongs to run setup, outside every epoch timer.
+			loader, warmup_validation = self._create_warmup_loaders(
+				model, reference, records, validation=validation, seed=seed
+			)
 		for epoch in range(first_epoch, total_epochs + 1):
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
@@ -374,10 +381,6 @@ class LoRATrainer:
 					num_training_steps=steps,
 				)
 			training_started = self._timestamp()
-			if loader is None:
-				loader, warmup_validation = self._create_warmup_loaders(
-					model, reference, records, validation=validation, seed=seed
-				)
 			if not head_only:
 				training.set_epoch(epoch - self._config.warmup_epochs - 1)
 			loss = self._train_epoch(
@@ -621,13 +624,14 @@ class LoRATrainer:
 		ids = reference["id"]
 		if validation is not None:
 			ids = pd.concat((ids, validation["id"]), ignore_index=True)
-		embeddings = self._extract_features(
-			model,
-			ids,
-			records,
-			seed=seed,
-			stage="warmup",
-		)
+		with nullcontext() if model.warmup_only else model.backbone.disable_adapter():
+			embeddings = self._extract_features(
+				model,
+				ids,
+				records,
+				seed=seed,
+				stage="warmup",
+			)
 		training_loader = DataLoader(
 			embeddings.dataset(reference),
 			batch_size=self._config.warmup_training_batch_size,
@@ -652,17 +656,17 @@ class LoRATrainer:
 		stage: str,
 	) -> PairwiseFeatureStore:
 		"""Encode each requested ID once in canonical orientation with current weights."""
-		canonical = pd.DataFrame({"id": row_ids.drop_duplicates(), "is_swapped": False})
-		loader = self._create_loader(
-			canonical,
+		canonical_ids = row_ids.drop_duplicates()
+		loader = self._create_extraction_loader(
+			canonical_ids,
 			records,
 			seed=seed,
-			batch_size=self._config.warmup_extraction_batch_size,
+			batch_size=self._config.extraction_batch_size,
 		)
 		return LoRAEmbeddingExtractor(self._model_label).extract(
 			model,
 			loader,
-			tuple(int(row_id) for row_id in canonical["id"]),
+			tuple(int(row_id) for row_id in canonical_ids),
 			stage=stage,
 		)
 
@@ -771,20 +775,21 @@ class LoRATrainer:
 			)
 		return self._tokens
 
-	def _create_loader(
+	def _create_extraction_loader(
 		self,
-		reference: pd.DataFrame,
+		row_ids: pd.Series,
 		records: tuple[PairwiseText, ...],
 		*,
 		seed: int,
 		batch_size: int,
-	) -> DataLoader[PairwiseBatch]:
+	) -> DataLoader[BranchBatch]:
+		"""Batch individual A/B branches with the frozen model's extraction semantics."""
 		tokens = self._tokens_for(records)
-		dataset = PairwiseTokenDataset(reference, tokens)
+		dataset = BranchTokenDataset(row_ids, tokens)
 		workers = self._config.dataloader_workers
 		generator = torch.Generator().manual_seed(seed)
 		options = {
-			"collate_fn": PairwiseCollator(tokens.pad_token_id),
+			"collate_fn": BranchCollator(tokens.pad_token_id),
 			"num_workers": workers,
 			"pin_memory": True,
 			"persistent_workers": workers > 0,
