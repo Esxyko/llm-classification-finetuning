@@ -144,7 +144,7 @@ and print summaries. Business logic belongs below the CLI layer.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed fold rows.
     - `progress.py`: Counts weighted training update groups and validation batches,
-      flushing progress logs at ten-percent milestones using CPU-only counters.
+      flushing progress logs at five-percent milestones using CPU-only counters.
     - `trainer.py`: Yields completed fold-specific head results or trains one
       full-data head, sharing a training/validation progress counter across all
       folds and epochs.

@@ -38,13 +38,13 @@ Changing modes requires rebuilding the saved head;
 ## Training progress
 
 Cross-validation and full-data builds print progress whenever processed work
-reaches or crosses the next 10% milestone. Each model uses one counter across all
+reaches or crosses the next 5% milestone. Each model uses one counter across all
 stages and epochs, including all folds in cross-validation. Each line identifies
 the model, mode, stage, fold or build, current epoch, actual percentage, and
 processed/total weighted work units. Output is flushed immediately:
 
 ```text
-qwen3_4b build head training Build epoch 1/2: progress=10.0% work=110.0/1,100.0
+qwen3_4b build head training Build epoch 1/2: progress=5.0% work=55.0/1,100.0
 ```
 
 For the frozen model, each training batch and each validation batch count as one

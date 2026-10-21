@@ -58,7 +58,7 @@ class FoldTokenStatistics:
 		print(f"Tokenizer: {self._model.model_name}; revision: {revision}", flush=True)
 		records = data.canonical_texts
 		lengths = np.empty((len(records), 2), dtype=np.int64)
-		next_progress = 10
+		next_progress = 5
 		for start in range(0, len(records), self._batch_size):
 			batch = records[start : start + self._batch_size]
 			encoded = tokenizer(
@@ -76,7 +76,7 @@ class FoldTokenStatistics:
 			).reshape(-1, 2)
 			if stop * 100 >= len(records) * next_progress:
 				print(f"Tokenized {stop:,}/{len(records):,} source IDs", flush=True)
-				next_progress += 10
+				next_progress += 5
 		rows = pd.DataFrame(
 			{
 				"id": [row.row_id for row in records],

@@ -1,4 +1,4 @@
-"""Report weighted training and validation progress at ten-percent milestones."""
+"""Report weighted training and validation progress at five-percent milestones."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class TrainingProgress:
 		if self._completed_steps == self._total_steps:
 			return
 		self._completed_steps += weight
-		milestone = int(self._completed_steps * 10 // self._total_steps)
+		milestone = int(self._completed_steps * 20 // self._total_steps)
 		if milestone < self._next_milestone:
 			return
 		self._next_milestone = milestone + 1

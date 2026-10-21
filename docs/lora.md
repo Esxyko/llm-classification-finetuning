@@ -171,7 +171,7 @@ joint validation, or submission separately.
 
 Head warmup, joint training, and the validation batches after every epoch share
 one progress counter across all epochs and folds. Progress is printed at
-approximately 10% intervals, with the current stage identified in each line.
+approximately 5% intervals, with the current stage identified in each line.
 Each warmup training batch and warmup validation batch counts as **0.5**
 work units; each joint-training update group and joint validation batch counts as
 **1**. With `warmup_epochs: 0`, the total contains only joint training and its
