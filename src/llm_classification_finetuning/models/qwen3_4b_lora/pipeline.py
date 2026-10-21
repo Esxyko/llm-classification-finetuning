@@ -40,9 +40,12 @@ class LoRAModelPipeline:
 	) -> None:
 		self._config = config
 		self._profile = profile
+		self._model_label = "QLoRA" if profile.quantize_training else "LoRA"
 		model_config = profile.resolve_config(config)
 		if not isinstance(model_config, LoRAModelConfig):
-			raise TypeError("LoRA execution requires a LoRAModelConfig.")
+			raise TypeError(
+				f"{self._model_label} execution requires a LoRAModelConfig."
+			)
 		self._model_config = model_config
 		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
 		project_root = project_root.resolve()
@@ -55,6 +58,7 @@ class LoRAModelPipeline:
 		self._checkpoint_store = LoRACheckpointStore(
 			project_root / "models" / profile.artifact_stem / checkpoint_name,
 			build_command,
+			model_label=self._model_label,
 		)
 		self._result_publisher = ModelResultPublisher(
 			project_root / "results", profile.result_prefix
@@ -82,13 +86,14 @@ class LoRAModelPipeline:
 				device,
 				token_cache_dir=self._config.data.processed_path.parent / "token_cache",
 				refresh_cache=refresh_cache,
+				profile=self._profile,
 			)
 			if submit_devices is not None:
 				return self._run_submit(trainer, submit_devices)
 			if mode not in (ModelMode.CROSS_VALIDATION, ModelMode.BUILD):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			batches = LoRATrainingBatchRepository.from_config(
-				self._config, refresh_cache=refresh_cache
+				self._config, refresh_cache=refresh_cache, profile=self._profile
 			)
 			if mode is ModelMode.BUILD:
 				training = batches.get_training(None)
@@ -127,13 +132,13 @@ class LoRAModelPipeline:
 			)
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
-				"CUDA ran out of memory during LoRA execution. Lower "
-				"qwen3_4b_lora.training_token_budget when enabled, or lower "
+				f"CUDA ran out of memory during {self._model_label} execution. Lower "
+				f"{self._profile.config_key}.training_token_budget when enabled, or lower "
 				"warmup_extraction_batch_size, warmup_training_batch_size, "
 				"training_batch_size, or head_inference_batch_size. "
 				"warmup_extraction_batch_size also controls validation/submission extraction. "
 				"Keep max_length at least "
-				"as large as the longest required input; LoRA inputs are never truncated. "
+				"as large as the longest required input; inputs are never truncated. "
 				"Enable gradient_checkpointing for training, "
 				"or use fp16/bf16 instead of fp32. Increase gradient_accumulation_steps "
 				"to preserve the effective training batch when lowering the micro-batch."
@@ -167,6 +172,7 @@ class LoRAModelPipeline:
 			device_map=GPUEnvironment.submission_device_map(
 				base_config, submit_devices
 			),
+			quantize_backbone=False,
 		)
 		try:
 			self._checkpoint_store.restore(model, checkpoint)
@@ -181,5 +187,7 @@ class LoRAModelPipeline:
 
 	def _compatibility(self, serializer_version: str) -> LoRACheckpointCompatibility:
 		return LoRACheckpointCompatibility.from_config(
-			self._model_config, serializer_version
+			self._model_config,
+			serializer_version,
+			quantize_training=self._profile.quantize_training,
 		)

@@ -1,4 +1,4 @@
-"""Command-line interface for selectable frozen and LoRA Qwen models."""
+"""Command-line interface for selectable frozen, LoRA, and QLoRA Qwen models."""
 
 from __future__ import annotations
 

@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "accelerate>=1.15.0",
+    "bitsandbytes>=0.50.2",
     "kagglehub>=1.0.2",
     "matplotlib>=3.11.2",
     "pandas>=3.0.5",

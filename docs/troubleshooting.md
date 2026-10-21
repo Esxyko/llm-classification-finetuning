@@ -24,7 +24,7 @@
 - **Frozen head training or inference runs out of memory:** Reduce
   `qwen3_4b.training_batch_size`; the frozen profile uses it for head training,
   validation, and submission inference.
-- **LoRA runs out of memory:** Lower `qwen3_4b_lora.warmup_extraction_batch_size`,
+- **LoRA or QLoRA runs out of memory:** Lower the selected model section's `warmup_extraction_batch_size`,
   `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
   for the affected stage, or lower `training_token_budget` when enabled.
   `warmup_extraction_batch_size` also controls validation/submission backbone
@@ -34,12 +34,17 @@
   `gradient_checkpointing` and use FP16/BF16 instead of FP32 where supported.
   Token budgets do not cap an over-budget singleton, and checkpointing applies
   only to training. See [memory tuning](lora.md#memory-tuning).
-- **LoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
+- **LoRA or QLoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
   token count to raise the limit before rerunning. Inputs are never silently
   truncated; lowering batch sizes or the token budget preserves their content.
+- **QLoRA quantized loading fails:** Run `uv sync` to install the locked
+  bitsandbytes dependency and check that its CUDA backend supports your runtime
+  and GPU. QLoRA trains on a 4-bit base but submits on a non-quantized base,
+  so submission memory requirements and predictions can differ from validation.
 - **A checkpoint is incompatible:** Match the model, serialization, and
   classifier architecture used for its build or rebuild with the current config.
-  LoRA checkpoints also check classifier dropout and adapter settings. Both
+  LoRA/QLoRA checkpoints also check classifier dropout, adapter settings, and
+  training quantization; files from those profiles are not interchangeable. All
   checkpoint types allow changes to precision, attention implementation, TF32,
   `max_length`, and `A/B_swap`.
 - **Report rows or aggregation do not match:** Use the processed Parquet and

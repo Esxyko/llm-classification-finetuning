@@ -4,8 +4,8 @@
 
 Caches sit beside the processed Parquet selected by
 [`data.processed_path`](configuration.md#configuration-files-and-paths).
-Frozen embeddings, shared text encodings, and LoRA batch plans have separate
-compatibility rules. LoRA warmup, joint-validation, and submission features stay
+Frozen embeddings, shared text encodings, and adapter batch plans have separate
+compatibility rules. LoRA/QLoRA warmup, joint-validation, and submission features stay
 in temporary FP32 CPU memory and are not persisted. Warmup reuses its feature
 pool; each joint-validation or submission call extracts fresh features with the
 current model and releases them on return.
@@ -68,7 +68,8 @@ IDs for negative values; newly encoded IDs are checked before caching.
 
 ## LoRA batch plans
 
-LoRA's `qwen3_4b_lora_batches/plans/*.pt` files remain separate and identify the
+LoRA's `qwen3_4b_lora_batches/plans/*.pt` files and QLoRA's independent
+`qwen3_4b_qlora_batches/plans/*.pt` files identify the
 sorted selected `(id, is_swapped, A_length, B_length)` rows, budget, update group
 size, and planning algorithm version. Labels, fold numbers, reference order,
 text/token content beyond lengths, and unselected validation inputs do not enter
@@ -78,6 +79,8 @@ A/B mode and fold selection determine membership before lookup. Changing
 budget or effective batch size rebuilds plans while reusing tokens. With
 `training_token_budget: 0`, tokens are cached but no global plan is created.
 Earlier LoRA `tokens/*.pt` files are left untouched and are no longer read.
+Both adapter profiles share the text-token cache when tokenizer content and
+encoding options match; quantization does not change token identity.
 
 `--refresh-cache` replaces requested token entries and model-specific caches;
 shared training encodings remain reusable between folds in that run. Warmup
@@ -117,6 +120,15 @@ batches = LoRATrainingBatchRepository.from_config(config)
 training = batches.get_training(fold=0)  # None selects a full-data build.
 training.set_epoch(0)  # Zero-based joint epoch; fixed batching keeps its RNG stream.
 loader = training.loader  # Yields PairwiseBatch; training.tokens is shared.
+```
+
+To prepare QLoRA batches, pass its profile explicitly; omitting `profile`
+continues to select LoRA:
+
+```python
+from llm_classification_finetuning.models.qwen3_4b_qlora import PROFILE
+
+batches = LoRATrainingBatchRepository.from_config(config, profile=PROFILE)
 ```
 
 See [LoRA training](lora.md#optional-token-budget-training-batches) for planning

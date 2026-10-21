@@ -2,6 +2,11 @@
 
 [Documentation index](../README.md)
 
+The [QLoRA profile](qlora.md) reuses this training workflow with a 4-bit NF4
+training/validation base and a non-quantized submission base. Unless stated
+otherwise, the objectives, batching, input limits, and schedules below also
+apply to its independent `qwen3_4b_qlora` configuration section.
+
 Prepare the [training data](data-preparation.md), then use the LoRA section in
 the shared [`config.yaml`](../config.yaml):
 
@@ -276,8 +281,10 @@ Builds atomically save adapters, the classifier, and compatibility metadata in
 records the resolved Hub base revision so inference reloads matching weights
 and tokenizer files. Model name, classifier size and dropout, serialization,
 and LoRA settings must match. `max_length` and `A/B_swap` remain recorded in
-checkpoint metadata but are not checked when loading. CUDA index, GPU model,
-precision, attention implementation, TF32, batch sizes, and accumulation settings
+checkpoint metadata. The `training_quantization` marker must also match: `none`
+for LoRA (including older checkpoints without the marker), or `bnb-nf4-double`
+for QLoRA. `max_length` and `A/B_swap` are not checked when loading. CUDA index,
+GPU model, precision, attention implementation, TF32, batch sizes, and accumulation settings
 can also change between build and inference. Inputs must still fit the current
 `max_length`. Hub revision pinning does not verify local directory contents;
 the checkpoint neither includes nor fingerprints local base weights.

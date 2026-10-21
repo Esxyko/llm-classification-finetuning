@@ -9,6 +9,8 @@
 - A Kaggle account with the competition rules accepted
 - One CUDA GPU for training and two CUDA GPUs for submission inference (data
   preparation and report generation do not require a GPU)
+- QLoRA training requires the installed bitsandbytes CUDA backend to support
+  the selected GPU and CUDA runtime; see [QLoRA training](qlora.md).
 
 ## Quick start
 

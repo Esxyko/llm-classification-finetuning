@@ -102,6 +102,7 @@ class AppConfig:
 	gpu: GPUConfig
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora: LoRAModelConfig | None = None
+	qwen3_4b_qlora: LoRAModelConfig | None = None
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
@@ -133,6 +134,7 @@ class AppConfig:
 				"gpu",
 				"qwen3_4b",
 				"qwen3_4b_lora",
+				"qwen3_4b_qlora",
 			},
 			"configuration root",
 		)
@@ -172,6 +174,11 @@ class AppConfig:
 		qwen3_4b = _load_model_config(root, "qwen3_4b") if "qwen3_4b" in root else None
 		qwen3_4b_lora = (
 			_load_lora_model_config(root) if "qwen3_4b_lora" in root else None
+		)
+		qwen3_4b_qlora = (
+			_load_lora_model_config(root, "qwen3_4b_qlora")
+			if "qwen3_4b_qlora" in root
+			else None
 		)
 
 		competition = _require_non_empty_string(
@@ -271,11 +278,13 @@ class AppConfig:
 			),
 			qwen3_4b=qwen3_4b,
 			qwen3_4b_lora=qwen3_4b_lora,
+			qwen3_4b_qlora=qwen3_4b_qlora,
 		)
 
 
-def _load_lora_model_config(root: Mapping[str, Any]) -> LoRAModelConfig:
-	section_name = "qwen3_4b_lora"
+def _load_lora_model_config(
+	root: Mapping[str, Any], section_name: str = "qwen3_4b_lora"
+) -> LoRAModelConfig:
 	section = _require_mapping(root.get(section_name), section_name)
 	keys = set(LoRAModelConfig.__dataclass_fields__) - {"ab_swap"}
 	_reject_unknown_keys(section, keys | {"A/B_swap"}, section_name)

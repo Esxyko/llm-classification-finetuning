@@ -29,6 +29,7 @@ from ..common import (
 	TokenizationCache,
 	TrainingProgress,
 )
+from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
 from .data import (
 	PairwiseBatch,
@@ -63,12 +64,16 @@ class LoRATrainer:
 		*,
 		token_cache_dir: Path,
 		refresh_cache: bool = False,
+		profile: ModelProfile | None = None,
 	) -> None:
 		self._config = config
 		self._gpu = gpu
 		self._device = device
 		self._token_cache_dir = token_cache_dir
 		self._refresh_cache = refresh_cache
+		self._model_key = profile.config_key if profile else "qwen3_4b_lora"
+		self._quantize_training = profile.quantize_training if profile else False
+		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
 		self._tokens: PairwiseTokenStore | None = None
 		self._base_revision: str | None = None
 		self._model_initialized = False
@@ -79,6 +84,7 @@ class LoRATrainer:
 		seed: int,
 		revision: str | None = None,
 		device_map: dict[str, str] | None = None,
+		quantize_backbone: bool | None = None,
 	) -> LoRAQwenClassifier:
 		"""Initialize fresh adapter/head parameters and a matching tokenizer."""
 		set_seed(seed)
@@ -88,6 +94,11 @@ class LoRATrainer:
 			self._device,
 			revision=revision if revision is not None else self._base_revision,
 			device_map=device_map,
+			quantize_backbone=(
+				self._quantize_training
+				if quantize_backbone is None
+				else quantize_backbone
+			),
 		)
 		self._base_revision = model.base_revision
 		self._model_initialized = True
@@ -97,7 +108,8 @@ class LoRATrainer:
 			if parameter.requires_grad
 		)
 		print(
-			f"Initialized {self._config.model_name} with {trainable:,} trainable parameters.",
+			f"Initialized {self._model_label} {self._config.model_name} "
+			f"with {trainable:,} trainable parameters.",
 			flush=True,
 		)
 		return model
@@ -179,12 +191,14 @@ class LoRATrainer:
 		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
 		reference = training.reference
 		if reference.empty:
-			raise ModelExecutionError("LoRA training received no rows.")
+			raise ModelExecutionError(f"{self._model_label} training received no rows.")
 		if validation is not None and validation.empty:
-			raise ModelExecutionError("LoRA inference received no rows.")
+			raise ModelExecutionError(
+				f"{self._model_label} inference received no rows."
+			)
 		if not training.tokens.matches(records, model.base_revision):
 			raise ModelExecutionError(
-				"Prepared LoRA tokens do not match the model's base revision or data."
+				f"Prepared {self._model_label} tokens do not match the model's base revision or data."
 			)
 		self._tokens = training.tokens
 		# Cached tokens have already been checked, including every validation branch.
@@ -345,7 +359,7 @@ class LoRATrainer:
 			for rows in validation_rows
 		)
 		return TrainingProgress(
-			model="qwen3_4b_lora",
+			model=self._model_key,
 			mode=mode,
 			total_steps=(
 				self.WARMUP_PROGRESS_WEIGHT
@@ -406,7 +420,7 @@ class LoRATrainer:
 					group_rows = next(planned_groups, 0)
 					if not 0 < group_rows <= effective_batch_size:
 						raise RuntimeError(
-							"A LoRA batch plan has an invalid optimizer group."
+							f"A {self._model_label} batch plan has an invalid optimizer group."
 						)
 			if head_only:
 				features, labels = batch
@@ -431,12 +445,12 @@ class LoRATrainer:
 			group_processed += int(labels.shape[0])
 			if group_processed > group_rows:
 				raise RuntimeError(
-					"A LoRA micro-batch crossed an optimizer update boundary."
+					f"A {self._model_label} micro-batch crossed an optimizer update boundary."
 				)
 			if group_processed == group_rows:
 				if not bool(finite_losses):
 					raise ModelExecutionError(
-						"LoRA training produced a non-finite loss."
+						f"{self._model_label} training produced a non-finite loss."
 					)
 				scaler.unscale_(optimizer)
 				torch.nn.utils.clip_grad_norm_(
@@ -463,7 +477,7 @@ class LoRATrainer:
 			or (planned_groups is not None and next(planned_groups, None) is not None)
 		):
 			raise RuntimeError(
-				"LoRA training did not consume the complete optimizer-group plan."
+				f"{self._model_label} training did not consume the complete optimizer-group plan."
 			)
 		return loss_total.item() / rows_total
 
@@ -518,7 +532,7 @@ class LoRATrainer:
 			seed=seed,
 			batch_size=self._config.warmup_extraction_batch_size,
 		)
-		return LoRAEmbeddingExtractor().extract(
+		return LoRAEmbeddingExtractor(self._model_label).extract(
 			model,
 			loader,
 			tuple(int(row_id) for row_id in canonical["id"]),
@@ -551,7 +565,9 @@ class LoRATrainer:
 	) -> tuple[float, np.ndarray]:
 		"""Extract current features or reuse warmup views, then run head inference."""
 		if reference.empty:
-			raise ModelExecutionError("LoRA inference received no rows.")
+			raise ModelExecutionError(
+				f"{self._model_label} inference received no rows."
+			)
 		model.eval()
 		progress_stage = (
 			"head warmup validation"
@@ -596,7 +612,7 @@ class LoRATrainer:
 				)
 		if not bool(finite_probabilities):
 			raise ModelExecutionError(
-				"LoRA inference produced non-finite probabilities."
+				f"{self._model_label} inference produced non-finite probabilities."
 			)
 		result = loss_total.item() / len(reference), probabilities.cpu().numpy()
 		if progress is not None and start == len(reference):
@@ -607,7 +623,9 @@ class LoRATrainer:
 	def _tokens_for(self, records: tuple[PairwiseText, ...]) -> PairwiseTokenStore:
 		"""Reuse token storage across folds while keeping tokenizer revisions aligned."""
 		if not self._model_initialized:
-			raise RuntimeError("Initialize a LoRA model before creating its loaders.")
+			raise RuntimeError(
+				f"Initialize a {self._model_label} model before creating its loaders."
+			)
 		if self._tokens is None or not self._tokens.matches(
 			records, self._base_revision
 		):
@@ -622,6 +640,7 @@ class LoRATrainer:
 				revision=self._base_revision,
 				max_length=self._config.max_length,
 				refresh_cache=self._refresh_cache,
+				max_length_field=f"{self._model_key}.max_length",
 			)
 		return self._tokens
 

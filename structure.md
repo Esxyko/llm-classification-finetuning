@@ -30,6 +30,9 @@ train_folds.parquet
   -> model qwen3-4b-lora --build -> models/qwen3_4b_lora/adapter.pt
   -> model qwen3-4b-lora --build --checkpoint-tag TAG
      -> models/qwen3_4b_lora/adapter_TAG.pt
+  -> model qwen3-4b-qlora --build -> models/qwen3_4b_qlora/adapter.pt
+  -> model qwen3-4b-qlora --build --checkpoint-tag TAG
+     -> models/qwen3_4b_qlora/adapter_TAG.pt
 
 head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
   -> model MODEL --submit -> results/submit/MODEL-.../submission.csv
@@ -89,14 +92,18 @@ and print summaries. Business logic belongs below the CLI layer.
     cross-validation model run in complete-run GPU peak monitoring.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `qwen3_4b/`: Active lightweight model profile definition.
-  - `qwen3_4b_lora/`: Adapter model with single-GPU training and dual-GPU submission.
+  - `qwen3_4b_lora/`: Shared LoRA/QLoRA adapter implementation with single-GPU
+    training and dual-GPU submission. The selected profile controls training
+    quantization, configuration keys, logs, and artifact namespaces.
     - `data.py`: Orient shared canonical token/feature views and independently
       right-pad branches without padding masks, with CPU pooling positions.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist per-fold/build
       global batch plans, and shuffle fixed update groups with explicit row counts.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
-      pool their last real tokens, and classify with the shared pairwise MLP.
+      optionally load a single-GPU NF4/double-quantized training base and prepare
+      it before adapter injection, pool last real tokens, and classify with the
+      shared pairwise MLP. Quantized weights are placed during loading.
     - `extractor.py`: Extract one no-gradient canonical feature pair per needed
       ID for warmup, each joint-validation pass, or submission, retaining shared
       temporary FP32 CPU features with stage-specific logs and no persistent caches.
@@ -109,7 +116,11 @@ and print summaries. Business logic belongs below the CLI layer.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
     - `pipeline.py`: Orchestrate cross-validation, builds, and dual-GPU submissions
-      without persistent embedding caches.
+      without persistent embedding caches; explicitly disable quantization for
+      submissions, including QLoRA.
+  - `qwen3_4b_qlora/`: Register the independent QLoRA profile, selecting the
+    shared adapter pipeline with fixed 4-bit NF4/double-quantized training and
+    validation, and non-quantized submission at the checkpoint's base revision.
   - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B model
     implementations and their configuration sections. Nothing imports these
     models from the active package.
@@ -121,7 +132,7 @@ and print summaries. Business logic belongs below the CLI layer.
       shared registry pipeline interface.
     - `inputs.py`: Loads training/test tables, checks required columns, folds,
       orientation counts and label mappings, and test/template ID order; computes
-      source fingerprints for both active profiles.
+      source fingerprints for all active profiles.
     - `data.py`: Serializes aligned conversation branches for pairwise models.
     - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
     - `publishers.py`: Stages and publishes each completed validation fold and
@@ -167,7 +178,7 @@ exports over importing private helpers across package boundaries.
 
 | Path | Role |
 | --- | --- |
-| `config.yaml` | Data paths, folds, training `gpu.device`, two `gpu.submit_devices`, and both model sections |
+| `config.yaml` | Data paths, folds, training `gpu.device`, two `gpu.submit_devices`, and three optional model sections |
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Project overview and documentation index |
@@ -176,14 +187,16 @@ exports over importing private helpers across package boundaries.
 | `scripts/validate_all_configs.py` | Cross-validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all folds for each YAML file in `configs/`, with separate tagged checkpoints |
 | `scripts/count_fold_tokens.py` | Count actual unpadded, untruncated A/B tokens in saved folds using training serialization; publish per-ID CSV, fold CSV, and tokenizer/source metadata |
-| `configs/` | Complete YAML configurations with both models and shared training/submission GPU settings |
+| `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Default location for folded Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
-| `data/processed/token_cache/` | Shared per-text token encodings for both models and training/test inputs |
+| `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/qwen3_4b_lora_batches/` | LoRA fold/build batch-plan caches; legacy token files are unused |
+| `data/processed/qwen3_4b_qlora_batches/` | Independent QLoRA fold/build batch-plan caches |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
+| `models/qwen3_4b_qlora/` | QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
@@ -230,7 +243,7 @@ modules. Do not make application logic depend on a particular timestamped run.
   archived before rebuilding. Reads check token count, byte length, and checksum
   without scanning IDs for negative values; newly encoded IDs are checked before
   caching. Refresh replaces only requested encodings.
-- Both active profiles serialize aligned prompt/response turns as
+- All active profiles serialize aligned prompt/response turns as
   `prompt\nresponse`, joined by blank lines. There is no active mono-input
   serialization or training path; archived implementations are outside the
   current module contracts.
@@ -319,6 +332,19 @@ modules. Do not make application logic depend on a particular timestamped run.
   schema/class count, pooling, truncation side, and bias are checked. Context
   and A/B training mode are recorded but not checked. Hub base revisions are
   retained; local base weights are neither stored nor content-fingerprinted.
+- QLoRA shares the LoRA training, batching, pooling, objective, attention,
+  progress, and publication invariants above. Its base uses bitsandbytes NF4
+  with double quantization for warmup, joint training, and validation; compute
+  dtype follows `gpu.precision`, while adapters/head remain FP32 and the base
+  stays frozen. K-bit preparation does not enable checkpointing or clear the
+  allocator cache; the classifier configures checkpointing once with its SDPA
+  recomputation context. Submission explicitly reloads the non-quantized base
+  at the saved revision using the existing two-GPU map, then restores adapters
+  and head without merging or dequantizing a saved base. Checkpoints store a
+  checked `training_quantization` marker (`bnb-nf4-double` versus LoRA's `none`);
+  a missing marker means legacy LoRA. Model sections and batch-plan namespaces
+  stay independent, while token encodings are shared. Neither profile persists
+  live embeddings. The batch scripts retain their LoRA-only defaults.
 - Frozen head compatibility includes model name, serializer, classifier hidden
   size, and schema/class count. Context, compute precision, attention
   implementation, TF32, and A/B training mode are recorded but not checked.

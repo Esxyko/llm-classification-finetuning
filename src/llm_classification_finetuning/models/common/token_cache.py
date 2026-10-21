@@ -372,8 +372,10 @@ class PairwiseTokenStore:
 		revision: str | None,
 		max_length: int | None = None,
 		refresh_cache: bool = False,
+		max_length_field: str = "qwen3_4b_lora.max_length",
 	) -> None:
 		self._records = records
+		self._max_length_field = max_length_field
 		self.revision = revision
 		self.positions = {record.row_id: index for index, record in enumerate(records)}
 		if len(self.positions) != len(records):
@@ -413,6 +415,6 @@ class PairwiseTokenStore:
 			)
 		raise ModelExecutionError(
 			f"Row {row_id} branch {'AB'[branch]} has {length:,} tokens, exceeding "
-			f"qwen3_4b_lora.max_length={max_length:,}. Increase max_length to "
-			f"at least {length:,}; LoRA inputs are never truncated."
+			f"{self._max_length_field}={max_length:,}. Increase max_length to "
+			f"at least {length:,}; inputs are never truncated."
 		)

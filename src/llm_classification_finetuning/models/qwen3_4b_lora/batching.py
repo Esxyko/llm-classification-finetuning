@@ -26,6 +26,7 @@ from ..common import (
 	PairwiseTokenStore,
 	TokenizationCache,
 )
+from ..profile import ModelProfile
 from .data import (
 	PairwiseBatch,
 	PairwiseCollator,
@@ -50,16 +51,16 @@ class TrainingBatchPlan:
 		"""Reject missing, repeated, out-of-range, oversized, or misgrouped rows."""
 		rows = len(dataset)
 		if not rows or len(self.groups) != (rows + group_size - 1) // group_size:
-			raise ValueError("LoRA batch plan has an invalid update-group count.")
+			raise ValueError("Adapter batch plan has an invalid update-group count.")
 		seen = np.zeros(rows, dtype=np.bool_)
 		padded_tokens = 0
 		for group_index, group in enumerate(self.groups):
 			if not group:
-				raise ValueError("LoRA update groups cannot be empty.")
+				raise ValueError("Adapter update groups cannot be empty.")
 			group_rows = 0
 			for batch in group:
 				if not batch:
-					raise ValueError("LoRA micro-batches cannot be empty.")
+					raise ValueError("Adapter micro-batches cannot be empty.")
 				max_a = max_b = 0
 				for index in batch:
 					if (
@@ -69,18 +70,18 @@ class TrainingBatchPlan:
 						or seen[index]
 					):
 						raise ValueError(
-							"LoRA batch plan has invalid or repeated rows."
+							"Adapter batch plan has invalid or repeated rows."
 						)
 					seen[index] = True
 					a, b = dataset.branch_lengths(index)
 					max_a, max_b = max(max_a, a), max(max_b, b)
 				cost = len(batch) * (max_a + max_b)
 				if len(batch) > 1 and cost > budget:
-					raise ValueError("LoRA micro-batch exceeds the token budget.")
+					raise ValueError("Adapter micro-batch exceeds the token budget.")
 				group_rows += len(batch)
 				padded_tokens += cost
 			if group_rows != min(group_size, rows - group_index * group_size):
-				raise ValueError("LoRA batch plan has an invalid update-group size.")
+				raise ValueError("Adapter batch plan has an invalid update-group size.")
 		if (
 			not bool(seen.all())
 			or isinstance(self.padded_tokens, bool)
@@ -88,7 +89,7 @@ class TrainingBatchPlan:
 			or self.padded_tokens != padded_tokens
 		):
 			raise ValueError(
-				"LoRA batch plan coverage or padded token count is invalid."
+				"Adapter batch plan coverage or padded token count is invalid."
 			)
 
 
@@ -141,7 +142,7 @@ class _GlobalBatchPlanner:
 			):
 				best = candidate
 		if best is None:
-			raise ModelExecutionError("Cannot plan empty LoRA training data.")
+			raise ModelExecutionError("Cannot plan empty adapter training data.")
 		return best
 
 	def _sort_key(self, index: int, order: int) -> tuple[int, ...]:
@@ -234,8 +235,9 @@ class PreparedTrainingSplit:
 class _BatchCache:
 	"""Read optional cache entries and atomically publish complete CPU payloads."""
 
-	def __init__(self, root: Path) -> None:
+	def __init__(self, root: Path, model_label: str = "LoRA") -> None:
 		self.root = root
+		self._model_label = model_label
 
 	@staticmethod
 	def key(metadata: dict[str, Any]) -> str:
@@ -283,7 +285,7 @@ class _BatchCache:
 			temporary_path = None
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not write LoRA batch cache {path}: {error}"
+				f"Could not write {self._model_label} batch cache {path}: {error}"
 			) from error
 		finally:
 			if temporary_path is not None:
@@ -309,8 +311,11 @@ class LoRATrainingBatchRepository:
 		cache: _BatchCache,
 		token_cache: TokenizationCache,
 		refresh_cache: bool,
+		model_key: str = "qwen3_4b_lora",
+		model_label: str = "LoRA",
 	) -> None:
 		self._config = config
+		self._model_label = model_label
 		self.data = data
 		self.n_splits = n_splits
 		self.serializer_version = serializer_version
@@ -325,18 +330,28 @@ class LoRATrainingBatchRepository:
 			revision=base_revision,
 			max_length=config.max_length,
 			refresh_cache=refresh_cache,
+			max_length_field=f"{model_key}.max_length",
 		)
 
 	@classmethod
 	def from_config(
-		cls, config: AppConfig, refresh_cache: bool = False
+		cls,
+		config: AppConfig,
+		refresh_cache: bool = False,
+		*,
+		profile: ModelProfile | None = None,
 	) -> LoRATrainingBatchRepository:
 		"""Load data and canonical tokens once, preparing split plans on demand."""
-		model = config.qwen3_4b_lora
+		model_key = profile.config_key if profile else "qwen3_4b_lora"
+		artifact_stem = profile.artifact_stem if profile else "qwen3_4b_lora"
+		model_label = "QLoRA" if profile and profile.quantize_training else "LoRA"
+		model = getattr(config, model_key, None)
 		if model is None:
 			raise ModelExecutionError(
-				"LoRA batch preparation requires qwen3_4b_lora configuration."
+				f"{model_label} batch preparation requires {model_key} configuration."
 			)
+		if not isinstance(model, LoRAModelConfig):
+			raise TypeError(f"{model_key} must be a LoRAModelConfig.")
 		try:
 			repository = ModelDataRepository(
 				config.data.processed_path, config.cross_validation.n_splits
@@ -346,7 +361,7 @@ class LoRATrainingBatchRepository:
 			revision = getattr(base_config, "_commit_hash", None)
 			if revision is None and not Path(model.model_name).is_dir():
 				raise ModelExecutionError(
-					"Could not resolve a fixed Hub revision for LoRA token caching."
+					f"Could not resolve a fixed Hub revision for {model_label} token caching."
 				)
 			return cls(
 				config=model,
@@ -355,7 +370,8 @@ class LoRATrainingBatchRepository:
 				serializer_version=repository.serializer_version,
 				base_revision=revision,
 				cache=_BatchCache(
-					config.data.processed_path.parent / "qwen3_4b_lora_batches"
+					config.data.processed_path.parent / f"{artifact_stem}_batches",
+					model_label,
 				),
 				token_cache=TokenizationCache.from_pretrained(
 					config.data.processed_path.parent / "token_cache",
@@ -363,12 +379,14 @@ class LoRATrainingBatchRepository:
 					revision=revision,
 				),
 				refresh_cache=refresh_cache,
+				model_key=model_key,
+				model_label=model_label,
 			)
 		except ModelExecutionError:
 			raise
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not prepare LoRA training batches: {error}"
+				f"Could not prepare {model_label} training batches: {error}"
 			) from error
 
 	def _load_plan(
@@ -437,7 +455,7 @@ class LoRATrainingBatchRepository:
 			status = "Reused"
 		self._plans[key] = payload
 		print(
-			f"{status} LoRA batch plan ({'build' if fold is None else f'fold {fold}'}): "
+			f"{status} {self._model_label} batch plan ({'build' if fold is None else f'fold {fold}'}): "
 			f"{len(reference):,} rows, {len(plan.groups):,} updates, {plan.batch_count:,} micro-batches; "
 			f"{self._cache.path('plans', metadata)}",
 			flush=True,
@@ -452,7 +470,7 @@ class LoRATrainingBatchRepository:
 			or not 0 <= fold < self.n_splits
 		):
 			raise ModelExecutionError(
-				f"LoRA training fold must be between 0 and {self.n_splits - 1}."
+				f"{self._model_label} training fold must be between 0 and {self.n_splits - 1}."
 			)
 		reference = self.data.reference
 		if fold is not None:
@@ -462,7 +480,7 @@ class LoRATrainingBatchRepository:
 		reference = reference.reset_index(drop=True).copy()
 		if reference.empty or reference.duplicated(["id", "is_swapped"]).any():
 			raise ModelExecutionError(
-				"LoRA training must contain unique, nonempty oriented rows."
+				f"{self._model_label} training must contain unique, nonempty oriented rows."
 			)
 		dataset = PairwiseTokenDataset(reference, self.tokens)
 		seed = self._config.random_state + (0 if fold is None else fold)

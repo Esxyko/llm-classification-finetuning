@@ -16,6 +16,7 @@ class ModelProfile:
 	config_key: str
 	artifact_stem: str
 	result_prefix: str
+	quantize_training: bool = False
 
 	def is_configured(self, config: AppConfig) -> bool:
 		"""Return whether the selected YAML includes this model's section."""

@@ -23,9 +23,10 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
 | `cross_validation` | Fold count, random seed, tokenizer identity, and maximum fold token deviation |
-| `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by both models |
+| `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `warmup_extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_qlora` | Same fields as LoRA, with fixed 4-bit NF4 and double quantization for training/validation; submissions load a non-quantized base |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -44,8 +45,8 @@ Only these YAML fields have parser defaults when omitted:
 | `cross_validation.tokenizer_revision` | `null` (resolve the current revision) |
 | `cross_validation.max_token_deviation` | `0.01` (1% of the mean fold token count) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
-| `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` | `aug` |
-| `qwen3_4b_lora.training_token_budget` | `0` |
+| `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `qwen3_4b_qlora.A/B_swap` | `aug` |
+| `qwen3_4b_lora.training_token_budget` / `qwen3_4b_qlora.training_token_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
 `warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys are
@@ -74,7 +75,7 @@ Missing tokenizer files may be downloaded on preparation. If equal-class group
 swaps cannot reach the target within 1,000 exchanges, preparation fails before
 replacing the processed dataset. See [data preparation](data-preparation.md).
 
-For LoRA, `head_inference_batch_size` is a required positive integer replacing
+For LoRA and QLoRA, `head_inference_batch_size` is a required positive integer replacing
 `inference_batch_size`; rename the old key while preserving its value. The old
 key is rejected. `warmup_extraction_batch_size` controls backbone extraction for
 warmup, every joint-validation pass, and submissions, including when warmup is
@@ -86,8 +87,8 @@ optimizer update per `warmup_training_batch_size` batch.
 
 Cross-validation and `--build` use the single CUDA device selected by
 the required `gpu.device` field. The root preset selects `cuda:0`.
-Both models use one backbone for A and B; classifier head training uses the
-same GPU. LoRA encodes A and B sequentially, while frozen extraction batches
+All models use one backbone for A and B; classifier head training uses the
+same GPU. LoRA and QLoRA encode A and B sequentially, while frozen extraction batches
 unique missing branches from either side together.
 
 `--submit` splits that backbone across the two devices in `gpu.submit_devices`,
@@ -99,7 +100,7 @@ The root preset's GPU configuration is:
 gpu:
   device: cuda:0
   submit_devices: [cuda:0, cuda:1]
-  precision: fp16
+  precision: bf16
   attention_implementation: sdpa
   allow_tf32: false
 ```
@@ -112,6 +113,11 @@ is disabled for submissions. Both GPUs must be available and support
 `gpu.precision`; there is no automatic precision change, single-GPU fallback, or
 CPU/disk offload. `ALL` still runs models sequentially, with each model split
 across both GPUs.
+
+QLoRA uses `gpu.precision` as its quantized-layer compute dtype during training
+and validation. Its submissions explicitly load a non-quantized base at that
+precision and restore the saved adapter. NF4 and double quantization are fixed
+profile behavior; see [QLoRA training](qlora.md).
 
 `gpu.precision` accepts `fp16`, `bf16`, or `fp32`;
 `gpu.attention_implementation` accepts `sdpa` or `eager`. Hardware validation
@@ -151,7 +157,7 @@ uv run python scripts/build_all_configs.py
 
 Both scripts define `MODELS = ("qwen3-4b-lora",)` near the top. Edit each script's
 tuple independently to select models and their execution order; supported model
-selectors are `qwen3-4b` and `qwen3-4b-lora`. Config files run in filename order,
+selectors are `qwen3-4b`, `qwen3-4b-lora`, and `qwen3-4b-qlora`. Config files run in filename order,
 with the selected models running sequentially for each config. The scripts are
 independent: the build script does not run or require cross-validation.
 They locate `configs/` relative to the script's project root and run each model
@@ -161,7 +167,8 @@ Each model's validation run publishes its own `metrics.json`; `config_total_time
 covers only that model's cross-validation run under the selected config.
 The full-data build does not produce `metrics.json`. By default, it writes
 `models/qwen3_4b_lora/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
-also writes `models/qwen3_4b/head_CONFIG_STEM.pt`. Before starting any builds,
+also writes `models/qwen3_4b/head_CONFIG_STEM.pt`; selecting `qwen3-4b-qlora` writes
+`models/qwen3_4b_qlora/adapter_CONFIG_STEM.pt`. Before starting any builds,
 the script rejects config stems that are invalid checkpoint tags or duplicate
 another stem case-insensitively.
 

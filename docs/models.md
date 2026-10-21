@@ -2,9 +2,11 @@
 
 [Documentation index](../README.md)
 
-Both profiles use a shared Qwen3-4B backbone to compare two response branches.
-The frozen profile trains only a pairwise classifier; the LoRA profile also
-trains adapters. See [LoRA training](lora.md) for its objectives and settings.
+All profiles use a shared Qwen3-4B backbone to compare two response branches.
+The frozen profile trains only a pairwise classifier; LoRA and QLoRA also
+train adapters. See [LoRA training](lora.md) for their shared objectives and
+settings, and [QLoRA training](qlora.md) for quantized training and
+non-quantized submissions.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 

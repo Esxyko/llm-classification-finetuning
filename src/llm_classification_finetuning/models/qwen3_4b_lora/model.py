@@ -5,10 +5,10 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 
 import torch
-from peft import LoraConfig, TaskType, get_peft_model
+from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 from torch import Tensor, nn
 from torch.nn.attention import SDPBackend, sdpa_kernel
-from transformers import AutoModel
+from transformers import AutoModel, BitsAndBytesConfig
 
 from ...config import GPUConfig, LoRAModelConfig
 from ..common import ABSwapAverager, GPUEnvironment, PairwiseClassificationHead
@@ -26,19 +26,40 @@ class LoRAQwenClassifier(nn.Module):
 		*,
 		revision: str | None = None,
 		device_map: dict[str, str] | None = None,
+		quantize_backbone: bool = False,
 	) -> None:
 		super().__init__()
 		self.device = device
 		self.dtype = GPUEnvironment.PRECISION_DTYPES[gpu.precision]
+		if quantize_backbone and device_map is not None:
+			raise ValueError(
+				"4-bit adapter training requires a single training device."
+			)
+		quantization_config = (
+			BitsAndBytesConfig(
+				load_in_4bit=True,
+				bnb_4bit_quant_type="nf4",
+				bnb_4bit_use_double_quant=True,
+				bnb_4bit_compute_dtype=self.dtype,
+			)
+			if quantize_backbone
+			else None
+		)
 		backbone = AutoModel.from_pretrained(
 			config.model_name,
 			revision=revision,
 			dtype=self.dtype,
 			attn_implementation=gpu.attention_implementation,
-			device_map=device_map,
+			device_map={"": str(device)} if quantize_backbone else device_map,
+			quantization_config=quantization_config,
 		)
 		backbone.config.use_cache = False
 		backbone.requires_grad_(False)
+		if quantize_backbone:
+			# Configure checkpointing once below, preserving our SDPA recomputation context.
+			backbone = prepare_model_for_kbit_training(
+				backbone, use_gradient_checkpointing=False, auto_clear_cache=False
+			)
 		self.base_revision = getattr(backbone.config, "_commit_hash", None)
 		self.backbone_hidden_size = int(backbone.config.hidden_size)
 		self.backbone = get_peft_model(
@@ -53,7 +74,7 @@ class LoRAQwenClassifier(nn.Module):
 			),
 			autocast_adapter_dtype=True,
 		)
-		if device_map is None:
+		if device_map is None and not quantize_backbone:
 			self.backbone.to(device)
 		if config.gradient_checkpointing and device_map is None:
 			self.backbone.get_base_model().gradient_checkpointing_enable(

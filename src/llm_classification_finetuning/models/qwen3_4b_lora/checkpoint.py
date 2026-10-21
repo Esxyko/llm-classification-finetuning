@@ -37,10 +37,15 @@ class LoRACheckpointCompatibility:
 	pooling: str = "last-nonpadding-token"
 	truncation_side: str = "right"
 	bias: str = "none"
+	training_quantization: str = "none"
 
 	@classmethod
 	def from_config(
-		cls, config: LoRAModelConfig, serializer_version: str
+		cls,
+		config: LoRAModelConfig,
+		serializer_version: str,
+		*,
+		quantize_training: bool = False,
 	) -> LoRACheckpointCompatibility:
 		return cls(
 			model_name=config.model_name,
@@ -53,6 +58,7 @@ class LoRACheckpointCompatibility:
 			lora_dropout=config.lora_dropout,
 			lora_target_modules=tuple(sorted(config.lora_target_modules)),
 			ab_swap=config.ab_swap,
+			training_quantization="bnb-nf4-double" if quantize_training else "none",
 		)
 
 
@@ -69,9 +75,12 @@ class LoadedLoRACheckpoint:
 class LoRACheckpointStore:
 	"""Publish one complete checkpoint and reject partial or incompatible weights."""
 
-	def __init__(self, path: Path, build_command: str) -> None:
+	def __init__(
+		self, path: Path, build_command: str, *, model_label: str = "LoRA"
+	) -> None:
 		self.path = path.resolve()
 		self._build_command = build_command
+		self._model_label = model_label
 
 	def save(
 		self,
@@ -114,7 +123,7 @@ class LoRACheckpointStore:
 			temporary_path = None
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not save LoRA checkpoint {self.path}: {error}"
+				f"Could not save {self._model_label} checkpoint {self.path}: {error}"
 			) from error
 		finally:
 			if temporary_path is not None:
@@ -127,7 +136,7 @@ class LoRACheckpointStore:
 		"""Validate training identity without imposing the original GPU settings."""
 		if not self.path.is_file():
 			raise ModelExecutionError(
-				f"LoRA checkpoint not found: {self.path}. Run '{self._build_command}' "
+				f"{self._model_label} checkpoint not found: {self.path}. Run '{self._build_command}' "
 				"with the matching --config first."
 			)
 		try:
@@ -136,7 +145,8 @@ class LoRACheckpointStore:
 				checkpoint.get("metadata"), dict
 			):
 				raise TypeError("checkpoint and metadata must be mappings")
-			metadata = checkpoint["metadata"]
+			# Checkpoints predating QLoRA were trained with a non-quantized base.
+			metadata = {"training_quantization": "none", **checkpoint["metadata"]}
 			mismatches = [
 				name
 				for name, value in asdict(expected).items()
@@ -170,7 +180,7 @@ class LoRACheckpointStore:
 			)
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not load LoRA checkpoint {self.path}: {error}"
+				f"Could not load {self._model_label} checkpoint {self.path}: {error}"
 			) from error
 
 	def restore(
@@ -196,7 +206,7 @@ class LoRACheckpointStore:
 			model.classifier.load_state_dict(checkpoint.head_state_dict, strict=True)
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not restore LoRA checkpoint {self.path}: {error}"
+				f"Could not restore {self._model_label} checkpoint {self.path}: {error}"
 			) from error
 
 	@staticmethod

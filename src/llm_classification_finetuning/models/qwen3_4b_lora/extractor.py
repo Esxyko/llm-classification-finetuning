@@ -13,6 +13,9 @@ from .model import LoRAQwenClassifier
 class LoRAEmbeddingExtractor:
 	"""Keep paired features from the current backbone in temporary CPU memory."""
 
+	def __init__(self, model_label: str = "LoRA") -> None:
+		self._model_label = model_label
+
 	@torch.no_grad()
 	def extract(
 		self,
@@ -34,12 +37,12 @@ class LoRAEmbeddingExtractor:
 			del pooled
 			if not torch.isfinite(features[start:stop]).all():
 				raise ModelExecutionError(
-					f"LoRA {stage} extraction produced non-finite features."
+					f"{self._model_label} {stage} extraction produced non-finite features."
 				)
 			start = stop
 			if index == 0 or (index + 1) % 100 == 0:
 				print(
-					f"LoRA {stage} extraction batch {index + 1:,}/{len(loader):,}.",
+					f"{self._model_label} {stage} extraction batch {index + 1:,}/{len(loader):,}.",
 					flush=True,
 				)
 		return PairwiseFeatureStore(row_ids, features)
