@@ -10,22 +10,25 @@ or `result`. Relative config-file paths resolve from the working directory.
 All commands load `.env` from that directory, preserving existing environment
 variables.
 
-Set `DATA_PATH` in `.env` to choose the base directory for relative
-`data.raw_dir` and `data.processed_path` values. If it is missing, empty, or
-whitespace-only, the base defaults to the working directory. A relative
-`DATA_PATH` resolves from the working directory, and `~` expands to the user's
-home directory. Absolute YAML data paths stay absolute. Model artifacts and
-reports remain under the working directory.
+Set `DATA_PATH` in `.env` to choose the base directory for downloads, including
+relative `data.raw_dir` values for Kaggle files and the Hugging Face cache.
+For raw files, a missing, empty, or whitespace-only `DATA_PATH` defaults to the
+working directory. A relative `DATA_PATH` resolves from the working directory,
+and `~` expands to the user's home directory. Relative `data.processed_path`
+values resolve from the working directory independently of `DATA_PATH`.
+Absolute YAML data paths stay absolute. Generated data, training caches,
+model artifacts, and reports use working-directory paths by default.
 
 ```dotenv
 DATA_PATH=D:/datasets
 ```
 
-With the default YAML paths, this uses `D:/datasets/data/raw` and
-`D:/datasets/data/processed/train_validation.parquet`. Data caches stored beside
-the processed Parquet follow it to the selected location.
+With the default YAML paths, raw downloads use `D:/datasets/data/raw`, while
+generated data uses `./data/processed/train_validation.parquet`. Training caches
+stay beside the processed Parquet under `./data/processed/`, checkpoints under
+`./models/`, and reports under `./results/`.
 
-A non-empty `DATA_PATH` also stores Hugging Face downloads under
+A non-empty `DATA_PATH` stores Hugging Face downloads under
 `D:/datasets/huggingface/hub` in this example. Package initialization loads
 `.env` before importing Hugging Face libraries and sets `HF_HOME` to
 `<DATA_PATH>/huggingface` and `HF_HUB_CACHE` to `<DATA_PATH>/huggingface/hub`.

@@ -119,7 +119,7 @@ class AppConfig:
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
-		"""Read YAML and .env, resolving relative data paths from DATA_PATH or cwd."""
+		"""Read YAML and .env, separating download and generated-data roots."""
 		working_dir = Path.cwd()
 		load_dotenv(dotenv_path=working_dir / ".env", override=False)
 		resolved_config_path = config_path.expanduser().resolve()
@@ -206,15 +206,15 @@ class AppConfig:
 		competition = _require_non_empty_string(
 			data_section.get("competition"), "data.competition"
 		)
-		base_dir = _resolve_data_path(
+		download_base_dir = _resolve_data_path(
 			working_dir, os.environ.get("DATA_PATH", "").strip()
 		)
 		raw_dir = _resolve_data_path(
-			base_dir,
+			download_base_dir,
 			_require_non_empty_string(data_section.get("raw_dir"), "data.raw_dir"),
 		)
 		processed_path = _resolve_data_path(
-			base_dir,
+			working_dir,
 			_require_non_empty_string(
 				data_section.get("processed_path"), "data.processed_path"
 			),

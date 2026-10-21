@@ -47,11 +47,13 @@ variables. Package initialization also loads that `.env` before HF imports.
 A non-empty `DATA_PATH` sets `HF_HOME` to `<DATA_PATH>/huggingface` and
 `HF_HUB_CACHE` to `<DATA_PATH>/huggingface/hub`, overriding those HF variables;
 missing or blank `DATA_PATH` preserves standard HF cache settings.
-Relative YAML data paths resolve from `DATA_PATH`, which defaults
-to the working directory when missing or blank; a relative `DATA_PATH` resolves
-from the working directory. Absolute YAML data paths stay absolute. Model
-artifacts and reports are rooted in the working directory, regardless of the
-config file's location.
+`DATA_PATH` applies only to downloads: relative YAML `data.raw_dir` values
+resolve from it, defaulting to the working directory when missing or blank.
+A relative `DATA_PATH` resolves from the working directory. Relative
+`data.processed_path` values and their generated training caches resolve from
+the working directory independently of `DATA_PATH`. Absolute YAML data paths
+stay absolute. Model artifacts and reports are rooted in the working directory,
+regardless of the config file's location.
 The paths shown in the flow are those in the root preset; raw/processed paths
 follow the selected YAML. Batch-config scripts instead run each model from the
 project root derived from their own file location.
@@ -83,7 +85,8 @@ and print summaries. Business logic belongs below the CLI layer.
   `HF_HUB_DISABLE_XET` to `1` to use HTTP downloads, preserving an explicit
   Xet setting and leaving other endpoints' Xet behavior unchanged.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
-  loading, and data path resolution through optional `DATA_PATH`.
+  loading, raw-download path resolution through optional `DATA_PATH`, and
+  processed-data path resolution from the working directory.
   `WarmupModelConfig` owns shared head-warmup fields;
   `LoRAModelConfig` extends it with joint-training and adapter settings.
 - `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
@@ -243,7 +246,7 @@ exports over importing private helpers across package boundaries.
 | `scripts/migrate_hf_models.py` | Copy or move existing HF model repositories into `DATA_PATH/huggingface/hub`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
 | `<DATA_PATH>/huggingface/hub/` | Native HF cache for downloaded model weights, configurations, and tokenizers when `DATA_PATH` is set |
 | `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
-| `data/raw/` | Downloaded competition CSVs |
+| `data/raw/` | Default downloaded competition CSV location, relative to `DATA_PATH` when set |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
 | `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |

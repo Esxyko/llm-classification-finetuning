@@ -4,6 +4,8 @@
 
 Training caches sit beside the processed Parquet selected by
 [`data.processed_path`](configuration.md#configuration-files-and-paths).
+Relative processed paths resolve from the working directory independently of
+`DATA_PATH`, so generated training caches stay there too.
 Frozen embeddings, shared text encodings, adapter batch plans, and head-warmup
 states have separate compatibility rules. LoRA/QLoRA warmup, joint-validation,
 and submission features stay in temporary CPU memory (BF16 in BF16 mode,
