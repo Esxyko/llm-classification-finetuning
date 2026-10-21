@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -103,8 +104,8 @@ class LoRATrainer:
 
 	def cross_validate(
 		self, batches: LoRATrainingBatchRepository
-	) -> tuple[FoldTrainingResult, ...]:
-		"""Train a fresh model per fold and restore augmented prediction row order."""
+	) -> Iterator[FoldTrainingResult]:
+		"""Yield each fresh model's fold predictions after alignment and cleanup."""
 		data = batches.data
 		selected = data.reference
 		if self._config.ab_swap == "inf":
@@ -119,7 +120,6 @@ class LoRATrainer:
 		progress = self._create_progress(
 			training_rows, mode="cross-validation", validation_rows=validation_rows
 		)
-		results: list[FoldTrainingResult] = []
 		for fold in range(batches.n_splits):
 			fold_started = self._timestamp()
 			training = batches.get_training(fold)
@@ -157,16 +157,13 @@ class LoRATrainer:
 				del model
 				gc.collect()
 				torch.cuda.empty_cache()
-			results.append(
-				FoldTrainingResult(
-					fold=fold,
-					ids=ids,
-					probabilities=probabilities,
-					epochs=history.epochs,
-					total_time_seconds=self._timestamp() - fold_started,
-				)
+			yield FoldTrainingResult(
+				fold=fold,
+				ids=ids,
+				probabilities=probabilities,
+				epochs=history.epochs,
+				total_time_seconds=self._timestamp() - fold_started,
 			)
-		return tuple(results)
 
 	def fit(
 		self,

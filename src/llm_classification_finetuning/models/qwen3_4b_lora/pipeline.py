@@ -122,7 +122,9 @@ class LoRAModelPipeline:
 				self._model_config.model_name,
 				prediction_aggregation="ab_swap_average",
 			)
-			return ModelRunResult(output_dir, len(folds), predictions, average_loss)
+			return ModelRunResult(
+				output_dir, batches.n_splits, predictions, average_loss
+			)
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				"CUDA ran out of memory during LoRA execution. Lower "

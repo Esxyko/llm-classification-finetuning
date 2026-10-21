@@ -124,8 +124,9 @@ and print summaries. Business logic belongs below the CLI layer.
       source fingerprints for both active profiles.
     - `data.py`: Serializes aligned conversation branches for pairwise models.
     - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
-    - `publishers.py`: Stages and publishes validation runs with epoch/fold
-      durations and test submissions; atomically records each model's complete
+    - `publishers.py`: Stages and publishes each completed validation fold and
+      cumulative metrics in one run directory, and publishes test submissions;
+      atomically records each model's complete
       runtime and optional GPU memory peaks under its selected config.
     - `hardware.py`: Validates the training GPU or both submission GPUs, activates
       the first selected device, and maps complete Qwen3 decoder layers across
@@ -144,8 +145,9 @@ and print summaries. Business logic belongs below the CLI layer.
       aligns validation predictions with processed fold rows.
     - `progress.py`: Counts weighted training update groups and validation batches,
       flushing progress logs at ten-percent milestones using CPU-only counters.
-    - `trainer.py`: Trains fold-specific heads or one full-data head, sharing a
-      training/validation progress counter across all folds and epochs.
+    - `trainer.py`: Yields completed fold-specific head results or trains one
+      full-data head, sharing a training/validation progress counter across all
+      folds and epochs.
     - `checkpoint.py`: Saves and validates the production head and compatibility
       metadata.
     - `predictor.py`: Runs no-gradient inference from a saved head.
@@ -325,6 +327,12 @@ modules. Do not make application logic depend on a particular timestamped run.
   does not save checkpoints. Full-data builds have no validation set;
   cross-validation publishes the final epoch's predictions, with validation
   after every epoch (including LoRA head warmup).
+- Both cross-validation trainers yield each completed fold before starting the
+  next. The publisher writes that fold's CSV and updates cumulative
+  `metrics.json` in the same run directory. Published folds survive later
+  training failures; comprehensive reports still require all configured folds.
+  During training, top-level metrics cover completed folds only; complete
+  runtime and GPU peaks are added after the entire model run succeeds.
 - Training progress uses one counter across all stages, folds, and epochs of a
   model run, including validation batches after every epoch. Totals use
   A/B-selected training rows and original validation IDs, rounding batches/groups

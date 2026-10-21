@@ -7,6 +7,14 @@ validation-fold reports. The selected [configuration](configuration.md) supplies
 the processed reference file and fold count. Result-folder selection does not
 filter by model or the configuration recorded in `metrics.json`.
 
+Both models write each fold's final-epoch predictions to `fold-N.csv` as soon
+as that fold finishes, before training the next fold. All folds share one
+timestamped run directory. Each publication also updates `metrics.json` with
+the completed folds' counts, weighted average loss, epoch metrics, and timings.
+The first fold's CSV and metadata are exposed together; subsequent CSVs and
+metadata are staged and individually replaced atomically. Completed folds remain
+available if training is interrupted or a later fold fails.
+
 Create reports for the latest validation run:
 
 ```shell
@@ -24,8 +32,9 @@ subfolder, excluding `comprehensive`, `submit`, and historical `test` directorie
 It also excludes `.comprehensive-*` staging/backup directories. The selected
 folder is then validated; discovery does not search for the latest valid run.
 
-The selected folder must contain exactly one CSV per configured fold. Each CSV
-must have these columns in order:
+Report generation still requires exactly one CSV per configured fold, so wait
+until all folds finish before running `result`. Each CSV must have these columns
+in order:
 
 ```text
 id,winner_model_a,winner_model_b,winner_tie
@@ -81,10 +90,11 @@ LoRA's first warmup training time includes canonical feature extraction for
 both training and validation IDs. Each LoRA joint-validation time includes fresh
 backbone extraction followed by head inference; warmup validation reuses the
 existing features. Full-data builds do not write `metrics.json`.
-Top-level `training_time` and `validation_time` sum that model's corresponding
-phases across all folds. Top-level `total_time` measures the model's complete
-run, including pipeline initialization, input loading, embedding preparation,
-all folds, cleanup, and result publication. The final `config_total_time` field
+During training, top-level `training_time`, `validation_time`, and `total_time`
+sum the corresponding durations of completed folds. Once all folds finish,
+top-level `total_time` measures the model's complete run, including pipeline
+initialization, input loading, embedding preparation, all folds, cleanup, and
+result publication. The final `config_total_time` field
 records the same duration for this model under the selected config. With
 `model ALL`, each model is timed separately and its metrics contain only its
 own elapsed time. The command also prints each model's duration at completion.

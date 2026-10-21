@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Iterable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,7 +20,7 @@ from .trainer import FoldTrainingResult
 
 
 class ModelResultPublisher:
-	"""Atomically publish fold predictions under a datetime run name."""
+	"""Publish completed folds incrementally under one datetime run name."""
 
 	PROBABILITY_COLUMNS = (
 		"winner_model_a",
@@ -33,12 +34,12 @@ class ModelResultPublisher:
 
 	def publish(
 		self,
-		fold_results: tuple[FoldTrainingResult, ...],
+		fold_results: Iterable[FoldTrainingResult],
 		model_name: str,
 		*,
 		prediction_aggregation: str | None = None,
 	) -> tuple[Path, float, int]:
-		"""Stage every artifact, then expose one complete run directory."""
+		"""Write each fold and update cumulative metrics before consuming the next."""
 		try:
 			self._results_root.mkdir(parents=True, exist_ok=True)
 		except OSError as error:
@@ -54,6 +55,41 @@ class ModelResultPublisher:
 				f"Model result directory already exists for this second: {output_dir}"
 			)
 
+		completed_results: list[FoldTrainingResult] = []
+		for result in fold_results:
+			if any(previous.fold == result.fold for previous in completed_results):
+				raise ModelExecutionError(
+					f"Validation fold {result.fold} has already been published."
+				)
+			completed_results.append(result)
+			metrics, average_loss, prediction_count = self._build_metrics(
+				tuple(completed_results),
+				model_name,
+				run_name=run_name,
+				generated_at=generated_at,
+				prediction_aggregation=prediction_aggregation,
+			)
+			self._publish_fold(
+				output_dir, result, metrics, first_fold=len(completed_results) == 1
+			)
+			print(f"Wrote fold {result.fold} results: {output_dir}", flush=True)
+
+		if not completed_results:
+			raise ModelExecutionError(
+				"Model training produced no validation predictions."
+			)
+		return output_dir, average_loss, prediction_count
+
+	@staticmethod
+	def _build_metrics(
+		fold_results: tuple[FoldTrainingResult, ...],
+		model_name: str,
+		*,
+		run_name: str,
+		generated_at: datetime,
+		prediction_aggregation: str | None,
+	) -> tuple[dict[str, object], float, int]:
+		"""Summarize only the validation folds completed so far."""
 		if prediction_aggregation == "ab_swap_average" and any(
 			len(result.ids) % 2 for result in fold_results
 		):
@@ -118,40 +154,52 @@ class ModelResultPublisher:
 		}
 		if prediction_aggregation is not None:
 			metrics["prediction_aggregation"] = prediction_aggregation
+		return metrics, average_loss, prediction_count
 
+	def _publish_fold(
+		self,
+		output_dir: Path,
+		result: FoldTrainingResult,
+		metrics: dict[str, object],
+		*,
+		first_fold: bool,
+	) -> None:
+		"""Stage one fold and its metrics, retaining previously published folds."""
 		try:
 			with tempfile.TemporaryDirectory(
 				dir=self._results_root,
 				prefix=f".{self._result_prefix}-",
 			) as temporary_dir:
 				staging_dir = Path(temporary_dir)
-				for result in fold_results:
-					prediction_frame = pd.DataFrame(
-						{
-							"id": result.ids,
-							**{
-								column: result.probabilities[:, index]
-								for index, column in enumerate(self.PROBABILITY_COLUMNS)
-							},
-						}
-					)
-					self._validate_probabilities(prediction_frame, result.fold)
-					prediction_frame.to_csv(
-						staging_dir / f"fold-{result.fold}.csv",
-						index=False,
-					)
+				prediction_frame = pd.DataFrame(
+					{
+						"id": result.ids,
+						**{
+							column: result.probabilities[:, index]
+							for index, column in enumerate(self.PROBABILITY_COLUMNS)
+						},
+					}
+				)
+				self._validate_probabilities(prediction_frame, result.fold)
+				fold_filename = f"fold-{result.fold}.csv"
+				prediction_frame.to_csv(staging_dir / fold_filename, index=False)
 				(staging_dir / "metrics.json").write_text(
 					json.dumps(metrics, indent=2, sort_keys=True) + "\n",
 					encoding="utf-8",
 				)
-				os.replace(staging_dir, output_dir)
+				if first_fold:
+					os.replace(staging_dir, output_dir)
+				else:
+					os.replace(staging_dir / fold_filename, output_dir / fold_filename)
+					os.replace(
+						staging_dir / "metrics.json", output_dir / "metrics.json"
+					)
 		except ModelExecutionError:
 			raise
 		except Exception as error:
 			raise ModelExecutionError(
 				f"Could not publish model results to {output_dir}: {error}"
 			) from error
-		return output_dir, average_loss, prediction_count
 
 	@staticmethod
 	def record_model_time(

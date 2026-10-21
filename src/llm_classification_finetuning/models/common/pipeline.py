@@ -117,7 +117,7 @@ class ModelPipeline:
 		)
 		return ModelRunResult(
 			output_dir=output_dir,
-			folds=len(fold_results),
+			folds=self._config.cross_validation.n_splits,
 			predictions=prediction_count,
 			average_loss=average_loss,
 			cache_path=self._embedding_cache.root,

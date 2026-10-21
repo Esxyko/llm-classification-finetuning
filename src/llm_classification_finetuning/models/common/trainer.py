@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -133,8 +134,8 @@ class ModelCrossValidator:
 		self,
 		reference: pd.DataFrame,
 		embeddings: CachedEmbeddings,
-	) -> tuple[FoldTrainingResult, ...]:
-		"""Train all folds in order and return final validation probabilities."""
+	) -> Iterator[FoldTrainingResult]:
+		"""Yield each fold's final predictions before training the next fold."""
 		selected = self._training_reference(reference)
 		originals = reference.loc[~reference["is_swapped"]]
 		batch_size = self._config.training_batch_size
@@ -148,7 +149,6 @@ class ModelCrossValidator:
 				for fold in range(self._n_splits)
 			),
 		)
-		results: list[FoldTrainingResult] = []
 		for fold in range(self._n_splits):
 			training_reference = reference.loc[reference["fold"].ne(fold)]
 			validation_reference = reference.loc[reference["fold"].eq(fold)]
@@ -156,16 +156,13 @@ class ModelCrossValidator:
 				raise ModelExecutionError(
 					f"Fold {fold} has an empty training or validation set."
 				)
-			results.append(
-				self._train_fold(
-					fold,
-					training_reference,
-					validation_reference,
-					embeddings,
-					progress=progress,
-				)
+			yield self._train_fold(
+				fold,
+				training_reference,
+				validation_reference,
+				embeddings,
+				progress=progress,
 			)
-		return tuple(results)
 
 	def train_all(
 		self,
