@@ -74,11 +74,6 @@ class LoRAQwenClassifier(nn.Module):
 		input_device = self.backbone.get_input_embeddings().weight.device
 		for branch in (batch.branch_a, batch.branch_b):
 			input_ids = branch.input_ids.to(input_device, non_blocking=True)
-			mask = (
-				branch.attention_mask.to(input_device, non_blocking=True)
-				if branch.attention_mask is not None
-				else None
-			)
 			with (
 				self._attention_context(),
 				torch.autocast(
@@ -87,9 +82,11 @@ class LoRAQwenClassifier(nn.Module):
 					enabled=self.dtype != torch.float32,
 				),
 			):
+				# Qwen retains causal attention, so real tokens cannot see right padding.
+				# Omitting the padding mask lets SDPA use native GQA.
 				hidden = self.backbone(
 					input_ids=input_ids,
-					attention_mask=mask,
+					attention_mask=None,
 					use_cache=False,
 					return_dict=True,
 				).last_hidden_state

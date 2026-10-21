@@ -63,12 +63,17 @@ reuse encodings across IDs, dataset revisions, A/B modes, model profiles, and
 training/test inputs. Swapped rows select the opposite branch views. For Hub
 backbones, training preparation resolves a fixed base revision before loading
 weights and uses it for both tokenizer and models. A model revision change can
-still reuse tokens when the actual tokenizer is unchanged. Pooling positions
-are computed on the CPU; branches without padding omit the attention
-mask. Encoding releases the full hidden-state tensor after pooling, while joint
-training still retains both branches' gradient graphs. Training loss statistics
-stay on the GPU until logging or epoch completion; non-finite losses are checked
-at each update boundary before the optimizer can modify weights.
+still reuse tokens when the actual tokenizer is unchanged. All backbone stages
+right-pad each branch independently without constructing or passing padding masks.
+Qwen's causal attention prevents real tokens from attending to right padding;
+pooling selects the last real token using positions computed on the CPU. With
+SDPA and standard Qwen3-4B, omitting the padding mask enables Transformers' native
+GQA path without explicitly repeating K/V heads. Kernel selection and
+floating-point rounding can differ from masked encoding. Encoding releases the
+full hidden-state tensor after pooling, while joint training still retains both
+branches' gradient graphs. Training loss statistics stay on the GPU until logging
+or epoch completion; non-finite losses are checked at each update boundary before
+the optimizer can modify weights.
 
 ## Measured input lengths
 

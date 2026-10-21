@@ -91,7 +91,7 @@ and print summaries. Business logic belongs below the CLI layer.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: Adapter model with single-GPU training and dual-GPU submission.
     - `data.py`: Orient shared canonical token/feature views and independently
-      pad branches with CPU pooling positions.
+      right-pad branches without padding masks, with CPU pooling positions.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist per-fold/build
       global batch plans, and shuffle fixed update groups with explicit row counts.
@@ -305,6 +305,11 @@ modules. Do not make application logic depend on a particular timestamped run.
   the embedding device, pooling indices follow hidden states, and pooled features
   return to the head device. Hardware placement is excluded from checkpoint and
   cache compatibility, and complete frozen cache hits skip backbone loading.
+- LoRA backbone inputs are independently right-padded without constructing or
+  passing padding masks during warmup, joint training, validation, or submission.
+  Qwen retains causal attention, so real tokens cannot attend to right padding;
+  pooling uses CPU-computed last-real-token positions. With SDPA and standard
+  Qwen3-4B, this enables native GQA without explicit K/V head repetition.
 - LoRA SDPA encoding permits only Flash, memory-efficient, and cuDNN backends;
   math fallback is disabled for warmup, joint training, validation, submission,
   and gradient-checkpoint recomputation. Unsupported inputs fail, and scoped

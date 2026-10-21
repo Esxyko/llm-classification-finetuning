@@ -37,18 +37,14 @@ def _labels(reference: pd.DataFrame) -> np.ndarray:
 
 @dataclass(frozen=True, slots=True)
 class BranchBatch:
-	"""Right-padded tokens with CPU-computed pooling positions and an optional mask."""
+	"""Right-padded tokens with CPU pooling positions for causal encoding."""
 
 	input_ids: Tensor
-	attention_mask: Tensor | None
 	last_positions: Tensor
 
 	def pin_memory(self) -> BranchBatch:
 		return BranchBatch(
 			self.input_ids.pin_memory(),
-			self.attention_mask.pin_memory()
-			if self.attention_mask is not None
-			else None,
 			self.last_positions.pin_memory(),
 		)
 
@@ -98,7 +94,7 @@ class PairwiseTokenDataset(Dataset[tuple[np.ndarray, np.ndarray, int]]):
 
 
 class PairwiseCollator:
-	"""Pad cached A/B token views independently and pool without GPU mask scans."""
+	"""Right-pad A/B tokens without masks and compute their last real positions."""
 
 	def __init__(self, pad_token_id: int) -> None:
 		self._pad_token_id = pad_token_id
@@ -111,15 +107,10 @@ class PairwiseCollator:
 			input_ids = torch.full(
 				(len(rows), longest), self._pad_token_id, dtype=torch.long
 			)
-			mask = torch.zeros_like(input_ids) if min(lengths) != longest else None
 			for row_index, (row, length) in enumerate(zip(rows, lengths, strict=True)):
 				input_ids[row_index, :length].copy_(torch.from_numpy(row[index]))
-				if mask is not None:
-					mask[row_index, :length] = 1
 			branches.append(
-				BranchBatch(
-					input_ids, mask, torch.tensor(lengths, dtype=torch.long) - 1
-				)
+				BranchBatch(input_ids, torch.tensor(lengths, dtype=torch.long) - 1)
 			)
 		return PairwiseBatch(
 			branches[0],
