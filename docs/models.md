@@ -42,8 +42,12 @@ Changing modes requires rebuilding the saved head;
 ## Training progress
 
 Holdout validation and full-data builds print progress at 5% milestones. One
-counter spans all executed stages and epochs of the selected model. Each line
-identifies model, mode, stage, epoch, percentage, and processed/total work.
+counter spans all executed stages and epochs of the selected model. Each entry
+identifies model, mode, stage, and epoch on the first line. The second line shows
+`progress: percentage`, `work: processed/total`, and `time: elapsed/estimated total`.
+Both durations use `HH:MM:SS`, with hours allowed to exceed 99. Elapsed time starts
+when the progress counter is created; estimated total time extrapolates elapsed
+time using the completed fraction of weighted work.
 
 For the frozen model, one training or validation batch counts as one work unit.
 A validation run uses
@@ -57,7 +61,7 @@ no historical work.
 
 The final epoch's validation completes the same counter. Extraction, preparation,
 cache operations, checkpoint saving, and publication are excluded. A large
-work unit crossing multiple milestones prints one actual-percentage line.
+work unit crossing multiple milestones prints one entry with the actual percentage.
 Each model prints 100% once on completion; failure does not force completion.
 Counters stay on the CPU without adding GPU synchronization.
 
