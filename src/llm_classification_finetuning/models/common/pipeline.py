@@ -10,6 +10,7 @@ import torch
 from ...config import AppConfig, ModelConfig
 from ...errors import ModelExecutionError
 from ..profile import ModelProfile
+from .attention import SubmissionAttention
 from .cache import CachedEmbeddings, EmbeddingCache
 from .checkpoint import ModelCheckpointStore
 from .compatibility import ModelCompatibility
@@ -89,7 +90,8 @@ class ModelPipeline:
 	) -> ModelExecutionResult:
 		"""Execute the selected model mode and return its summary."""
 		if mode is ModelMode.SUBMIT:
-			return self._run_submit(refresh_cache=refresh_cache)
+			with SubmissionAttention(self._config.gpu).activate():
+				return self._run_submit(refresh_cache=refresh_cache)
 
 		device = GPUEnvironment(self._config.gpu).configure()
 		data = self._training_repository.load()

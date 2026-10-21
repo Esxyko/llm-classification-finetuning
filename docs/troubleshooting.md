@@ -16,6 +16,13 @@
   set it in `gpu.device` for training, or select two distinct available devices
   in `gpu.submit_devices` for submissions. Both submission GPUs must support the
   selected precision; use `fp16` or `fp32` if either does not support `bf16`.
+- **T4 submission fails with `No available kernel`:** Use the
+  [submission environment requirements](getting-started.md#submission-environment-pytorch-211--cuda-128),
+  `gpu.precision: fp16`, and `gpu.attention_implementation: sdpa`. The submission
+  pipeline applies the K/V-head expansion workaround inside the inference
+  process, including subprocesses. A patch applied only in a notebook does not
+  affect a separate Python process. Math fallback remains disabled, so
+  unsupported fused-kernel inputs still fail explicitly.
 - **Embedding extraction runs out of memory:** Reduce
   `qwen3_4b.extraction_batch_size`. Lowering `qwen3_4b.max_length` also reduces
   input length by truncating longer branches; a saved frozen head requires the

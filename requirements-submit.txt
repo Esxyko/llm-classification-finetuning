@@ -1,0 +1,5 @@
+# Install from the project root into the submission environment.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+transformers==5.16.1
+-e .

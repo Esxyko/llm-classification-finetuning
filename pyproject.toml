@@ -18,8 +18,8 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
-    "torch>=2.14.0",
-    "transformers>=5.17.0",
+    "torch>=2.11.0",
+    "transformers>=5.16.1",
     "xlsxwriter>=3.2.9",
 ]
 

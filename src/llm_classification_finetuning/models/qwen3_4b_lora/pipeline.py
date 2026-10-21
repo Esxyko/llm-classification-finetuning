@@ -21,6 +21,7 @@ from ..common import (
 	ModelSubmissionPublisher,
 	ModelSubmitResult,
 	ModelTestDataRepository,
+	SubmissionAttention,
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository
@@ -89,7 +90,8 @@ class LoRAModelPipeline:
 				profile=self._profile,
 			)
 			if submit_devices is not None:
-				return self._run_submit(trainer, submit_devices)
+				with SubmissionAttention(self._config.gpu).activate():
+					return self._run_submit(trainer, submit_devices)
 			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			batches = LoRATrainingBatchRepository.from_config(

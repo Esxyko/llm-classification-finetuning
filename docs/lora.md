@@ -82,8 +82,11 @@ right-pad each branch independently without constructing or passing padding mask
 Qwen's causal attention prevents real tokens from attending to right padding;
 pooling selects the last real token using positions computed on the CPU. With
 SDPA and standard Qwen3-4B, omitting the padding mask enables Transformers' native
-GQA path without explicitly repeating K/V heads. Kernel selection and
-floating-point rounding can differ from masked encoding. Encoding releases the
+GQA path during training and validation without explicitly repeating K/V heads.
+Submission uses the [PyTorch 2.11 / CUDA 12.8 compatibility path](getting-started.md#submission-environment-pytorch-211--cuda-128),
+which explicitly repeats K/V heads to support memory-efficient SDPA on T4 GPUs.
+Kernel selection and floating-point rounding can differ from masked encoding.
+Encoding releases the
 full hidden-state tensor after pooling, while joint training still retains both
 branches' gradient graphs. Training loss statistics stay on the GPU until logging
 or epoch completion; non-finite losses are checked at each update boundary before

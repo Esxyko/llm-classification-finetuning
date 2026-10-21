@@ -1,5 +1,6 @@
 """Shared Qwen comparison model execution infrastructure."""
 
+from .attention import SubmissionAttention
 from .backbone import LocalBackboneFingerprint
 from .cache_storage import CacheCorruptionError, CacheFileSession, CacheStorage
 from .compatibility import ModelCompatibility
@@ -57,6 +58,7 @@ __all__ = (
 	"PairwiseQwenClassifier",
 	"PairwiseText",
 	"PairwiseTokenStore",
+	"SubmissionAttention",
 	"TestInputLoader",
 	"TokenizationCache",
 	"TokenizedTexts",

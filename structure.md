@@ -150,6 +150,9 @@ and print summaries. Business logic belongs below the CLI layer.
   - `common/pipeline.py`: Selects holdout validation, build, or submission behavior for
     frozen pairwise models.
   - `common/`
+    - `attention.py`: Scope SDPA submission compatibility to the inference process;
+      force Transformers K/V-head expansion, enable fused backends without math,
+      and restore the GQA predicate and backend flags after success or failure.
     - `backbone.py`: Fingerprint local backbone weights/configuration by content
       for frozen embedding and adapter head-warmup caches.
     - `contracts.py`: Defines `ModelMode.VALIDATION`, `BUILD`, and `SUBMIT`,
@@ -211,6 +214,7 @@ exports over importing private helpers across package boundaries.
 | `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, three optional model sections, and an independent optional `warmup` section |
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
+| `requirements-submit.txt` | Submission-only installation pins for PyTorch 2.11.0+cu128 and Transformers 5.16.1; retains the normal training lock |
 | `README.md` | Project overview and documentation index |
 | `docs/` | Detailed setup, usage, configuration, and behavioral references |
 | `structure.md` | Code ownership, runtime flow, artifact layout, and implementation invariants |
@@ -404,7 +408,17 @@ remain ignored. Do not make application logic depend on a particular timestamped
   passing padding masks during warmup, joint training, validation, or submission.
   Qwen retains causal attention, so real tokens cannot attend to right padding;
   pooling uses CPU-computed last-real-token positions. With SDPA and standard
-  Qwen3-4B, this enables native GQA without explicit K/V head repetition.
+  Qwen3-4B, this enables native GQA without explicit K/V head repetition during
+  training and validation.
+- All three profiles' SDPA submissions temporarily disable Transformers' native
+  GQA predicate before model loading so K/V heads are explicitly repeated. This
+  permits memory-efficient SDPA on T4 with PyTorch 2.11.0+cu128 and Transformers
+  5.16.1. Flash, memory-efficient, and cuDNN backends are enabled, with math
+  disabled. Both the original predicate and backend flags are restored on exit,
+  including exceptions and sequential `ALL` runs. Explicit eager attention and
+  training/validation retain their existing policies. The compatibility path
+  runs inside the submission process, including subprocesses, without an
+  external notebook patch. See [submission setup](docs/getting-started.md#submission-environment-pytorch-211--cuda-128).
 - LoRA SDPA encoding permits only Flash, memory-efficient, and cuDNN backends;
   math fallback is disabled for warmup, joint training, validation, submission,
   and gradient-checkpoint recomputation. Unsupported inputs fail, and scoped
