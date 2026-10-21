@@ -27,7 +27,9 @@ class LoRAEmbeddingExtractor:
 	) -> PairwiseFeatureStore:
 		model.eval()
 		features = torch.empty(
-			(len(loader.dataset), 2, model.backbone_hidden_size), dtype=torch.float32
+			(len(loader.dataset), 2, model.backbone_hidden_size),
+			dtype=model.feature_dtype,
+			device="cpu",
 		)
 		start = 0
 		for index, batch in enumerate(loader):

@@ -9,10 +9,36 @@ from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_tr
 from torch import Tensor, nn
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AutoModel, BitsAndBytesConfig
+from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 
 from ...config import GPUConfig, LoRAModelConfig
 from ..common import ABSwapAverager, GPUEnvironment, PairwiseClassificationHead
 from .data import PairwiseBatch
+
+
+class _LoRAClassificationHead(PairwiseClassificationHead):
+	"""Use BF16 head computation with FP32 parameters and returned logits."""
+
+	def __init__(
+		self,
+		backbone_hidden_size: int,
+		hidden_size: int,
+		dropout: float,
+		*,
+		compute_dtype: torch.dtype,
+	) -> None:
+		super().__init__(backbone_hidden_size, hidden_size, dropout)
+		self._compute_dtype = compute_dtype
+
+	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
+		"""Keep losses and orientation averaging outside reduced-precision compute."""
+		with torch.autocast(
+			device_type=h_a.device.type,
+			dtype=torch.bfloat16,
+			enabled=self._compute_dtype == torch.bfloat16,
+		):
+			logits = super().forward(h_a, h_b)
+		return logits.float()
 
 
 class LoRAQwenClassifier(nn.Module):
@@ -31,6 +57,9 @@ class LoRAQwenClassifier(nn.Module):
 		super().__init__()
 		self.device = device
 		self.dtype = GPUEnvironment.PRECISION_DTYPES[gpu.precision]
+		self.feature_dtype = (
+			torch.bfloat16 if self.dtype == torch.bfloat16 else torch.float32
+		)
 		if quantize_backbone and device_map is not None:
 			raise ValueError(
 				"4-bit adapter training requires a single training device."
@@ -60,6 +89,13 @@ class LoRAQwenClassifier(nn.Module):
 			backbone = prepare_model_for_kbit_training(
 				backbone, use_gradient_checkpointing=False, auto_clear_cache=False
 			)
+			if self.dtype == torch.bfloat16:
+				# K-bit preparation upcasts these weights, promoting the residual stream.
+				# Restore BF16 storage/output while RMSNorm keeps FP32 variance math.
+				backbone.get_input_embeddings().to(dtype=torch.bfloat16)
+				for module in backbone.modules():
+					if isinstance(module, Qwen3RMSNorm):
+						module.to(dtype=torch.bfloat16)
 		self.base_revision = getattr(backbone.config, "_commit_hash", None)
 		self.backbone_hidden_size = int(backbone.config.hidden_size)
 		self.backbone = get_peft_model(
@@ -85,8 +121,11 @@ class LoRAQwenClassifier(nn.Module):
 			)
 		if device_map is not None:
 			self.backbone.get_base_model().gradient_checkpointing_disable()
-		self.classifier = PairwiseClassificationHead(
-			self.backbone_hidden_size, config.hidden_size, config.dropout
+		self.classifier = _LoRAClassificationHead(
+			self.backbone_hidden_size,
+			config.hidden_size,
+			config.dropout,
+			compute_dtype=self.feature_dtype,
 		).to(device=device, dtype=torch.float32)
 
 	def encode(self, batch: PairwiseBatch) -> tuple[Tensor, Tensor]:
@@ -117,7 +156,7 @@ class LoRAQwenClassifier(nn.Module):
 				rows = torch.arange(hidden.shape[0], device=hidden.device)
 				pooled.append(
 					hidden[rows, last_positions].to(
-						device=self.device, dtype=torch.float32
+						device=self.device, dtype=self.feature_dtype
 					)
 				)
 				del hidden

@@ -103,10 +103,13 @@ and print summaries. Business logic belongs below the CLI layer.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       optionally load a single-GPU NF4/double-quantized training base and prepare
       it before adapter injection, pool last real tokens, and classify with the
-      shared pairwise MLP. Quantized weights are placed during loading.
+      shared pairwise MLP architecture through a LoRA-specific head subclass.
+      Own BF16 frozen embedding/norm restoration, feature dtype, and head
+      autocast with FP32 logits. Quantized weights are placed during loading.
     - `extractor.py`: Extract one no-gradient canonical feature pair per needed
       ID for warmup, each joint-validation pass, or submission, retaining shared
-      temporary FP32 CPU features with stage-specific logs and no persistent caches.
+      temporary CPU features (BF16 in BF16 mode, otherwise FP32) with
+      stage-specific logs and no persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
       adapters/heads per fold or all-data build with linear decay, mixed
       precision, row-normalized update groups, frozen-feature warmup validation,
@@ -278,8 +281,9 @@ modules. Do not make application logic depend on a particular timestamped run.
   warmup feature extraction. Each joint-validation pass and test submission
   extracts fresh canonical features from the current model in eval/no-gradient
   mode using the same `warmup_extraction_batch_size`, then runs the head in
-  `head_inference_batch_size` batches. Temporary FP32 CPU inference features are
-  released on return, never persisted or reused across joint epochs/folds.
+  `head_inference_batch_size` batches. Temporary CPU inference features use BF16
+  in BF16 mode and FP32 otherwise; they are released on return, never persisted
+  or reused across joint epochs/folds.
   Joint-validation timing includes extraction, which is excluded from progress;
   progress counts head batches with the original stage weights independently
   of whether a feature loader was supplied. Zero warmup epochs still permit
@@ -327,6 +331,13 @@ modules. Do not make application logic depend on a particular timestamped run.
   math fallback is disabled for warmup, joint training, validation, submission,
   and gradient-checkpoint recomputation. Unsupported inputs fail, and scoped
   backend flags are restored without changing the frozen profile's policy.
+- LoRA/QLoRA BF16 mode keeps residual states, activation-checkpoint layer inputs,
+  pooled features, and CPU feature storage in BF16. The LoRA-specific head
+  inherits the shared MLP without changing state-dict keys, uses BF16 autocast
+  for all training/inference calls, and returns FP32 logits for losses and
+  orientation averaging. Trainable adapter/head parameters, gradients, and AdamW
+  moments remain FP32. FP16/FP32 modes retain FP32 features and head computation;
+  the frozen model's precision policy is unchanged.
 - LoRA checkpoint compatibility excludes hardware, compute precision, and batch
   settings; model name, classifier size/dropout, LoRA settings, input format,
   schema/class count, pooling, truncation side, and bias are checked. Context
@@ -335,9 +346,12 @@ modules. Do not make application logic depend on a particular timestamped run.
 - QLoRA shares the LoRA training, batching, pooling, objective, attention,
   progress, and publication invariants above. Its base uses bitsandbytes NF4
   with double quantization for warmup, joint training, and validation; compute
-  dtype follows `gpu.precision`, while adapters/head remain FP32 and the base
-  stays frozen. K-bit preparation does not enable checkpointing or clear the
-  allocator cache; the classifier configures checkpointing once with its SDPA
+  dtype follows `gpu.precision`, while adapter/head parameters remain FP32 and
+  the base stays frozen. In BF16 mode, frozen embeddings and all Qwen3 RMSNorm
+  weights are restored to BF16 after k-bit preparation, before adapter injection;
+  RMSNorm retains FP32 variance math and returns BF16. K-bit preparation does
+  not enable checkpointing or clear the allocator cache; the classifier
+  configures checkpointing once with its SDPA
   recomputation context. Submission explicitly reloads the non-quantized base
   at the saved revision using the existing two-GPU map, then restores adapters
   and head without merging or dequantizing a saved base. Checkpoints store a

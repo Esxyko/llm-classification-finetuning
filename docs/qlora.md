@@ -30,7 +30,14 @@ and [PEFT quantization](https://huggingface.co/docs/peft/developer_guides/quanti
 guides.
 
 Before adapter injection, PEFT prepares and freezes the quantized base. Adapters
-and the pairwise classifier remain trainable in FP32. Gradient checkpointing
+and the pairwise classifier retain FP32 parameters, gradients, and AdamW moment
+tensors. With `gpu.precision: bf16`, the project restores the frozen input
+embedding and every Qwen3 RMSNorm weight to BF16 after PEFT preparation and
+before adapter injection. This includes attention Q/K norms, both decoder-layer
+norms, and the final norm. RMSNorm retains FP32 variance calculation and returns
+BF16 outputs, keeping residual states and activation-checkpoint layer inputs in
+BF16. The NF4 weights and double-quantization state are unchanged. FP16/FP32
+preparation retains its existing behavior. Gradient checkpointing
 keeps the existing non-reentrant implementation and fused SDPA context during
 both forward execution and backward recomputation.
 
@@ -52,7 +59,10 @@ dequantization or adapter merge is performed. Gradient checkpointing is disabled
 Submission therefore has a different base-weight representation from validation;
 its predictions can differ, and its base-weight memory use is higher. Both
 submission GPUs must support the selected precision. The classifier remains
-FP32, and both head orientations are averaged as in LoRA.
+FP32 in parameter storage and uses BF16 autocast when `gpu.precision: bf16`.
+Pooled and temporary CPU features are then BF16; logits and probability
+averaging remain FP32, as in LoRA. FP16/FP32 submissions retain FP32 head
+computation and pooled/CPU features.
 
 ## Checkpoints, caches, and results
 

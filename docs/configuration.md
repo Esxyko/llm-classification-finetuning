@@ -108,7 +108,10 @@ gpu:
 The embedding and rotary modules and the first half of the decoder layers reside
 on the first GPU; the remaining layers and final normalization reside on the
 second. Each decoder layer stays intact, LoRA adapters follow their base layers,
-and the FP32 classifier head resides on the first GPU. LoRA gradient checkpointing
+and the classifier head's FP32 parameters reside on the first GPU. With
+`gpu.precision: bf16`, LoRA/QLoRA use BF16 head computation and pooled/CPU
+features, returning FP32 logits; the frozen `qwen3-4b` head retains FP32
+computation. LoRA gradient checkpointing
 is disabled for submissions. Both GPUs must be available and support
 `gpu.precision`; there is no automatic precision change, single-GPU fallback, or
 CPU/disk offload. `ALL` still runs models sequentially, with each model split
@@ -118,6 +121,8 @@ QLoRA uses `gpu.precision` as its quantized-layer compute dtype during training
 and validation. Its submissions explicitly load a non-quantized base at that
 precision and restore the saved adapter. NF4 and double quantization are fixed
 profile behavior; see [QLoRA training](qlora.md).
+In BF16 mode, QLoRA also restores frozen embedding and RMSNorm weights to BF16
+after k-bit preparation, preserving BF16 normalization outputs and residuals.
 
 `gpu.precision` accepts `fp16`, `bf16`, or `fp32`;
 `gpu.attention_implementation` accepts `sdpa` or `eager`. Hardware validation

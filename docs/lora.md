@@ -43,6 +43,14 @@ Set `gpu.device` to a single `cuda:N` identifier for training and choose
 GPU's capabilities. FP16 uses gradient scaling; adapters and classifier weights
 remain FP32 in all three modes.
 
+With `gpu.precision: bf16`, residual states, activation-checkpoint layer inputs,
+pooled features, and temporary CPU features remain BF16. The classifier uses
+BF16 autocast for every head forward pass, including warmup and both inference
+orientations, then returns FP32 logits for loss calculation and probability
+averaging. Trainable parameters, gradients, and AdamW moment tensors remain
+FP32. RMSNorm retains FP32 variance calculation with BF16 weights and outputs.
+FP16 and FP32 modes retain FP32 pooled/CPU features and classifier computation.
+
 With `gpu.attention_implementation: sdpa`, LoRA permits only Flash, memory-efficient,
 and cuDNN attention kernels. The `math` backend is disabled during every backbone
 encoding, including warmup, validation, submission, and gradient-checkpoint
@@ -122,13 +130,15 @@ no-gradient backbone extraction batch size for warmup, joint validation, and
 submissions (root preset: `1`). Before the first
 warmup epoch, each unique ID needed by training or validation is encoded once
 in its canonical orientation with the backbone in evaluation mode. Its paired
-FP32 features remain in CPU memory; training rows select the appropriate A/B
+features remain in CPU memory, using BF16 for `gpu.precision: bf16` and FP32
+otherwise; training rows select the appropriate A/B
 orientation and retain their original labels and row order without storing
 augmented feature copies. Warmup validation averages the two head orientations
 over these same frozen features. All warmup epochs reuse the features; both
 training and validation views are released when joint training starts, and
 features are never written to disk or reused between folds. The full 57,477-ID
-feature pool occupies about 1.10 GiB. With `warmup_epochs: 0`, warmup feature
+Qwen3-4B feature tensor occupies about 0.55 GiB in BF16 or 1.10 GiB in FP32,
+excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
 `warmup_training_batch_size` is a required positive integer controlling only the
@@ -166,8 +176,9 @@ After every joint-training epoch, validation first extracts each needed ID once
 in canonical A/B orientation using the current adapters. Submission extracts test
 features after restoring the checkpoint. Both use `warmup_extraction_batch_size`,
 evaluation mode, and no gradients, even with `warmup_epochs: 0`. Extraction
-finishes before head inference starts. Paired FP32 features stay in temporary CPU
-memory; the head selects reference-ordered feature views, averages original and
+finishes before head inference starts. Paired features stay in temporary CPU
+memory in BF16 for `gpu.precision: bf16` and FP32 otherwise; the head selects
+reference-ordered feature views, averages original and
 A/B-restored swapped probabilities, and computes validation loss when labels
 exist. Submission inputs do not require labels.
 
@@ -289,6 +300,8 @@ can also change between build and inference. Inputs must still fit the current
 `max_length`. Hub revision pinning does not verify local directory contents;
 the checkpoint neither includes nor fingerprints local base weights.
 There are no persistent LoRA embedding caches.
+BF16 head computation preserves the classifier's state-dict keys and FP32
+checkpoint parameters, so existing adapter/head checkpoints remain loadable.
 
 See [caching and Python APIs](caching.md) for shared token encodings and batch-plan
 reuse, [configuration](configuration.md) for batch experiments, and
