@@ -1,5 +1,6 @@
 """Shared Qwen comparison model execution infrastructure."""
 
+from .backbone import LocalBackboneFingerprint
 from .compatibility import ModelCompatibility
 from .contracts import (
 	ModelBuildResult,
@@ -34,6 +35,7 @@ __all__ = (
 	"GPUEnvironment",
 	"GPUMemoryMonitor",
 	"GPUMemoryPeak",
+	"LocalBackboneFingerprint",
 	"ModelBuildResult",
 	"ModelCompatibility",
 	"ModelData",

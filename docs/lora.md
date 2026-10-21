@@ -30,8 +30,9 @@ training retains gradients through both encodings. In `inf` mode, training
 batch sizes, accumulation counts, and build row counts refer to original samples.
 Validation loss, fold predictions, and test submissions
 average original and A/B-restored swapped probabilities. Each validation fold
-starts with fresh adapters and a fresh classifier. Cross-validation saves no
-model checkpoints.
+starts with fresh adapters and initializes the classifier from completed
+compatible warmup when available. Cross-validation saves warmup cache states,
+but no production adapter checkpoints.
 
 ## Hardware and input limits
 
@@ -124,7 +125,22 @@ of `0.001`, then jointly trains adapters and head for two epochs with learning
 rates linearly decaying to zero. All these settings are configurable in
 `qwen3_4b_lora`.
 
-`warmup_epochs` is a required nonnegative integer; `0` skips head warmup.
+`warmup_epochs` is a required nonnegative integer; `0` skips head warmup and
+does not read or write its cache. Otherwise a compatible completed
+[head-warmup cache](caching.md#loraqlora-head-warmup) restores weights, head
+AdamW moments, and random states, skipping warmup extraction, training, and
+validation. It matches the current original training/validation ID sets (all
+original IDs for builds), warmup optimization settings, and core model/input
+identities. Compute precision, attention/TF32, extraction batch size, LoRA
+settings, local model paths with identical contents, and joint-training
+learning rates, epochs, or batching may change. LoRA/QLoRA and each split/build
+are isolated; changing assignments among other folds does not invalidate this
+split, and builds ignore fold assignments.
+`--refresh-cache` forces a fresh warmup. Across precision changes, the original
+warmup result is reused; only FP16-to-FP16 restores the gradient scaler.
+
+On a cache miss, warmup uses the extraction and training settings below.
+
 `warmup_extraction_batch_size` is a required positive integer controlling the
 no-gradient backbone extraction batch size for warmup, joint validation, and
 submissions (root preset: `1`). Before the first
@@ -136,7 +152,8 @@ orientation and retain their original labels and row order without storing
 augmented feature copies. Warmup validation averages the two head orientations
 over these same frozen features. All warmup epochs reuse the features; both
 training and validation views are released when joint training starts, and
-features are never written to disk or reused between folds. The full 57,477-ID
+features are never written to disk or reused between folds. Only the completed
+head and its training state are persisted. The full 57,477-ID
 Qwen3-4B feature tensor occupies about 0.55 GiB in BF16 or 1.10 GiB in FP32,
 excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
@@ -156,11 +173,14 @@ reuses frozen features in `head_inference_batch_size` batches. Joint training
 restores backbone training mode while retaining the head's AdamW state.
 The joint-training schedule starts at the adapter `learning_rate`
 and classifier `head_learning_rate`, without a learning-rate ramp.
-Total training lasts `warmup_epochs + epochs` rounds (three in the root
-preset), and training histories and build summaries include both stages.
+Without cache reuse, training lasts `warmup_epochs + epochs` rounds and
+training histories and build summaries include both stages. A reused warmup
+leaves only the joint epochs in this run's history and build epoch count;
+epoch numbers retain their configured warmup offset. Old warmup losses and
+timings are not replayed.
 Each validation fold and full-data build follows these stages. Cross-validation
-evaluates its held-out fold after every warmup and joint epoch, and publishes
-the final epoch's predictions. Full-data builds have no validation set and do
+evaluates its held-out fold after every executed warmup and joint epoch, and
+publishes the final epoch's predictions. Full-data builds have no validation set and do
 not run validation. Replace the removed `warmup_ratio` key with `warmup_epochs`,
 `warmup_extraction_batch_size`, `warmup_training_batch_size`, and
 `warmup_learning_rate`; old keys are rejected as unknown configuration options.
@@ -195,15 +215,16 @@ one progress counter across all epochs and folds. Progress is printed at
 approximately 5% intervals, with the current stage identified in each line.
 Each warmup training batch and warmup validation batch counts as **0.5**
 work units; each joint-training update group and joint validation batch counts as
-**1**. With `warmup_epochs: 0`, the total contains only joint training and its
-validation.
+**1**. With `warmup_epochs: 0` or reused warmup, the total contains only joint
+training and its validation for that fold/build.
 
 For each fold, let `W` be
 `ceil(training_rows / warmup_training_batch_size)`,
 `J` be `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`,
 and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
 IDs. The fold contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
-units. Cross-validation sums the separately rounded fold counts; a build uses
+units when warmup runs, or `epochs * (J + V)` when warmup is reused.
+Cross-validation sums the separately rounded fold counts; a build uses
 all selected training rows with `V = 0`. Training counts respect `A/B_swap`,
 including original IDs only for `inf`.
 

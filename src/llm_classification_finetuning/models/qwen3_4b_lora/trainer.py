@@ -39,6 +39,7 @@ from .data import (
 )
 from .extractor import LoRAEmbeddingExtractor
 from .model import LoRAQwenClassifier
+from .warmup_cache import HeadWarmupCache, WarmupCacheContext, WarmupCacheEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,15 @@ class LoRATrainer:
 		self._model_key = profile.config_key if profile else "qwen3_4b_lora"
 		self._quantize_training = profile.quantize_training if profile else False
 		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
+		artifact_stem = profile.artifact_stem if profile else "qwen3_4b_lora"
+		self._warmup_cache = HeadWarmupCache(
+			token_cache_dir.parent / f"{artifact_stem}_warmup",
+			config,
+			gpu,
+			device,
+			quantize_training=self._quantize_training,
+			model_label=self._model_label,
+		)
 		self._tokens: PairwiseTokenStore | None = None
 		self._base_revision: str | None = None
 		self._model_initialized = False
@@ -129,8 +139,22 @@ class LoRATrainer:
 		validation_rows = tuple(
 			int(originals["fold"].eq(fold).sum()) for fold in range(batches.n_splits)
 		)
+		# Keep checked CPU states until their fold starts so progress uses actual work,
+		# even if another process subsequently replaces or removes a cache file.
+		warmup_entries = {
+			fold: self._prepare_warmup(
+				batches.warmup_context(fold), seed=self._config.random_state + fold
+			)
+			for fold in range(batches.n_splits)
+		}
 		progress = self._create_progress(
-			training_rows, mode="cross-validation", validation_rows=validation_rows
+			training_rows,
+			mode="cross-validation",
+			validation_rows=validation_rows,
+			warmup_required=tuple(
+				entry is None or entry.state is None
+				for entry in warmup_entries.values()
+			),
 		)
 		for fold in range(batches.n_splits):
 			fold_started = self._timestamp()
@@ -153,6 +177,7 @@ class LoRATrainer:
 					validation=originals,
 					description=f"Fold {fold}",
 					progress=progress,
+					warmup_cache_entry=warmup_entries.pop(fold),
 				)
 				if history.validation_probabilities is None:
 					raise ModelExecutionError(
@@ -187,6 +212,7 @@ class LoRATrainer:
 		validation: pd.DataFrame | None = None,
 		description: str = "Build",
 		progress: TrainingProgress | None = None,
+		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
 		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
 		reference = training.reference
@@ -203,12 +229,26 @@ class LoRATrainer:
 		self._tokens = training.tokens
 		# Cached tokens have already been checked, including every validation branch.
 		self._tokens_for(records)
+		context = training.warmup_context
+		if context is not None and (
+			context.base_revision != model.base_revision
+			or context.backbone_hidden_size != model.backbone_hidden_size
+		):
+			raise ModelExecutionError(
+				"Warmup cache context does not match the model backbone."
+			)
+		entry = None
+		if self._config.warmup_epochs and context is not None:
+			entry = warmup_cache_entry or self._prepare_warmup(context, seed=seed)
+		warmup_cache_entry = None
+		reused_warmup = entry is not None and entry.state is not None
 		mode = "cross-validation" if validation is not None else "build"
 		if progress is None:
 			progress = self._create_progress(
 				(len(reference),),
 				mode=mode,
 				validation_rows=() if validation is None else (len(validation),),
+				warmup_required=(not reused_warmup,),
 			)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
@@ -235,11 +275,29 @@ class LoRATrainer:
 		)
 		scheduler: LambdaLR | None = None
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
+		if reused_warmup:
+			self._warmup_cache.restore(entry, model.classifier, optimizer, scaler)
+			print(
+				f"Reused {self._model_label} head warmup ({description}): "
+				f"skipping {self._config.warmup_epochs} warmup epochs; "
+				f"source_precision={entry.state['source_precision']}, "
+				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
+				flush=True,
+			)
+			# Release CPU head/moment copies before joint training starts.
+			entry = None
+		elif entry is not None:
+			print(
+				f"Rebuilding {self._model_label} head warmup ({description}): "
+				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
+				flush=True,
+			)
 		losses: list[float] = []
 		metrics: list[EpochMetrics] = []
 		probabilities: np.ndarray | None = None
 		total_epochs = self._config.warmup_epochs + self._config.epochs
-		for epoch in range(1, total_epochs + 1):
+		first_epoch = self._config.warmup_epochs + 1 if reused_warmup else 1
+		for epoch in range(first_epoch, total_epochs + 1):
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
 			stage = "head warmup" if head_only else "joint training"
@@ -327,11 +385,28 @@ class LoRATrainer:
 			if validation is not None:
 				message += f" validation_loss={validation_loss:.6f}"
 			print(message, flush=True)
+			if head_only and epoch == self._config.warmup_epochs and entry is not None:
+				self._warmup_cache.save(entry, model.classifier, optimizer, scaler)
+				print(
+					f"Saved {self._model_label} head warmup ({description}): "
+					f"source_precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
+					flush=True,
+				)
 		return LoRATrainingHistory(
 			training_losses=tuple(losses),
 			epochs=tuple(metrics),
 			validation_probabilities=probabilities,
 			training_rows=len(reference),
+		)
+
+	def _prepare_warmup(
+		self, context: WarmupCacheContext | None, *, seed: int
+	) -> WarmupCacheEntry | None:
+		"""Leave manually constructed splits and disabled warmup uncached."""
+		if not self._config.warmup_epochs or context is None:
+			return None
+		return self._warmup_cache.prepare(
+			context, seed=seed, refresh=self._refresh_cache
 		)
 
 	def _create_progress(
@@ -340,31 +415,40 @@ class LoRATrainer:
 		*,
 		mode: str,
 		validation_rows: tuple[int, ...] = (),
+		warmup_required: tuple[bool, ...] | None = None,
 	) -> TrainingProgress:
 		"""Combine training and validation work, weighting all warmup work by half."""
 		warmup_batch_size = self._config.warmup_training_batch_size
 		joint_batch_size = (
 			self._config.training_batch_size * self._config.gradient_accumulation_steps
 		)
+		if warmup_required is None:
+			warmup_required = (True,) * len(training_rows)
+		validation_steps = (
+			tuple(
+				(rows + self._config.head_inference_batch_size - 1)
+				// self._config.head_inference_batch_size
+				for rows in validation_rows
+			)
+			if validation_rows
+			else (0,) * len(training_rows)
+		)
 		warmup_steps = sum(
-			(rows + warmup_batch_size - 1) // warmup_batch_size
-			for rows in training_rows
+			(rows + warmup_batch_size - 1) // warmup_batch_size + validation
+			for rows, validation, required in zip(
+				training_rows, validation_steps, warmup_required, strict=True
+			)
+			if required
 		)
 		joint_steps = sum(
 			(rows + joint_batch_size - 1) // joint_batch_size for rows in training_rows
 		)
-		validation_batches = sum(
-			(rows + self._config.head_inference_batch_size - 1)
-			// self._config.head_inference_batch_size
-			for rows in validation_rows
-		)
+		validation_batches = sum(validation_steps)
 		return TrainingProgress(
 			model=self._model_key,
 			mode=mode,
 			total_steps=(
-				self.WARMUP_PROGRESS_WEIGHT
-				* self._config.warmup_epochs
-				* (warmup_steps + validation_batches)
+				self.WARMUP_PROGRESS_WEIGHT * self._config.warmup_epochs * warmup_steps
 				+ self._config.epochs * (joint_steps + validation_batches)
 			),
 		)

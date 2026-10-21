@@ -33,7 +33,9 @@ The old `--test` flag is no longer accepted.
 ## Cache refresh
 
 Add `--refresh-cache` to rebuild requested shared token encodings and
-model-specific frozen embeddings or LoRA/QLoRA batch plans. Token encodings are shared
+model-specific frozen embeddings or LoRA/QLoRA batch plans and head-warmup
+states. For adapter cross-validation/builds, this forces warmup even when a
+compatible completed state exists. Token encodings are shared
 by all models and by training, validation, and test inference. See
 [caching](caching.md) for reuse and compatibility rules.
 

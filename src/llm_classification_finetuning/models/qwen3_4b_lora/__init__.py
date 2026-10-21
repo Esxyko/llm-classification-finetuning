@@ -7,6 +7,7 @@ from .batching import (
 	TrainingBatchPlan,
 )
 from .pipeline import LoRAModelPipeline
+from .warmup_cache import WarmupCacheContext
 
 PROFILE = ModelProfile(
 	selector="qwen3-4b-lora",
@@ -21,4 +22,5 @@ __all__ = (
 	"LoRATrainingBatchRepository",
 	"PreparedTrainingSplit",
 	"TrainingBatchPlan",
+	"WarmupCacheContext",
 )

@@ -89,7 +89,11 @@ prediction alignment, and LoRA fold cleanup; epoch totals include epoch setup.
 LoRA's first warmup training time includes canonical feature extraction for
 both training and validation IDs. Each LoRA joint-validation time includes fresh
 backbone extraction followed by head inference; warmup validation reuses the
-existing features. Full-data builds do not write `metrics.json`.
+existing features. Reused warmup adds no old losses, epoch entries, or timings
+to the new run; joint epoch numbers retain their configured warmup offset.
+Cache loading and saving are excluded from epoch phase timings and included
+in complete-run runtime. Full-data builds do not write `metrics.json`; their
+epoch counts include only epochs executed in the current run.
 During training, top-level `training_time`, `validation_time`, and `total_time`
 sum the corresponding durations of completed folds. Once all folds finish,
 top-level `total_time` measures the model's complete run, including pipeline

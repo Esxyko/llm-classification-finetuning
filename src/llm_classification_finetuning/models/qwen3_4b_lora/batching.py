@@ -21,6 +21,7 @@ from transformers import AutoConfig
 from ...config import AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
 from ..common import (
+	LocalBackboneFingerprint,
 	ModelData,
 	ModelDataRepository,
 	PairwiseTokenStore,
@@ -32,6 +33,7 @@ from .data import (
 	PairwiseCollator,
 	PairwiseTokenDataset,
 )
+from .warmup_cache import WarmupCacheContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +222,7 @@ class PreparedTrainingSplit:
 	loader: DataLoader[PairwiseBatch]
 	plan: TrainingBatchPlan | None
 	_sampler: _PlannedBatchSampler | None = field(repr=False)
+	warmup_context: WarmupCacheContext | None = None
 
 	def set_epoch(self, epoch: int) -> None:
 		"""Use a zero-based joint epoch; fixed batching keeps its original RNG stream."""
@@ -313,6 +316,8 @@ class LoRATrainingBatchRepository:
 		refresh_cache: bool,
 		model_key: str = "qwen3_4b_lora",
 		model_label: str = "LoRA",
+		backbone_hidden_size: int | None = None,
+		local_weights_sha256: str | None = None,
 	) -> None:
 		self._config = config
 		self._model_label = model_label
@@ -320,6 +325,13 @@ class LoRATrainingBatchRepository:
 		self.n_splits = n_splits
 		self.serializer_version = serializer_version
 		self.base_revision = base_revision
+		self._backbone_hidden_size = backbone_hidden_size
+		self._local_weights_sha256 = local_weights_sha256
+		self._warmup_ids: pd.DataFrame | None = None
+		if config.warmup_epochs and backbone_hidden_size is not None:
+			self._warmup_ids = data.reference.loc[
+				~data.reference["is_swapped"], ["id", "fold"]
+			].sort_values("id")
 		self._cache = cache
 		self.token_cache = token_cache
 		self._refresh_cache = refresh_cache
@@ -369,6 +381,12 @@ class LoRATrainingBatchRepository:
 				n_splits=config.cross_validation.n_splits,
 				serializer_version=repository.serializer_version,
 				base_revision=revision,
+				backbone_hidden_size=int(base_config.hidden_size),
+				local_weights_sha256=(
+					LocalBackboneFingerprint.compute(Path(model.model_name))
+					if model.warmup_epochs and Path(model.model_name).is_dir()
+					else None
+				),
 				cache=_BatchCache(
 					config.data.processed_path.parent / f"{artifact_stem}_batches",
 					model_label,
@@ -462,6 +480,38 @@ class LoRATrainingBatchRepository:
 		)
 		return plan
 
+	def warmup_context(self, fold: int | None = None) -> WarmupCacheContext | None:
+		"""Identify selected ID sets, independently of other folds' assignments."""
+		if (
+			self._warmup_ids is None
+			or self._backbone_hidden_size is None
+			or (self.base_revision is None and self._local_weights_sha256 is None)
+		):
+			return None
+		originals = self._warmup_ids
+		if fold is None:
+			training_ids = originals["id"]
+			validation_ids_sha256 = None
+		else:
+			is_validation = originals["fold"].eq(fold)
+			training_ids = originals.loc[~is_validation, "id"]
+			validation_ids_sha256 = self._ids_key(originals.loc[is_validation, "id"])
+		return WarmupCacheContext(
+			training_ids_sha256=self._ids_key(training_ids),
+			validation_ids_sha256=validation_ids_sha256,
+			serializer_version=self.serializer_version,
+			base_revision=self.base_revision,
+			local_weights_sha256=self._local_weights_sha256,
+			backbone_hidden_size=self._backbone_hidden_size,
+			tokenizer_key=self.token_cache.tokenizer_key,
+		)
+
+	@staticmethod
+	def _ids_key(ids: pd.Series) -> str:
+		"""Hash an already sorted original-ID set in a stable binary representation."""
+		values = np.ascontiguousarray(ids.to_numpy(dtype="<i8"))
+		return hashlib.sha256(memoryview(values)).hexdigest()
+
 	def get_training(self, fold: int | None = None) -> PreparedTrainingSplit:
 		"""Exclude a validation fold, select orientations, and return its cached batches."""
 		if fold is not None and (
@@ -504,4 +554,6 @@ class LoRATrainingBatchRepository:
 				shuffle=True,
 				**options,
 			)
-		return PreparedTrainingSplit(reference, self.tokens, loader, plan, sampler)
+		return PreparedTrainingSplit(
+			reference, self.tokens, loader, plan, sampler, self.warmup_context(fold)
+		)

@@ -4,9 +4,10 @@
 
 Caches sit beside the processed Parquet selected by
 [`data.processed_path`](configuration.md#configuration-files-and-paths).
-Frozen embeddings, shared text encodings, and adapter batch plans have separate
-compatibility rules. LoRA/QLoRA warmup, joint-validation, and submission features stay
-in temporary FP32 CPU memory and are not persisted. Warmup reuses its feature
+Frozen embeddings, shared text encodings, adapter batch plans, and head-warmup
+states have separate compatibility rules. LoRA/QLoRA warmup, joint-validation,
+and submission features stay in temporary CPU memory (BF16 in BF16 mode,
+otherwise FP32) and are not persisted. Uncached warmup reuses its feature
 pool; each joint-validation or submission call extracts fresh features with the
 current model and releases them on return.
 
@@ -82,9 +83,73 @@ Earlier LoRA `tokens/*.pt` files are left untouched and are no longer read.
 Both adapter profiles share the text-token cache when tokenizer content and
 encoding options match; quantization does not change token identity.
 
-`--refresh-cache` replaces requested token entries and model-specific caches;
-shared training encodings remain reusable between folds in that run. Warmup
+`--refresh-cache` replaces requested token entries and model-specific caches,
+including head warmup. Shared training encodings remain reusable between folds
+in that run. Warmup
 features and live LoRA encodings are never persisted in these token caches.
+
+## LoRA/QLoRA head warmup
+
+Cross-validation and builds automatically save completed head warmup under
+`qwen3_4b_lora_warmup/<key>.pt` or `qwen3_4b_qlora_warmup/<key>.pt` beside the
+processed Parquet. Each validation fold and the full-data build have distinct
+identities. Checkpoint tags do not affect this cache. Submission inference
+does not use it.
+
+For cross-validation, the data key hashes the sorted original training ID set
+and validation ID set separately. Reassigning training IDs among the other
+folds does not invalidate the current split. Builds hash only the full original
+ID set, independently of fold assignments, and use a separate build marker.
+Fold numbers are excluded from this data identity; the effective training seed
+is checked separately. File paths, Parquet bytes, reference order, text, and
+labels are excluded. Consequently, changing text or labels while retaining
+the selected ID sets deliberately reuses the old warmup; use `--refresh-cache`
+to retrain it. Input validation and token-length checks still run for the
+current data.
+
+Other keys identify the model and exact Hub revision or local weight/configuration
+content, backbone/head dimensions, tokenizer content, serialization version,
+quantization mode, head dropout, A/B objective, warmup epochs/training batch
+size/learning rate, effective seed, weight decay, gradient clipping, and cache
+schema. Local model paths are excluded when weight/configuration contents
+match. Compute precision, attention implementation, TF32, warmup extraction
+batch size, and all LoRA rank/alpha/dropout/target-module settings are excluded,
+as are joint-training learning rates, epoch count, batch size, accumulation,
+and token budget. Context limits do not enter the key because adapter inputs are never
+truncated and their lengths are checked independently. LoRA and QLoRA caches
+remain separate.
+
+After the last warmup validation (or the last warmup training epoch for builds),
+the cache atomically stores FP32 classifier weights, named head AdamW moments
+and step counters, gradient-scaler state, source precision, and Python, NumPy,
+Torch CPU, and selected-device CUDA random states. It contains no adapters or
+features. Reuse restores these states into a freshly initialized model, skips
+all warmup extraction/training/validation, and starts the current joint schedule
+with fresh adapters and the configured joint learning rates. Only FP16-to-FP16
+reuse restores the saved gradient scaler; other transitions initialize it for
+the current precision. Reuse across precision, extraction, or LoRA setting
+changes continues from the original warmup result rather than reproducing a
+fresh warmup under the new settings. Rank/target-module changes can affect
+classification-head initialization through random-number consumption on a
+cache miss; cached heads and named optimizer states remain reusable.
+
+Schema v2 uses selected-ID identities. Legacy v1 warmup files use full fold
+assignment hashes and remain untouched; they are not read under this identity.
+
+Reads use CPU tensor loading and validate metadata, exact head/moment shapes,
+FP32 dtypes, finite weights/moments, and restorable scaler/random states before
+changing the model. Missing, corrupt, and incompatible entries are rebuilt;
+write failures are reported as model execution errors. Logs show rebuild/reuse,
+fold/build, path, and precision. Skipped warmup contributes no progress work,
+epoch history, or historical timing/validation metrics; joint epoch numbers
+retain their configured warmup offset. Build epoch counts report only epochs
+executed in the current run.
+
+`warmup_epochs: 0` disables warmup cache reads and writes. `--refresh-cache`
+forces warmup again and atomically replaces the requested entries. Manually
+constructed `PreparedTrainingSplit` objects without the optional
+`warmup_context` retain uncached training; repository-prepared splits supply
+that context automatically.
 
 ## Python APIs
 

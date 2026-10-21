@@ -73,7 +73,7 @@ class LoRAModelPipeline:
 		mode: ModelMode = ModelMode.CROSS_VALIDATION,
 		refresh_cache: bool = False,
 	) -> ModelExecutionResult:
-		"""Use cached training tokens/plans while retaining live backbone encodings."""
+		"""Reuse training tokens, batch plans and head warmup before live joint training."""
 		try:
 			environment = GPUEnvironment(self._config.gpu)
 			submit_devices = (

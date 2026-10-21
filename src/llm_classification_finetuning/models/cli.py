@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser.add_argument(
 		"--refresh-cache",
 		action="store_true",
-		help="Rebuild shared token caches and model-specific embedding or batch caches.",
+		help="Rebuild shared token caches and model-specific embedding, batch, or head-warmup caches.",
 	)
 	parser.add_argument(
 		"--checkpoint-tag",

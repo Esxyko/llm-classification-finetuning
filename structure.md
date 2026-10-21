@@ -99,7 +99,8 @@ and print summaries. Business logic belongs below the CLI layer.
       right-pad branches without padding masks, with CPU pooling positions.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist per-fold/build
-      global batch plans, and shuffle fixed update groups with explicit row counts.
+      global batch plans, supply optional warmup identity contexts, and shuffle
+      fixed update groups with explicit row counts.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       optionally load a single-GPU NF4/double-quantized training base and prepare
       it before adapter injection, pool last real tokens, and classify with the
@@ -116,6 +117,10 @@ and print summaries. Business logic belongs below the CLI layer.
       fresh-feature extraction followed by averaged head inference for joint
       validation/test, and one weighted progress counter
       shared across training/validation stages and folds.
+    - `warmup_cache.py`: Identify completed head warmup by selected original
+      training/validation ID sets and warmup optimization settings, atomically store FP32 head
+      and named AdamW/scaler/random states, and restore compatible states across
+      precision changes without retaining features or adapters.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
       architecture/input compatibility; retain the exact Hub base revision.
     - `pipeline.py`: Orchestrate cross-validation, builds, and dual-GPU submissions
@@ -130,6 +135,8 @@ and print summaries. Business logic belongs below the CLI layer.
   - `common/pipeline.py`: Selects cross-validation, build, or submission behavior for
     frozen pairwise models.
   - `common/`
+    - `backbone.py`: Fingerprint local backbone weights/configuration by content
+      for frozen embedding and adapter head-warmup caches.
     - `contracts.py`: Defines model modes (including `ModelMode.SUBMIT`),
       optional-cache result summaries (including `ModelSubmitResult`), and the
       shared registry pipeline interface.
@@ -197,6 +204,8 @@ exports over importing private helpers across package boundaries.
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/qwen3_4b_lora_batches/` | LoRA fold/build batch-plan caches; legacy token files are unused |
 | `data/processed/qwen3_4b_qlora_batches/` | Independent QLoRA fold/build batch-plan caches |
+| `data/processed/qwen3_4b_lora_warmup/` | Completed LoRA head warmup and training-state caches per fold/build |
+| `data/processed/qwen3_4b_qlora_warmup/` | Independent completed QLoRA head-warmup caches |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
 | `models/qwen3_4b_qlora/` | QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file |
@@ -305,12 +314,39 @@ modules. Do not make application logic depend on a particular timestamped run.
   singletons retain all tokens. Update-group row counts, clipping/update
   boundaries, and scheduler step counts are preserved; grouping, floating-point
   order, and dropout draws may differ from fixed-batch training.
-  `--refresh-cache` refreshes requested shared token encodings and LoRA plans;
+  `--refresh-cache` refreshes requested shared token encodings, LoRA plans,
+  and completed head warmup;
   test inference uses the same text cache with its checkpoint's tokenizer revision.
-  Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
+  Uncached total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize loss by actual row counts per update, including
   short warmup batches and incomplete joint accumulation groups. Validation and
   test average both orientations' probabilities.
+- LoRA/QLoRA head-warmup caches identify the sorted original training and
+  validation ID sets separately; builds identify only the full original ID set
+  with a separate build marker. Assignments among other folds do not affect
+  the current split; builds ignore fold assignments. Fold numbers, paths, row
+  order, source-file bytes, text, and labels do not affect this data identity.
+  Keys also include
+  exact Hub revision or local weight/configuration contents, tokenizer and
+  serialization identities, backbone/head dimensions, head dropout,
+  quantization, A/B objective, warmup epochs/training batch size/learning rate,
+  effective seed, weight decay, gradient clipping, and cache schema. Compute
+  precision, attention/TF32, extraction batch size, all LoRA initialization
+  settings, local model paths, and joint learning rates/epochs/batching/
+  accumulation/token budget are excluded. Schema v1 warmup files remain
+  untouched and are not reused by the selected-ID schema v2.
+  Current input/length validation still runs. Completed
+  caches atomically persist FP32 heads and named head AdamW moments/steps,
+  scaler/source precision, and Python/NumPy/Torch CPU/selected-CUDA random states
+  after the final warmup validation (or training for builds). Reads validate all
+  restorable components; missing/corrupt/incompatible files rebuild. Reuse skips
+  warmup extraction/training/validation and restores no adapter weights. Joint
+  training retains current learning rates and schedule; only FP16-to-FP16 loads
+  the saved scaler. Profiles/folds/builds are isolated. Zero warmup epochs
+  disable cache I/O, and manual splits without context stay uncached. Histories,
+  build epoch counts, timings, and progress include only actual executed work;
+  joint epoch numbers retain the configured warmup offset. See
+  [warmup caches](docs/caching.md#loraqlora-head-warmup).
 - Cross-validation and builds use one shared `gpu.device`. `--submit` requires
   exactly two distinct `gpu.submit_devices`, defaulting to `[cuda:0, cuda:1]`,
   independently of the training GPU. Both devices must support `gpu.precision`;
@@ -369,9 +405,10 @@ modules. Do not make application logic depend on a particular timestamped run.
   registry order and rejects configurations with no model sections.
 - Frozen full-data builds save only the classifier head; LoRA builds save
   adapters and head without base weights or optimizer state. Cross-validation
-  does not save checkpoints. Full-data builds have no validation set;
+  does not save production checkpoints, but adapter profiles save completed
+  head-warmup caches. Full-data builds have no validation set;
   cross-validation publishes the final epoch's predictions, with validation
-  after every epoch (including LoRA head warmup).
+  after every executed epoch (including uncached LoRA head warmup).
 - Both cross-validation trainers yield each completed fold before starting the
   next. The publisher writes that fold's CSV and updates cumulative
   `metrics.json` in the same run directory. Published folds survive later
@@ -384,7 +421,8 @@ modules. Do not make application logic depend on a particular timestamped run.
   separately per fold. Training groups (including FP16-skipped updates) and
   validation batches count as one unit, except LoRA warmup training/validation
   batches count as half a unit each. Extraction, preparation, caches, and publication are
-  excluded. Dynamic micro-batches preserve update-group boundaries. See
+  excluded, and reused warmup contributes no work. Dynamic micro-batches
+  preserve update-group boundaries. See
   [training progress](docs/models.md#training-progress).
 - Cross-validation monitors PyTorch allocated and reserved memory peaks on
   `gpu.device` from before pipeline initialization through cleanup and result

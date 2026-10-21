@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 from collections.abc import Sequence
 from pathlib import Path
@@ -14,6 +13,7 @@ from transformers import AutoConfig
 
 from ...config import GPUConfig, ModelConfig
 from ...errors import ModelExecutionError
+from .backbone import LocalBackboneFingerprint
 from .data import PairwiseText
 from .hardware import GPUEnvironment
 from .model import PairwiseQwenClassifier
@@ -49,7 +49,9 @@ class QwenEmbeddingExtractor:
 			self.hidden_size = int(base_config.hidden_size)
 			local_path = Path(model_config.model_name)
 			self.local_weights_sha256 = (
-				self._local_weights_key(local_path) if local_path.is_dir() else None
+				LocalBackboneFingerprint.compute(local_path)
+				if local_path.is_dir()
+				else None
 			)
 			if self.local_weights_sha256 is None and self.base_revision is None:
 				raise ModelExecutionError(
@@ -65,50 +67,6 @@ class QwenEmbeddingExtractor:
 			raise ModelExecutionError(
 				f"Could not prepare {model_config.model_name}: {error}"
 			) from error
-
-	@staticmethod
-	def _local_weights_key(path: Path) -> str:
-		"""Hash the actual local checkpoint and configuration, excluding its location."""
-		root = path.resolve()
-		files = [root / "config.json"]
-		for name in (
-			"model.safetensors",
-			"model.safetensors.index.json",
-			"pytorch_model.bin",
-			"pytorch_model.bin.index.json",
-		):
-			checkpoint = root / name
-			if not checkpoint.is_file():
-				continue
-			files.append(checkpoint)
-			if name.endswith(".index.json"):
-				index = json.loads(checkpoint.read_text(encoding="utf-8"))
-				files.extend(
-					root / name for name in sorted(set(index["weight_map"].values()))
-				)
-			break
-		else:
-			raise ModelExecutionError(
-				f"No supported local backbone checkpoint found in {root}."
-			)
-		digest = hashlib.sha256()
-		for file_path in files:
-			if (
-				not file_path.is_relative_to(root)
-				or ".." in file_path.relative_to(root).parts
-			):
-				raise ModelExecutionError(
-					"Local backbone checkpoint shards must remain inside the model directory."
-				)
-			# Keep snapshot-relative names; Hugging Face snapshots may symlink to blobs.
-			name = file_path.relative_to(root).as_posix().encode("utf-8")
-			digest.update(len(name).to_bytes(8, "big"))
-			digest.update(name)
-			digest.update(file_path.stat().st_size.to_bytes(8, "big"))
-			with file_path.open("rb") as stream:
-				for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-					digest.update(chunk)
-		return digest.hexdigest()
 
 	def prepare(self, records: Sequence[PairwiseText]) -> TokenizedTexts:
 		"""Resolve exact truncated inputs independently of IDs and dataset metadata."""

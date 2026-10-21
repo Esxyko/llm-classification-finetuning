@@ -77,8 +77,11 @@ Other compatibility rules follow [LoRA checkpoints](lora.md#checkpoints).
 
 QLoRA shares content-addressed text tokens with the other profiles, while batch
 plans live separately under `qwen3_4b_qlora_batches/` beside the processed
-Parquet. Extracted features remain temporary and are never reused across the
-quantized training and non-quantized submission stages.
+Parquet. Completed head warmup and its training state use the independent
+`qwen3_4b_qlora_warmup/` cache with the shared
+[warmup reuse rules](caching.md#loraqlora-head-warmup), including cross-precision
+reuse and `--refresh-cache`. Extracted features remain temporary and are never
+reused across the quantized training and non-quantized submission stages.
 
 Validation results use `results/qwen3-4b-qlora-*/`; submissions use
 `results/submit/qwen3-4b-qlora-*/submission.csv`. Existing report commands consume

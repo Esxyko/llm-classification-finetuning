@@ -58,7 +58,8 @@ for `inf`. Validation always uses original IDs, with both probability orientatio
 averaged inside each batch. Rounding each fold separately accounts for uneven
 folds and short final batches. [LoRA progress](lora.md#training-progress) includes
 joint-training gradient accumulation and counts each warmup batch at half weight
-in the same counter.
+in the same counter. Reused head warmup is excluded from that fold/build's
+total work.
 
 Training update groups and the validation batches after every epoch advance the
 same counter. Feature extraction, token/batch-plan preparation, cache operations,
