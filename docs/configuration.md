@@ -24,6 +24,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `data` | Competition name and raw/processed paths |
 | `validation` | Holdout fraction, random seed, tokenizer identity, and maximum validation token deviation |
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
+| `warmup` | Independent non-quantized head-warmup model, input limit, classifier, optimization, and `A/B_swap` settings; used only by `model warmup --build` |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `warmup_extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_qlora` | Same fields as LoRA, with fixed 4-bit NF4 and double quantization for training/validation; submissions load a non-quantized base |
@@ -46,13 +47,43 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.validation_fraction` | `0.2` |
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
-| `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `qwen3_4b_qlora.A/B_swap` | `aug` |
+| `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `qwen3_4b_qlora.A/B_swap` / `warmup.A/B_swap` | `aug` |
 | `qwen3_4b_lora.training_token_budget` / `qwen3_4b_qlora.training_token_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
 `warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys are
 rejected. Numeric values described as presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
+
+## Standalone warmup
+
+The optional `warmup` section is independent of all model sections. A config
+containing `data`, `validation`, `gpu`, and `warmup` is sufficient for:
+
+```shell
+uv run model warmup --build --config config.yaml
+```
+
+Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
+`warmup_epochs`, `warmup_extraction_batch_size`, `warmup_training_batch_size`,
+`warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
+`dataloader_workers`, and `A/B_swap`. All except `A/B_swap` are required;
+`A/B_swap` defaults to `aug`. Validation follows the corresponding LoRA fields,
+except standalone `warmup_epochs` must be strictly positive. Adapter sections
+continue to allow zero epochs to disable warmup and its cache entirely.
+
+The root preset copies the LoRA warmup settings: Qwen3-4B, `max_length: 13514`,
+a 512-unit head with dropout 0.1, one warmup epoch, extraction batch size 1,
+training batch size 1024, learning rate 0.001, weight decay 0.01, clipping 1.0,
+seed 42, zero workers, and `A/B_swap: aug`. These are explicit preset values,
+not parser defaults. Shared GPU settings control its single training device
+and precision.
+
+To reuse the result in LoRA or QLoRA, their warmup compatibility fields and
+actual training IDs must match. Changing only the standalone section does not
+override either adapter section. Full-data builds use a different training ID
+set and do not reuse this train-partition cache. See
+[warmup compatibility](caching.md#loraqlora-head-warmup).
 
 ## Holdout token balance
 

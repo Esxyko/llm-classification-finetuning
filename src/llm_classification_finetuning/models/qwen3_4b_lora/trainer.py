@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup, set_seed
 
-from ...config import GPUConfig, LoRAModelConfig
+from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import (
 	ABSwapAverager,
@@ -27,6 +27,7 @@ from ..common import (
 	TokenizationCache,
 	TrainingProgress,
 	ValidationTrainingResult,
+	WarmupBuildResult,
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
@@ -58,20 +59,32 @@ class LoRATrainer:
 
 	def __init__(
 		self,
-		config: LoRAModelConfig,
+		config: WarmupModelConfig,
 		gpu: GPUConfig,
 		device: torch.device,
 		*,
 		token_cache_dir: Path,
 		refresh_cache: bool = False,
 		profile: ModelProfile | None = None,
+		warmup_only: bool = False,
 	) -> None:
+		if not warmup_only and not isinstance(config, LoRAModelConfig):
+			raise TypeError("Joint training requires a LoRAModelConfig.")
+		if warmup_only and config.warmup_epochs <= 0:
+			raise ModelExecutionError("Standalone warmup requires warmup_epochs > 0.")
+		if warmup_only and profile is not None and profile.quantize_training:
+			raise ValueError("Standalone warmup cannot use a quantized profile.")
 		self._config = config
+		self._warmup_only = warmup_only
 		self._gpu = gpu
 		self._device = device
 		self._token_cache_dir = token_cache_dir
 		self._refresh_cache = refresh_cache
-		self._model_key = profile.config_key if profile else "qwen3_4b_lora"
+		self._model_key = (
+			"warmup"
+			if warmup_only
+			else (profile.config_key if profile else "qwen3_4b_lora")
+		)
 		self._quantize_training = profile.quantize_training if profile else False
 		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
 		artifact_stem = profile.artifact_stem if profile else "qwen3_4b_lora"
@@ -82,6 +95,16 @@ class LoRATrainer:
 			device,
 			quantize_training=self._quantize_training,
 			model_label=self._model_label,
+		)
+		self._lora_warmup_cache = (
+			HeadWarmupCache(
+				token_cache_dir.parent / "qwen3_4b_lora_warmup",
+				config,
+				gpu,
+				device,
+			)
+			if self._quantize_training
+			else None
 		)
 		self._tokens: PairwiseTokenStore | None = None
 		self._base_revision: str | None = None
@@ -108,6 +131,7 @@ class LoRATrainer:
 				if quantize_backbone is None
 				else quantize_backbone
 			),
+			warmup_only=self._warmup_only,
 		)
 		self._base_revision = model.base_revision
 		self._model_initialized = True
@@ -123,10 +147,48 @@ class LoRATrainer:
 		)
 		return model
 
+	def build_warmup(self, batches: LoRATrainingBatchRepository) -> WarmupBuildResult:
+		"""Build only train-partition head warmup, avoiding weights on a cache hit."""
+		if not self._warmup_only:
+			raise ModelExecutionError("Warmup cache builds require warmup_only=True.")
+		training = batches.get_training()
+		seed = self._config.random_state
+		entry = self._prepare_warmup(training.warmup_context, seed=seed)
+		if entry is None:
+			raise ModelExecutionError("Standalone warmup requires a cache identity.")
+		path = self._warmup_cache.path(entry)
+		if entry.state is not None:
+			print(
+				f"Reused LoRA head warmup (Warmup cache build): "
+				f"source_precision={entry.state['source_precision']}, "
+				f"precision={self._gpu.precision}; {path}",
+				flush=True,
+			)
+			return WarmupBuildResult(path, True, len(training.reference), 0)
+		model = self.create_model(seed=seed, revision=batches.base_revision)
+		try:
+			history = self.fit(
+				model,
+				training,
+				batches.data.canonical_texts,
+				seed=seed,
+				description="Warmup cache build",
+				warmup_cache_entry=entry,
+			)
+			return WarmupBuildResult(
+				path, False, history.training_rows, len(history.training_losses)
+			)
+		finally:
+			del model
+
 	def validate(
 		self, batches: LoRATrainingBatchRepository
 	) -> ValidationTrainingResult:
 		"""Train one fresh model against the saved holdout and align final predictions."""
+		if self._warmup_only:
+			raise ModelExecutionError(
+				"Standalone warmup does not run holdout validation."
+			)
 		run_started = self._timestamp()
 		data = batches.data
 		training = batches.get_training()
@@ -184,6 +246,10 @@ class LoRATrainer:
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
 		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
+		if self._warmup_only != model.warmup_only:
+			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
+		if self._warmup_only and validation is not None:
+			raise ModelExecutionError("Standalone warmup does not run validation.")
 		reference = training.reference
 		if reference.empty:
 			raise ModelExecutionError(f"{self._model_label} training received no rows.")
@@ -221,8 +287,17 @@ class LoRATrainer:
 			)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
-		optimizer = AdamW(
-			[
+		parameter_groups = [
+			{
+				"params": list(model.classifier.parameters()),
+				"lr": self._config.warmup_learning_rate
+				if self._config.warmup_epochs
+				else self._config.head_learning_rate,
+			}
+		]
+		if not self._warmup_only:
+			parameter_groups.insert(
+				0,
 				{
 					"params": [
 						parameter
@@ -231,17 +306,8 @@ class LoRATrainer:
 					],
 					"lr": self._config.learning_rate,
 				},
-				{
-					"params": model.classifier.parameters(),
-					"lr": (
-						self._config.warmup_learning_rate
-						if self._config.warmup_epochs
-						else self._config.head_learning_rate
-					),
-				},
-			],
-			weight_decay=self._config.weight_decay,
-		)
+			)
+		optimizer = AdamW(parameter_groups, weight_decay=self._config.weight_decay)
 		scheduler: LambdaLR | None = None
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
 		if reused_warmup:
@@ -250,6 +316,7 @@ class LoRATrainer:
 				f"Reused {self._model_label} head warmup ({description}): "
 				f"skipping {self._config.warmup_epochs} warmup epochs; "
 				f"source_precision={entry.state['source_precision']}, "
+				f"source_quantization={entry.metadata['training_quantization']}, "
 				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
 				flush=True,
 			)
@@ -264,7 +331,9 @@ class LoRATrainer:
 		losses: list[float] = []
 		metrics: list[EpochMetrics] = []
 		probabilities: np.ndarray | None = None
-		total_epochs = self._config.warmup_epochs + self._config.epochs
+		total_epochs = self._config.warmup_epochs + (
+			0 if self._warmup_only else self._config.epochs
+		)
 		first_epoch = self._config.warmup_epochs + 1 if reused_warmup else 1
 		for epoch in range(first_epoch, total_epochs + 1):
 			epoch_started = self._timestamp()
@@ -374,6 +443,10 @@ class LoRATrainer:
 		"""Leave manually constructed splits and disabled warmup uncached."""
 		if not self._config.warmup_epochs or context is None:
 			return None
+		if self._lora_warmup_cache is not None and not self._refresh_cache:
+			entry = self._lora_warmup_cache.prepare(context, seed=seed)
+			if entry.state is not None:
+				return entry
 		return self._warmup_cache.prepare(
 			context, seed=seed, refresh=self._refresh_cache
 		)
@@ -388,6 +461,18 @@ class LoRATrainer:
 	) -> TrainingProgress:
 		"""Count one run's training and validation, weighting warmup work by half."""
 		warmup_batch_size = self._config.warmup_training_batch_size
+		if self._warmup_only:
+			return TrainingProgress(
+				model=self._model_key,
+				mode=mode,
+				total_steps=(
+					self.WARMUP_PROGRESS_WEIGHT
+					* self._config.warmup_epochs
+					* math.ceil(training_rows / warmup_batch_size)
+					if warmup_required
+					else 0
+				),
+			)
 		joint_batch_size = (
 			self._config.training_batch_size * self._config.gradient_accumulation_steps
 		)

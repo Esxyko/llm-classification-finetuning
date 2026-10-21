@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader, Sampler
 from transformers import AutoConfig
 
-from ...config import AppConfig, LoRAModelConfig
+from ...config import AppConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import (
 	CacheStorage,
@@ -296,7 +296,7 @@ class LoRATrainingBatchRepository:
 	def __init__(
 		self,
 		*,
-		config: LoRAModelConfig,
+		config: WarmupModelConfig,
 		data: ModelData,
 		serializer_version: str,
 		base_revision: str | None,
@@ -307,8 +307,12 @@ class LoRATrainingBatchRepository:
 		model_label: str = "LoRA",
 		backbone_hidden_size: int | None = None,
 		local_weights_sha256: str | None = None,
+		warmup_only: bool = False,
 	) -> None:
+		if not warmup_only and not isinstance(config, LoRAModelConfig):
+			raise TypeError("Joint training batches require a LoRAModelConfig.")
 		self._config = config
+		self._warmup_only = warmup_only
 		self._model_label = model_label
 		self.data = data
 		self.serializer_version = serializer_version
@@ -340,23 +344,47 @@ class LoRATrainingBatchRepository:
 		refresh_cache: bool = False,
 		*,
 		profile: ModelProfile | None = None,
+		warmup_only: bool = False,
 	) -> LoRATrainingBatchRepository:
 		"""Load data and canonical tokens once, preparing split plans on demand."""
-		model_key = profile.config_key if profile else "qwen3_4b_lora"
-		model_label = "QLoRA" if profile and profile.quantize_training else "LoRA"
+		model_key = (
+			"warmup"
+			if warmup_only
+			else (profile.config_key if profile else "qwen3_4b_lora")
+		)
+		model_label = (
+			"Warmup"
+			if warmup_only
+			else ("QLoRA" if profile and profile.quantize_training else "LoRA")
+		)
 		model = getattr(config, model_key, None)
 		if model is None:
 			raise ModelExecutionError(
 				f"{model_label} batch preparation requires {model_key} configuration."
 			)
-		if not isinstance(model, LoRAModelConfig):
-			raise TypeError(f"{model_key} must be a LoRAModelConfig.")
+		expected_type = WarmupModelConfig if warmup_only else LoRAModelConfig
+		if not isinstance(model, expected_type):
+			raise TypeError(f"{model_key} must be a {expected_type.__name__}.")
 		try:
 			repository = ModelDataRepository(
 				config.data.processed_path,
 				validation_fraction=config.validation.validation_fraction,
 			)
 			data = repository.load()
+			if warmup_only:
+				reference = data.reference.loc[
+					data.reference["split"].eq("train")
+				].copy()
+				training_ids = set(reference["id"])
+				data = ModelData(
+					reference=reference.reset_index(drop=True),
+					canonical_texts=tuple(
+						record
+						for record in data.canonical_texts
+						if record.row_id in training_ids
+					),
+					fingerprint=data.fingerprint,
+				)
 			base_config = AutoConfig.from_pretrained(model.model_name)
 			revision = getattr(base_config, "_commit_hash", None)
 			if revision is None and not Path(model.model_name).is_dir():
@@ -386,6 +414,7 @@ class LoRATrainingBatchRepository:
 				refresh_cache=refresh_cache,
 				model_key=model_key,
 				model_label=model_label,
+				warmup_only=warmup_only,
 			)
 		except ModelExecutionError:
 			raise
@@ -497,6 +526,10 @@ class LoRATrainingBatchRepository:
 
 	def get_training(self, *, full_data: bool = False) -> PreparedTrainingSplit:
 		"""Select holdout-training or full-data orientations and their cached batches."""
+		if self._warmup_only and full_data:
+			raise ModelExecutionError(
+				"Standalone warmup only supports the train partition."
+			)
 		reference = self.data.reference
 		if not full_data:
 			reference = reference.loc[reference["split"].eq("train")]
@@ -518,14 +551,18 @@ class LoRATrainingBatchRepository:
 		}
 		plan = None
 		sampler = None
-		if self._config.training_token_budget > 0:
+		if not self._warmup_only and self._config.training_token_budget > 0:
 			plan = self._load_plan(reference, dataset, full_data=full_data)
 			sampler = _PlannedBatchSampler(plan, seed)
 			loader = DataLoader(dataset, batch_sampler=sampler, **options)
 		else:
 			loader = DataLoader(
 				dataset,
-				batch_size=self._config.training_batch_size,
+				batch_size=(
+					self._config.warmup_extraction_batch_size
+					if self._warmup_only
+					else self._config.training_batch_size
+				),
 				shuffle=True,
 				**options,
 			)

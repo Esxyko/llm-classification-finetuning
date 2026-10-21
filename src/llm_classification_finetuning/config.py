@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -67,33 +67,39 @@ class ModelConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class LoRAModelConfig:
-	"""Hyperparameters for live pairwise backbone adapter training."""
+class WarmupModelConfig:
+	"""Shared model, head, and optimization settings for head warmup."""
 
 	model_name: str
 	max_length: int
-	training_batch_size: int
-	head_inference_batch_size: int
-	gradient_accumulation_steps: int
-	gradient_checkpointing: bool
 	hidden_size: int
 	dropout: float
-	epochs: int
-	learning_rate: float
-	head_learning_rate: float
 	weight_decay: float
 	warmup_epochs: int
 	warmup_extraction_batch_size: int
 	warmup_training_batch_size: int
 	warmup_learning_rate: float
 	max_grad_norm: float
+	random_state: int
+	dataloader_workers: int
+	ab_swap: str
+
+
+@dataclass(frozen=True, slots=True)
+class LoRAModelConfig(WarmupModelConfig):
+	"""Hyperparameters for live pairwise backbone adapter training."""
+
+	training_batch_size: int
+	head_inference_batch_size: int
+	gradient_accumulation_steps: int
+	gradient_checkpointing: bool
+	epochs: int
+	learning_rate: float
+	head_learning_rate: float
 	lora_rank: int
 	lora_alpha: int
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
-	random_state: int
-	dataloader_workers: int
-	ab_swap: str
 	training_token_budget: int = 0
 
 
@@ -107,6 +113,7 @@ class AppConfig:
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora: LoRAModelConfig | None = None
 	qwen3_4b_qlora: LoRAModelConfig | None = None
+	warmup: WarmupModelConfig | None = None
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
@@ -146,6 +153,7 @@ class AppConfig:
 				"qwen3_4b",
 				"qwen3_4b_lora",
 				"qwen3_4b_qlora",
+				"warmup",
 			},
 			"configuration root",
 		)
@@ -189,6 +197,7 @@ class AppConfig:
 			if "qwen3_4b_qlora" in root
 			else None
 		)
+		warmup = _load_warmup_model_config(root) if "warmup" in root else None
 
 		competition = _require_non_empty_string(
 			data_section.get("competition"), "data.competition"
@@ -290,7 +299,74 @@ class AppConfig:
 			qwen3_4b=qwen3_4b,
 			qwen3_4b_lora=qwen3_4b_lora,
 			qwen3_4b_qlora=qwen3_4b_qlora,
+			warmup=warmup,
 		)
+
+
+def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
+	section = _require_mapping(root.get("warmup"), "warmup")
+	keys = set(WarmupModelConfig.__dataclass_fields__) - {"ab_swap"}
+	_reject_unknown_keys(section, keys | {"A/B_swap"}, "warmup")
+	return _load_warmup_fields(section, "warmup", allow_zero_epochs=False)
+
+
+def _load_warmup_fields(
+	section: Mapping[str, Any], section_name: str, *, allow_zero_epochs: bool
+) -> WarmupModelConfig:
+	"""Validate the same head-warmup fields for standalone and adapter training."""
+
+	def field(name: str) -> str:
+		return f"{section_name}.{name}"
+
+	def positive_integer(name: str) -> int:
+		return _require_positive_integer(section.get(name), field(name))
+
+	def positive_float(name: str) -> float:
+		value = _require_float(section.get(name), field(name))
+		if value <= 0.0:
+			raise ConfigurationError(f"{field(name)} must be greater than 0.")
+		return value
+
+	dropout = _require_float(section.get("dropout"), field("dropout"))
+	if not 0.0 <= dropout < 1.0:
+		raise ConfigurationError(f"{field('dropout')} must be in [0, 1).")
+	weight_decay = _require_float(section.get("weight_decay"), field("weight_decay"))
+	if weight_decay < 0.0:
+		raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
+	warmup_epochs = _require_integer(
+		section.get("warmup_epochs"), field("warmup_epochs")
+	)
+	if allow_zero_epochs:
+		if warmup_epochs < 0:
+			raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
+	elif warmup_epochs <= 0:
+		raise ConfigurationError(f"{field('warmup_epochs')} must be greater than 0.")
+	workers = _require_integer(
+		section.get("dataloader_workers"), field("dataloader_workers")
+	)
+	if workers < 0:
+		raise ConfigurationError(f"{field('dataloader_workers')} cannot be negative.")
+	return WarmupModelConfig(
+		model_name=_require_non_empty_string(
+			section.get("model_name"), field("model_name")
+		),
+		max_length=positive_integer("max_length"),
+		hidden_size=positive_integer("hidden_size"),
+		dropout=dropout,
+		weight_decay=weight_decay,
+		warmup_epochs=warmup_epochs,
+		warmup_extraction_batch_size=positive_integer("warmup_extraction_batch_size"),
+		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
+		warmup_learning_rate=positive_float("warmup_learning_rate"),
+		max_grad_norm=positive_float("max_grad_norm"),
+		random_state=_require_integer(
+			section.get("random_state"), field("random_state")
+		),
+		dataloader_workers=workers,
+		ab_swap=_require_choice(
+			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
+		),
+	)
 
 
 def _load_lora_model_config(
@@ -318,19 +394,7 @@ def _load_lora_model_config(
 			raise ConfigurationError(f"{field(name)} must be in [0, 1).")
 		return value
 
-	weight_decay = _require_float(section.get("weight_decay"), field("weight_decay"))
-	if weight_decay < 0.0:
-		raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
-	warmup_epochs = _require_integer(
-		section.get("warmup_epochs"), field("warmup_epochs")
-	)
-	if warmup_epochs < 0:
-		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
-	workers = _require_integer(
-		section.get("dataloader_workers"), field("dataloader_workers")
-	)
-	if workers < 0:
-		raise ConfigurationError(f"{field('dataloader_workers')} cannot be negative.")
+	warmup = _load_warmup_fields(section, section_name, allow_zero_epochs=True)
 	token_budget = _require_integer(
 		section.get("training_token_budget", 0), field("training_token_budget")
 	)
@@ -353,38 +417,20 @@ def _load_lora_model_config(
 		)
 
 	return LoRAModelConfig(
-		model_name=_require_non_empty_string(
-			section.get("model_name"), field("model_name")
-		),
-		max_length=positive_integer("max_length"),
+		**asdict(warmup),
 		training_batch_size=positive_integer("training_batch_size"),
 		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),
 		gradient_checkpointing=_require_boolean(
 			section.get("gradient_checkpointing"), field("gradient_checkpointing")
 		),
-		hidden_size=positive_integer("hidden_size"),
-		dropout=fraction("dropout"),
 		epochs=positive_integer("epochs"),
 		learning_rate=positive_float("learning_rate"),
 		head_learning_rate=positive_float("head_learning_rate"),
-		weight_decay=weight_decay,
-		warmup_epochs=warmup_epochs,
-		warmup_extraction_batch_size=positive_integer("warmup_extraction_batch_size"),
-		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
-		warmup_learning_rate=positive_float("warmup_learning_rate"),
-		max_grad_norm=positive_float("max_grad_norm"),
 		lora_rank=positive_integer("lora_rank"),
 		lora_alpha=positive_integer("lora_alpha"),
 		lora_dropout=fraction("lora_dropout"),
 		lora_target_modules=target_modules,
-		random_state=_require_integer(
-			section.get("random_state"), field("random_state")
-		),
-		dataloader_workers=workers,
-		ab_swap=_require_choice(
-			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
-		),
 		training_token_budget=token_budget,
 	)
 

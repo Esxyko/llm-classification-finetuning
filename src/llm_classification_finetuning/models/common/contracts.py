@@ -53,7 +53,19 @@ class ModelSubmitResult:
 	cache_reused: bool = False
 
 
-ModelExecutionResult = ModelRunResult | ModelBuildResult | ModelSubmitResult
+@dataclass(frozen=True, slots=True)
+class WarmupBuildResult:
+	"""Summary of a train-partition head-warmup cache build or hit."""
+
+	cache_path: Path
+	cache_reused: bool
+	training_rows: int
+	epochs: int
+
+
+ModelExecutionResult = (
+	ModelRunResult | ModelBuildResult | ModelSubmitResult | WarmupBuildResult
+)
 
 
 class ModelPipelineInterface(Protocol):

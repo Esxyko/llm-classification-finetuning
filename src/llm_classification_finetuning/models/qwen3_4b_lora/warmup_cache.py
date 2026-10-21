@@ -16,7 +16,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import AdamW
 
-from ...config import GPUConfig, LoRAModelConfig
+from ...config import GPUConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import CacheStorage, PairwiseClassificationHead
 
@@ -39,6 +39,7 @@ class WarmupCacheEntry:
 
 	metadata: dict[str, Any]
 	state: dict[str, Any] | None
+	cache_path: Path | None = None
 
 
 class HeadWarmupCache:
@@ -49,7 +50,7 @@ class HeadWarmupCache:
 	def __init__(
 		self,
 		root: Path,
-		config: LoRAModelConfig,
+		config: WarmupModelConfig,
 		gpu: GPUConfig,
 		device: torch.device,
 		*,
@@ -64,10 +65,12 @@ class HeadWarmupCache:
 		self._model_label = model_label
 
 	def path(self, entry: WarmupCacheEntry) -> Path:
+		"""Retain the real source path when a cache is shared across profiles."""
+		return entry.cache_path or self._path_for_metadata(entry.metadata)
+
+	def _path_for_metadata(self, metadata: dict[str, Any]) -> Path:
 		key = hashlib.sha256(
-			json.dumps(entry.metadata, sort_keys=True, separators=(",", ":")).encode(
-				"utf-8"
-			)
+			json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8")
 		).hexdigest()
 		return self.root / f"{key}.pt"
 
@@ -95,7 +98,7 @@ class HeadWarmupCache:
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
-		entry = WarmupCacheEntry(metadata, None)
+		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))
 		if refresh:
 			return entry
 		try:
@@ -104,7 +107,7 @@ class HeadWarmupCache:
 					session.path, map_location="cpu", weights_only=True
 				)
 			self._validate(payload, metadata)
-			return WarmupCacheEntry(metadata, payload)
+			return WarmupCacheEntry(metadata, payload, self.path(entry))
 		except (
 			OSError,
 			ValueError,

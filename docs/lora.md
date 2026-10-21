@@ -133,9 +133,9 @@ validation. It matches the current original training ID set (all original IDs
 for builds), warmup optimization settings, and core model/input
 identities. Compute precision, attention/TF32, extraction batch size, LoRA
 settings, local model paths with identical contents, and joint-training
-learning rates, epochs, or batching may change. LoRA and QLoRA warmup states
-remain separate. Changing only validation IDs preserves warmup reuse; changing
-training IDs selects a new cache. Holdout/build mode does not independently
+learning rates, epochs, or batching may change. QLoRA prefers compatible LoRA
+warmup before checking its own quantized warmup. Changing only validation IDs
+preserves warmup reuse; changing training IDs selects a new cache. Holdout/build mode does not independently
 restrict reuse, and builds use the full original ID set.
 `--refresh-cache` forces a fresh warmup. Across precision changes, the original
 warmup result is reused; only FP16-to-FP16 restores the gradient scaler.
@@ -160,7 +160,7 @@ excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
 `warmup_training_batch_size` is a required positive integer controlling only the
-head-warmup batch size over extracted features (root preset: `8`). Each warmup
+head-warmup batch size over extracted features (root preset: `1024`). Each warmup
 batch performs one optimizer update without gradient accumulation, independently
 of `gradient_accumulation_steps`. Joint training uses `training_batch_size`,
 `gradient_accumulation_steps`, and the

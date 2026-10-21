@@ -25,6 +25,8 @@ selected YAML config (defaults to config.yaml)
 
 train_validation.parquet
   -> model MODEL (default) -> validation.csv + metrics -> result -> PNG + XLSX report
+  -> model warmup --build (train partition only)
+     -> data/processed/qwen3_4b_lora_warmup/<key>.pt
   -> model qwen3-4b --build -> models/qwen3_4b/head.pt
   -> model qwen3-4b --build --checkpoint-tag TAG -> models/qwen3_4b/head_TAG.pt
   -> model qwen3-4b-lora --build -> models/qwen3_4b_lora/adapter.pt
@@ -66,7 +68,8 @@ and print summaries. Business logic belongs below the CLI layer.
 `src/llm_classification_finetuning/`
 
 - `config.py`: Immutable config value objects, strict YAML validation, and path
-  resolution.
+  resolution. `WarmupModelConfig` owns shared head-warmup fields;
+  `LoRAModelConfig` extends it with joint-training and adapter settings.
 - `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
 - `timing.py`: Formats elapsed durations as unbounded `HH:MM:SS` values.
@@ -89,8 +92,13 @@ and print summaries. Business logic belongs below the CLI layer.
 - `models/`
   - `__init__.py`: Registers each selector with its profile and pipeline.
   - `cli.py`: Selects a registered Qwen model and an execution mode; wraps each
-    holdout validation model run in complete-run GPU peak monitoring.
+    holdout validation model run in complete-run GPU peak monitoring. Also
+    accepts the explicit build-only `warmup` selector outside the registry,
+    rejects unsupported flags before data/GPU setup, and keeps it out of `ALL`.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
+  - `warmup.py`: Orchestrates train-partition-only non-quantized head-warmup
+    cache builds from the independent `warmup` section, reusing adapter batching
+    and training without adapters, joint plans, validation, or checkpoints.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: Shared LoRA/QLoRA adapter implementation with single-GPU
     training and dual-GPU submission. The selected profile controls training
@@ -100,12 +108,14 @@ and print summaries. Business logic belongs below the CLI layer.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist holdout/build
       global batch plans, supply optional warmup identity contexts, and shuffle
-      fixed update groups with explicit row counts.
+      fixed update groups with explicit row counts. Its `warmup_only` path
+      prepares train-only tokens and references without joint batch plans.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       optionally load a single-GPU NF4/double-quantized training base and prepare
       it before adapter injection, pool last real tokens, and classify with the
       shared pairwise MLP architecture through a LoRA-specific head subclass.
-      Own BF16 frozen embedding/norm restoration, feature dtype, and head
+      The `warmup_only` path loads a non-quantized frozen base without adapter
+      injection. Own BF16 frozen embedding/norm restoration, feature dtype, and head
       autocast with FP32 logits. Quantized weights are placed during loading.
     - `extractor.py`: Extract one no-gradient canonical feature pair per needed
       ID for warmup, each joint-validation pass, or submission, retaining shared
@@ -116,9 +126,12 @@ and print summaries. Business logic belongs below the CLI layer.
       precision, row-normalized update groups, frozen-feature warmup validation,
       fresh-feature extraction followed by averaged head inference for joint
       validation/test, and one weighted progress counter
-      shared across all executed training/validation stages.
+      shared across all executed training/validation stages. Standalone warmup
+      returns valid cache hits before loading weights and stops after head
+      warmup on a miss. QLoRA checks LoRA warmup before its own cache.
     - `warmup_cache.py`: Identify completed head warmup by selected original
-      training/validation ID sets and warmup optimization settings, atomically store FP32 head
+      training ID sets and warmup optimization settings, retain actual source
+      paths across profiles, atomically store FP32 head
       and named AdamW/scaler/random states, and restore compatible states across
       precision changes without retaining features or adapters.
     - `checkpoint.py`: Atomically store adapters/head and validate portable
@@ -139,7 +152,8 @@ and print summaries. Business logic belongs below the CLI layer.
       for frozen embedding and adapter head-warmup caches.
     - `contracts.py`: Defines `ModelMode.VALIDATION`, `BUILD`, and `SUBMIT`,
       optional-cache result summaries (including `ModelSubmitResult`), and the
-      shared registry pipeline interface.
+      shared registry pipeline interface. `WarmupBuildResult` reports the
+      logical cache path, reuse, oriented training rows, and executed epochs.
     - `inputs.py`: Loads training/test tables, checks required columns, split membership and prompt isolation,
       orientation counts and label mappings, and test/template ID order; computes
       source fingerprints for all active profiles.
@@ -192,7 +206,7 @@ exports over importing private helpers across package boundaries.
 
 | Path | Role |
 | --- | --- |
-| `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, and three optional model sections |
+| `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, three optional model sections, and an independent optional `warmup` section |
 | `.env.example` | Template for the local Kaggle token in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `README.md` | Project overview and documentation index |
@@ -207,8 +221,8 @@ exports over importing private helpers across package boundaries.
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/adapter_batches/` | Shared LoRA/QLoRA holdout/build batch-plan caches, keyed by selected rows, lengths, budget, and update-group size |
-| `data/processed/qwen3_4b_lora_warmup/` | Completed LoRA head warmup and training-state caches by actual training IDs |
-| `data/processed/qwen3_4b_qlora_warmup/` | Independent completed QLoRA head-warmup caches |
+| `data/processed/qwen3_4b_lora_warmup/` | Completed non-quantized LoRA head warmup by actual training IDs, also written by standalone warmup and preferred by QLoRA |
+| `data/processed/qwen3_4b_qlora_warmup/` | Completed quantized QLoRA head-warmup caches, checked after LoRA warmup |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
 | `models/qwen3_4b_qlora/` | QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file |
@@ -355,9 +369,15 @@ remain ignored. Do not make application logic depend on a particular timestamped
   restorable components; missing/corrupt/incompatible files rebuild. Reuse skips
   warmup extraction/training/validation and restores no adapter weights. Joint
   training retains current learning rates and schedule; only FP16-to-FP16 loads
-  the saved scaler. Quantization profiles remain isolated; identical training
-  sets/settings
-  can reuse warmup across holdout/build calls. Zero warmup epochs
+  the saved scaler. Source quantization identities and directories remain
+  distinct: QLoRA first validates a non-quantized LoRA cache against all other
+  current compatibility fields, then checks its own quantized cache, then runs
+  quantized warmup on a miss. LoRA does not read QLoRA caches. Refresh bypasses
+  both QLoRA candidates and rebuilds its native cache. Identical training
+  sets/settings can reuse warmup across holdout/build calls. Standalone warmup
+  uses only train IDs, requires positive warmup epochs, and creates no adapters
+  or persistent features; normal full-data builds use a different ID set.
+  Zero warmup epochs
   disable cache I/O, and manual splits without context stay uncached. Histories,
   build epoch counts, timings, and progress include only actual executed work;
   joint epoch numbers retain the configured warmup offset. See
@@ -396,7 +416,7 @@ remain ignored. Do not make application logic depend on a particular timestamped
   retained; local base weights are neither stored nor content-fingerprinted.
 - QLoRA shares the LoRA training, batching, pooling, objective, attention,
   progress, and publication invariants above. Its base uses bitsandbytes NF4
-  with double quantization for warmup, joint training, and validation; compute
+  with double quantization for uncached warmup, joint training, and validation; compute
   dtype follows `gpu.precision`, while adapter/head parameters remain FP32 and
   the base stays frozen. In BF16 mode, frozen embeddings and all Qwen3 RMSNorm
   weights are restored to BF16 after k-bit preparation, before adapter injection;
@@ -407,8 +427,8 @@ remain ignored. Do not make application logic depend on a particular timestamped
   at the saved revision using the existing two-GPU map, then restores adapters
   and head without merging or dequantizing a saved base. Checkpoints store a
   checked `training_quantization` marker (`bnb-nf4-double` versus LoRA's `none`);
-  a missing marker means legacy LoRA. Model sections and batch-plan namespaces
-  stay independent, while token encodings are shared. Neither profile persists
+  a missing marker means legacy LoRA. Model sections stay independent, while
+  batch plans and token encodings are shared. Neither profile persists
   live embeddings. The batch scripts retain their LoRA-only defaults.
 - Frozen head compatibility includes model name, serializer, classifier hidden
   size, and schema/class count. Context, compute precision, attention

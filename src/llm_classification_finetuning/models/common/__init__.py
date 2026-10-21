@@ -10,6 +10,7 @@ from .contracts import (
 	ModelPipelineInterface,
 	ModelRunResult,
 	ModelSubmitResult,
+	WarmupBuildResult,
 )
 from .data import (
 	ConversationSerializer,
@@ -62,4 +63,5 @@ __all__ = (
 	"TrainingInputLoader",
 	"TrainingProgress",
 	"ValidationTrainingResult",
+	"WarmupBuildResult",
 )

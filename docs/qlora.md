@@ -43,8 +43,9 @@ both forward execution and backward recomputation.
 
 QLoRA reuses the [LoRA training workflow](lora.md): head-only warmup, joint
 adapter/head training, AdamW, linear decay, gradient accumulation, token-budget
-batch planning, and `A/B_swap: aug` or `inf`. Warmup extraction and every
-validation pass use the current quantized base. Inputs are independently
+batch planning, and `A/B_swap: aug` or `inf`. On a warmup cache miss, warmup
+extraction uses the quantized base; a compatible LoRA cache skips that stage.
+Every joint-validation pass uses the current quantized base. Inputs are independently
 right-padded without padding masks and are never truncated. Batch sizes,
 sequence limits, epochs, and learning rates are not automatically changed.
 
@@ -78,11 +79,14 @@ Other compatibility rules follow [LoRA checkpoints](lora.md#checkpoints).
 QLoRA shares content-addressed text tokens with the other profiles and shares
 `adapter_batches/plans/` with LoRA beside the processed Parquet. Batch plans are
 reused when selected IDs/orientations, branch lengths, budget, update-group size,
-and algorithm version match, independently of training quantization. Completed
-head warmup and its training state use the independent
-`qwen3_4b_qlora_warmup/` cache with the shared
-[warmup reuse rules](caching.md#loraqlora-head-warmup), including cross-precision
-reuse and `--refresh-cache`. Extracted features remain temporary and are never
+and algorithm version match, independently of training quantization. For
+completed head warmup and its training state, QLoRA first checks the
+non-quantized `qwen3_4b_lora_warmup/` cache, including entries created with
+`model warmup --build`. It then checks `qwen3_4b_qlora_warmup/`; if neither
+matches, it trains and saves its own quantized warmup. The shared
+[warmup reuse rules](caching.md#loraqlora-head-warmup) apply, including
+cross-precision reuse. `--refresh-cache` skips both sources and rebuilds
+QLoRA warmup. Extracted features remain temporary and are never
 reused across the quantized training and non-quantized submission stages.
 
 Validation results use `results/qwen3-4b-qlora-*/`; submissions use

@@ -26,9 +26,12 @@ from .common import (
 	ModelResultPublisher,
 	ModelRunResult,
 	ModelSubmitResult,
+	WarmupBuildResult,
 )
+from .warmup import WarmupModelPipeline
 
 ALL_MODELS = "ALL"
+WARMUP_MODEL = "warmup"
 
 
 def _checkpoint_tag(value: str) -> str:
@@ -48,14 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
 	add_config_argument(parser)
 	parser.add_argument(
 		"model",
-		choices=(*MODEL_REGISTRY, ALL_MODELS),
-		help="Model profile to execute, or ALL to run every configured profile sequentially.",
+		choices=(*MODEL_REGISTRY, WARMUP_MODEL, ALL_MODELS),
+		help="Model profile to execute, warmup (--build only), or ALL for configured model profiles.",
 	)
 	modes = parser.add_mutually_exclusive_group()
 	modes.add_argument(
 		"--build",
 		action="store_true",
-		help="Train on all training and validation IDs and save the head and any LoRA adapters.",
+		help="Build a full-data model checkpoint, or a train-partition head-warmup cache for warmup.",
 	)
 	modes.add_argument(
 		"--submit",
@@ -79,6 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
 def run(arguments: Sequence[str] | None = None) -> int:
 	"""Run the selected model mode and return a process exit code."""
 	parsed_arguments = build_parser().parse_args(arguments)
+	if parsed_arguments.model == WARMUP_MODEL:
+		if not parsed_arguments.build:
+			raise SystemExit(
+				"warmup requires --build; validation and --submit are unsupported"
+			)
+		if parsed_arguments.checkpoint_tag:
+			raise SystemExit("warmup does not support --checkpoint-tag")
 	if parsed_arguments.checkpoint_tag and not (
 		parsed_arguments.build or parsed_arguments.submit
 	):
@@ -87,6 +97,16 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		config = AppConfig.load(parsed_arguments.config)
 		project_root = Path.cwd()
 		mode = _selected_mode(parsed_arguments)
+		if parsed_arguments.model == WARMUP_MODEL:
+			started = perf_counter()
+			result = WarmupModelPipeline(config).run(
+				refresh_cache=parsed_arguments.refresh_cache
+			)
+			print(
+				f"Model total time (warmup): {format_duration(perf_counter() - started)}"
+			)
+			_print_result(WARMUP_MODEL, result)
+			return 0
 		if parsed_arguments.model == ALL_MODELS:
 			return _run_all_models(
 				config=config,
@@ -233,6 +253,13 @@ def _selected_mode(arguments: argparse.Namespace) -> ModelMode:
 
 
 def _print_result(selector: str, result: ModelExecutionResult) -> None:
+	if isinstance(result, WarmupBuildResult):
+		status = "Reused" if result.cache_reused else "Created"
+		print(f"{status} head-warmup cache: {result.cache_path}")
+		print(
+			f"Warmup train partition: {result.training_rows:,} rows; executed {result.epochs} epochs."
+		)
+		return
 	if result.cache_path is not None:
 		cache_status = "Reused" if result.cache_reused else "Created"
 		print(f"{cache_status} embedding cache: {result.cache_path}")

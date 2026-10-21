@@ -165,12 +165,15 @@ features and live LoRA encodings are never persisted in these token caches.
 
 Holdout validation and builds automatically save completed head warmup under
 `qwen3_4b_lora_warmup/<key>.pt` or `qwen3_4b_qlora_warmup/<key>.pt` beside the
-processed Parquet. Identity follows the actual training data, rather than the
-holdout/build mode. Checkpoint tags do not affect this cache. Submission inference
+processed Parquet. The standalone `model warmup --build` command also writes
+the LoRA directory using only the saved train partition. Identity follows the
+actual training data, rather than the holdout/build mode. Checkpoint tags do not
+affect this cache. Submission inference
 does not use it.
 
-The data key hashes only the sorted original training ID set. For builds this
-is the full original ID set; for holdout runs it is the saved training partition.
+The data key hashes only the sorted original training ID set. For normal model
+builds this is the full original ID set; for holdout runs and standalone warmup
+it is the saved training partition.
 Validation IDs and split names do not enter the key: validation only measures
 loss and does not update the head or choose an early-stopping checkpoint.
 Changing only the validation set therefore retains a compatible warmup cache.
@@ -190,8 +193,12 @@ match. Compute precision, attention implementation, TF32, warmup extraction
 batch size, and all LoRA rank/alpha/dropout/target-module settings are excluded,
 as are joint-training learning rates, epoch count, batch size, accumulation,
 and token budget. Context limits do not enter the key because adapter inputs are never
-truncated and their lengths are checked independently. LoRA and QLoRA caches
-remain separate.
+truncated and their lengths are checked independently. The two source
+quantization identities and directories remain distinct. QLoRA first checks
+for a compatible non-quantized LoRA warmup, then its own quantized warmup;
+if neither is valid, it performs its existing quantized warmup. The LoRA lookup
+uses the expected `training_quantization: none` identity while strictly
+checking all other compatibility fields. LoRA does not read QLoRA warmup.
 
 After the last warmup validation (or the last warmup training epoch for builds),
 the cache atomically stores FP32 classifier weights, named head AdamW moments
@@ -224,6 +231,30 @@ forces warmup again and atomically replaces the requested entries. Manually
 constructed `PreparedTrainingSplit` objects without the optional
 `warmup_context` retain uncached training; repository-prepared splits supply
 that context automatically.
+
+### Standalone warmup build
+
+`uv run model warmup --build` uses its independent `warmup` section and the
+shared data, validation, and GPU settings. It prepares tokens only for train
+IDs, applies the configured `A/B_swap` objective, and checks the same schema-v3
+non-quantized LoRA key. A valid cache returns before backbone-weight loading,
+feature extraction, or training; the summary reports zero executed epochs.
+
+On a miss it loads a frozen, non-quantized backbone without injecting adapters,
+extracts each train ID once into temporary CPU features, and runs only the
+configured head warmup. It saves the same head, named AdamW, scaler, and RNG
+payload after the final training epoch. It performs no validation, creates no
+joint batch plan, and publishes no production checkpoint or report. Because
+there are no adapter-initialization RNG draws, a new standalone warmup may
+differ from a fresh inline LoRA warmup; compatible cached results remain usable
+by both adapter profiles under the existing key rules.
+
+`--refresh-cache` forces standalone warmup to replace its requested LoRA cache
+and refresh train tokens. For normal QLoRA runs, refresh bypasses both cache
+sources and rebuilds QLoRA's own quantized warmup. Reuse logs include the actual
+source path and quantization. A train-partition cache does not match a normal
+full-data build; `warmup_epochs: 0` in an adapter section still disables all
+warmup cache I/O, including cross-profile lookup.
 
 ## Python APIs
 

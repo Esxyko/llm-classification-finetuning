@@ -7,6 +7,7 @@ from .batching import (
 	TrainingBatchPlan,
 )
 from .pipeline import LoRAModelPipeline
+from .trainer import LoRATrainer
 from .warmup_cache import WarmupCacheContext
 
 PROFILE = ModelProfile(
@@ -19,6 +20,7 @@ PROFILE = ModelProfile(
 __all__ = (
 	"PROFILE",
 	"LoRAModelPipeline",
+	"LoRATrainer",
 	"LoRATrainingBatchRepository",
 	"PreparedTrainingSplit",
 	"TrainingBatchPlan",
