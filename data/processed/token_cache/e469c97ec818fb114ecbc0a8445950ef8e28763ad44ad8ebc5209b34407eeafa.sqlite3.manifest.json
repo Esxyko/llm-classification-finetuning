@@ -1,0 +1,22 @@
+{
+  "parts": [
+    {
+      "name": "000001-89ae51be329683949da4c31e63ad1a911f9497f6a6f8a82f39a6e38b07ebcb54.part",
+      "sha256": "89ae51be329683949da4c31e63ad1a911f9497f6a6f8a82f39a6e38b07ebcb54",
+      "size": 103809024
+    },
+    {
+      "name": "000002-5fd37176d93cb36ddea881ef4bf67472d05bcb47ce1527d788142c495df5f20c.part",
+      "sha256": "5fd37176d93cb36ddea881ef4bf67472d05bcb47ce1527d788142c495df5f20c",
+      "size": 103809024
+    },
+    {
+      "name": "000003-8bf0b38ec74b8f2fff0a66928abcab519b2f0cf2a6d577240753d9d96751183c.part",
+      "sha256": "8bf0b38ec74b8f2fff0a66928abcab519b2f0cf2a6d577240753d9d96751183c",
+      "size": 100220928
+    }
+  ],
+  "sha256": "2ecca63ad1181c78a6b3ea2a9611df7eae0775730c4300b48ad1ea17cdf59653",
+  "size": 307838976,
+  "version": 1
+}
