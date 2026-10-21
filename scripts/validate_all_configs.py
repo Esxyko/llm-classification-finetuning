@@ -1,4 +1,4 @@
-"""Cross-validate selected models for every project YAML config."""
+"""Validate selected models on the saved holdout for every project YAML config."""
 
 from __future__ import annotations
 
@@ -30,16 +30,16 @@ def main() -> int:
 		for model in MODELS:
 			task = f"{config.name}: {model}"
 			command = ["uv", "run", "model", model, "--config", str(config)]
-			print(f"Running cross-validation for {task}", flush=True)
+			print(f"Running holdout validation for {task}", flush=True)
 			try:
 				result = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
 			except OSError as error:
 				failed_tasks.append(task)
-				print(f"Failed cross-validation for {task}: {error}", flush=True)
+				print(f"Failed holdout validation for {task}: {error}", flush=True)
 				continue
 			if result.returncode:
 				failed_tasks.append(task)
-				print(f"Failed cross-validation for {task}", flush=True)
+				print(f"Failed holdout validation for {task}", flush=True)
 
 	total_tasks = len(configs) * len(MODELS)
 	print(f"Completed {total_tasks - len(failed_tasks)}/{total_tasks} tasks.")

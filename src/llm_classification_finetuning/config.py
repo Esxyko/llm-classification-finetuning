@@ -12,6 +12,10 @@ import yaml
 
 from .errors import ConfigurationError
 
+MAX_VALIDATION_ROW_DEVIATION = 0.005
+
+MAX_VALIDATION_ROW_DEVIATION = 0.005
+
 
 @dataclass(frozen=True, slots=True)
 class DataConfig:
@@ -23,14 +27,14 @@ class DataConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class CrossValidationConfig:
-	"""Parameters controlling deterministic fold generation."""
+class ValidationConfig:
+	"""Parameters controlling a deterministic grouped holdout split."""
 
-	n_splits: int
+	validation_fraction: float
 	random_state: int
 	tokenizer_name: str = "Qwen/Qwen3-4B"
 	tokenizer_revision: str | None = None
-	max_token_deviation: float = 0.01
+	max_token_deviation: float = 0.005
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +102,7 @@ class AppConfig:
 	"""Validated application configuration."""
 
 	data: DataConfig
-	cross_validation: CrossValidationConfig
+	validation: ValidationConfig
 	gpu: GPUConfig
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora: LoRAModelConfig | None = None
@@ -126,11 +130,18 @@ class AppConfig:
 			) from error
 
 		root = _require_mapping(raw_config, "configuration root")
+		if "cross_validation" in root:
+			raise ConfigurationError(
+				"Legacy cross_validation settings are no longer supported. Replace "
+				"them with validation (validation_fraction: 0.2, "
+				"max_token_deviation: 0.005), remove n_splits, set data.processed_path "
+				"to data/processed/train_validation.parquet, and run 'uv run preprocess'."
+			)
 		_reject_unknown_keys(
 			root,
 			{
 				"data",
-				"cross_validation",
+				"validation",
 				"gpu",
 				"qwen3_4b",
 				"qwen3_4b_lora",
@@ -145,19 +156,17 @@ class AppConfig:
 			{"competition", "raw_dir", "processed_path"},
 			"data",
 		)
-		cross_validation_section = _require_mapping(
-			root.get("cross_validation"), "cross_validation"
-		)
+		validation_section = _require_mapping(root.get("validation"), "validation")
 		_reject_unknown_keys(
-			cross_validation_section,
+			validation_section,
 			{
-				"n_splits",
+				"validation_fraction",
 				"random_state",
 				"tokenizer_name",
 				"tokenizer_revision",
 				"max_token_deviation",
 			},
-			"cross_validation",
+			"validation",
 		)
 		gpu_section = _require_mapping(root.get("gpu"), "gpu")
 		_reject_unknown_keys(
@@ -200,33 +209,35 @@ class AppConfig:
 				"data.processed_path must point to a .parquet file."
 			)
 
-		n_splits = _require_integer(
-			cross_validation_section.get("n_splits"),
-			"cross_validation.n_splits",
+		validation_fraction = _require_float(
+			validation_section.get("validation_fraction", 0.2),
+			"validation.validation_fraction",
 		)
-		if n_splits < 2:
-			raise ConfigurationError("cross_validation.n_splits must be at least 2.")
+		if not 0.0 < validation_fraction < 1.0:
+			raise ConfigurationError(
+				"validation.validation_fraction must be in (0, 1)."
+			)
 
 		random_state = _require_integer(
-			cross_validation_section.get("random_state"),
-			"cross_validation.random_state",
+			validation_section.get("random_state"),
+			"validation.random_state",
 		)
 		tokenizer_name = _require_non_empty_string(
-			cross_validation_section.get("tokenizer_name", "Qwen/Qwen3-4B"),
-			"cross_validation.tokenizer_name",
+			validation_section.get("tokenizer_name", "Qwen/Qwen3-4B"),
+			"validation.tokenizer_name",
 		)
-		tokenizer_revision = cross_validation_section.get("tokenizer_revision")
+		tokenizer_revision = validation_section.get("tokenizer_revision")
 		if tokenizer_revision is not None:
 			tokenizer_revision = _require_non_empty_string(
-				tokenizer_revision, "cross_validation.tokenizer_revision"
+				tokenizer_revision, "validation.tokenizer_revision"
 			)
 		max_token_deviation = _require_float(
-			cross_validation_section.get("max_token_deviation", 0.01),
-			"cross_validation.max_token_deviation",
+			validation_section.get("max_token_deviation", 0.005),
+			"validation.max_token_deviation",
 		)
 		if not 0.0 < max_token_deviation < 1.0:
 			raise ConfigurationError(
-				"cross_validation.max_token_deviation must be in (0, 1)."
+				"validation.max_token_deviation must be in (0, 1)."
 			)
 
 		device = _require_cuda_device(gpu_section.get("device"), "gpu.device")
@@ -262,8 +273,8 @@ class AppConfig:
 				raw_dir=raw_dir,
 				processed_path=processed_path,
 			),
-			cross_validation=CrossValidationConfig(
-				n_splits=n_splits,
+			validation=ValidationConfig(
+				validation_fraction=validation_fraction,
 				random_state=random_state,
 				tokenizer_name=tokenizer_name,
 				tokenizer_revision=tokenizer_revision,

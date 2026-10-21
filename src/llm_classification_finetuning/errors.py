@@ -14,7 +14,7 @@ class DownloadError(DataPreparationError):
 
 
 class ResultSynthesisError(DataPreparationError):
-	"""Raised when fold predictions cannot be synthesized safely."""
+	"""Raised when validation predictions cannot be synthesized safely."""
 
 
 class ModelExecutionError(DataPreparationError):

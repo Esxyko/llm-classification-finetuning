@@ -1,4 +1,4 @@
-"""Orchestrate data download, fold preparation, and A/B augmentation."""
+"""Orchestrate data download, holdout preparation, and A/B augmentation."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from dataclasses import dataclass
 
 from .config import AppConfig
 from .data import CompetitionDataDownloader, DownloadResult
-from .preprocess import FoldPreparationResult, FoldPreprocessor
+from .preprocess import SplitPreparationResult, SplitPreprocessor
 
 
 @dataclass(frozen=True, slots=True)
 class PrepareDataResult:
 	download: DownloadResult
-	folds: FoldPreparationResult
+	splits: SplitPreparationResult
 
 
 class PrepareDataPipeline:
@@ -22,7 +22,7 @@ class PrepareDataPipeline:
 	def __init__(self, config: AppConfig) -> None:
 		self._config = config
 		self._downloader = CompetitionDataDownloader(config.data)
-		self._preprocessor = FoldPreprocessor(config.cross_validation)
+		self._preprocessor = SplitPreprocessor(config.validation)
 
 	def run(
 		self, on_download: Callable[[DownloadResult], None] | None = None
@@ -31,8 +31,8 @@ class PrepareDataPipeline:
 		download_result = self._downloader.ensure_available()
 		if on_download is not None:
 			on_download(download_result)
-		fold_result = self._preprocessor.prepare(
+		split_result = self._preprocessor.prepare(
 			train_path=download_result.file_paths["train.csv"],
 			output_path=self._config.data.processed_path,
 		)
-		return PrepareDataResult(download=download_result, folds=fold_result)
+		return PrepareDataResult(download=download_result, splits=split_result)

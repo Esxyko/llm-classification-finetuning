@@ -299,7 +299,7 @@ class _BatchCache:
 
 
 class LoRATrainingBatchRepository:
-	"""Prepare fold/build loaders from config without model weights or CUDA setup."""
+	"""Prepare holdout/build loaders without model weights or CUDA setup."""
 
 	PLAN_SCHEMA_VERSION = 3
 
@@ -308,7 +308,6 @@ class LoRATrainingBatchRepository:
 		*,
 		config: LoRAModelConfig,
 		data: ModelData,
-		n_splits: int,
 		serializer_version: str,
 		base_revision: str | None,
 		cache: _BatchCache,
@@ -322,7 +321,6 @@ class LoRATrainingBatchRepository:
 		self._config = config
 		self._model_label = model_label
 		self.data = data
-		self.n_splits = n_splits
 		self.serializer_version = serializer_version
 		self.base_revision = base_revision
 		self._backbone_hidden_size = backbone_hidden_size
@@ -330,7 +328,7 @@ class LoRATrainingBatchRepository:
 		self._warmup_ids: pd.DataFrame | None = None
 		if config.warmup_epochs and backbone_hidden_size is not None:
 			self._warmup_ids = data.reference.loc[
-				~data.reference["is_swapped"], ["id", "fold"]
+				~data.reference["is_swapped"], ["id", "split"]
 			].sort_values("id")
 		self._cache = cache
 		self.token_cache = token_cache
@@ -355,7 +353,6 @@ class LoRATrainingBatchRepository:
 	) -> LoRATrainingBatchRepository:
 		"""Load data and canonical tokens once, preparing split plans on demand."""
 		model_key = profile.config_key if profile else "qwen3_4b_lora"
-		artifact_stem = profile.artifact_stem if profile else "qwen3_4b_lora"
 		model_label = "QLoRA" if profile and profile.quantize_training else "LoRA"
 		model = getattr(config, model_key, None)
 		if model is None:
@@ -366,7 +363,8 @@ class LoRATrainingBatchRepository:
 			raise TypeError(f"{model_key} must be a LoRAModelConfig.")
 		try:
 			repository = ModelDataRepository(
-				config.data.processed_path, config.cross_validation.n_splits
+				config.data.processed_path,
+				validation_fraction=config.validation.validation_fraction,
 			)
 			data = repository.load()
 			base_config = AutoConfig.from_pretrained(model.model_name)
@@ -378,7 +376,6 @@ class LoRATrainingBatchRepository:
 			return cls(
 				config=model,
 				data=data,
-				n_splits=config.cross_validation.n_splits,
 				serializer_version=repository.serializer_version,
 				base_revision=revision,
 				backbone_hidden_size=int(base_config.hidden_size),
@@ -388,7 +385,7 @@ class LoRATrainingBatchRepository:
 					else None
 				),
 				cache=_BatchCache(
-					config.data.processed_path.parent / f"{artifact_stem}_batches",
+					config.data.processed_path.parent / "adapter_batches",
 					model_label,
 				),
 				token_cache=TokenizationCache.from_pretrained(
@@ -408,7 +405,7 @@ class LoRATrainingBatchRepository:
 			) from error
 
 	def _load_plan(
-		self, fold: int | None, reference: pd.DataFrame, dataset: PairwiseTokenDataset
+		self, reference: pd.DataFrame, dataset: PairwiseTokenDataset, *, full_data: bool
 	) -> TrainingBatchPlan:
 		config = self._config
 		group_size = config.training_batch_size * config.gradient_accumulation_steps
@@ -473,15 +470,15 @@ class LoRATrainingBatchRepository:
 			status = "Reused"
 		self._plans[key] = payload
 		print(
-			f"{status} {self._model_label} batch plan ({'build' if fold is None else f'fold {fold}'}): "
+			f"{status} {self._model_label} batch plan ({'build' if full_data else 'holdout'}): "
 			f"{len(reference):,} rows, {len(plan.groups):,} updates, {plan.batch_count:,} micro-batches; "
 			f"{self._cache.path('plans', metadata)}",
 			flush=True,
 		)
 		return plan
 
-	def warmup_context(self, fold: int | None = None) -> WarmupCacheContext | None:
-		"""Identify selected ID sets, independently of other folds' assignments."""
+	def warmup_context(self, *, full_data: bool = False) -> WarmupCacheContext | None:
+		"""Identify actual training IDs, independently of validation membership."""
 		if (
 			self._warmup_ids is None
 			or self._backbone_hidden_size is None
@@ -489,16 +486,12 @@ class LoRATrainingBatchRepository:
 		):
 			return None
 		originals = self._warmup_ids
-		if fold is None:
+		if full_data:
 			training_ids = originals["id"]
-			validation_ids_sha256 = None
 		else:
-			is_validation = originals["fold"].eq(fold)
-			training_ids = originals.loc[~is_validation, "id"]
-			validation_ids_sha256 = self._ids_key(originals.loc[is_validation, "id"])
+			training_ids = originals.loc[originals["split"].eq("train"), "id"]
 		return WarmupCacheContext(
 			training_ids_sha256=self._ids_key(training_ids),
-			validation_ids_sha256=validation_ids_sha256,
 			serializer_version=self.serializer_version,
 			base_revision=self.base_revision,
 			local_weights_sha256=self._local_weights_sha256,
@@ -512,19 +505,11 @@ class LoRATrainingBatchRepository:
 		values = np.ascontiguousarray(ids.to_numpy(dtype="<i8"))
 		return hashlib.sha256(memoryview(values)).hexdigest()
 
-	def get_training(self, fold: int | None = None) -> PreparedTrainingSplit:
-		"""Exclude a validation fold, select orientations, and return its cached batches."""
-		if fold is not None and (
-			isinstance(fold, bool)
-			or not isinstance(fold, int)
-			or not 0 <= fold < self.n_splits
-		):
-			raise ModelExecutionError(
-				f"{self._model_label} training fold must be between 0 and {self.n_splits - 1}."
-			)
+	def get_training(self, *, full_data: bool = False) -> PreparedTrainingSplit:
+		"""Select holdout-training or full-data orientations and their cached batches."""
 		reference = self.data.reference
-		if fold is not None:
-			reference = reference.loc[reference["fold"].ne(fold)]
+		if not full_data:
+			reference = reference.loc[reference["split"].eq("train")]
 		if self._config.ab_swap == "inf":
 			reference = reference.loc[~reference["is_swapped"]]
 		reference = reference.reset_index(drop=True).copy()
@@ -533,7 +518,7 @@ class LoRATrainingBatchRepository:
 				f"{self._model_label} training must contain unique, nonempty oriented rows."
 			)
 		dataset = PairwiseTokenDataset(reference, self.tokens)
-		seed = self._config.random_state + (0 if fold is None else fold)
+		seed = self._config.random_state
 		options = {
 			"collate_fn": PairwiseCollator(self.tokens.pad_token_id),
 			"num_workers": self._config.dataloader_workers,
@@ -544,7 +529,7 @@ class LoRATrainingBatchRepository:
 		plan = None
 		sampler = None
 		if self._config.training_token_budget > 0:
-			plan = self._load_plan(fold, reference, dataset)
+			plan = self._load_plan(reference, dataset, full_data=full_data)
 			sampler = _PlannedBatchSampler(plan, seed)
 			loader = DataLoader(dataset, batch_sampler=sampler, **options)
 		else:
@@ -555,5 +540,10 @@ class LoRATrainingBatchRepository:
 				**options,
 			)
 		return PreparedTrainingSplit(
-			reference, self.tokens, loader, plan, sampler, self.warmup_context(fold)
+			reference,
+			self.tokens,
+			loader,
+			plan,
+			sampler,
+			self.warmup_context(full_data=full_data),
 		)

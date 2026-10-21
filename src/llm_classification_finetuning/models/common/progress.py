@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 class TrainingProgress:
-	"""Count weighted work across stages, epochs, and folds without GPU reads."""
+	"""Count weighted work across stages and epochs without GPU reads."""
 
 	def __init__(
 		self,

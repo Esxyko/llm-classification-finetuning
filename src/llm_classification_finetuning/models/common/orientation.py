@@ -14,7 +14,7 @@ from .model import PairwiseClassificationHead
 
 
 class ABSwapAverager:
-	"""Return canonical probabilities and align them with processed fold rows."""
+	"""Return canonical probabilities and align them with processed split rows."""
 
 	SWAPPED_ORDER = (1, 0, 2)
 

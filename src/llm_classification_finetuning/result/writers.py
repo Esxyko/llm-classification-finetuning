@@ -34,7 +34,7 @@ class ConfusionMatrixWriter:
 		figure.colorbar(image, ax=axes, fraction=0.046, pad=0.04)
 
 		axes.set(
-			title="Cross-validation confusion matrix",
+			title="Validation confusion matrix",
 			xlabel="Actual label",
 			ylabel="Expected label",
 			xticks=np.arange(3),
@@ -75,7 +75,7 @@ class RecordsWorkbookWriter:
 
 	HEADERS = (
 		"id",
-		"fold",
+		"split",
 		"expected_labels",
 		"actual_labels",
 		"incorrects",
@@ -117,7 +117,7 @@ class RecordsWorkbookWriter:
 			)
 
 			worksheet.set_column("A:A", 14, integer_format)
-			worksheet.set_column("B:B", 9, centered_format)
+			worksheet.set_column("B:B", 12, centered_format)
 			worksheet.set_column("C:C", 18, centered_format)
 			worksheet.set_column("D:D", 18, centered_format)
 			worksheet.set_column("E:E", 12, centered_format)
@@ -125,7 +125,7 @@ class RecordsWorkbookWriter:
 			worksheet.set_row(0, 22)
 
 			worksheet.write_column(1, 0, [int(value) for value in records["id"]])
-			worksheet.write_column(1, 1, [int(value) for value in records["fold"]])
+			worksheet.write_column(1, 1, records["split"].tolist())
 			worksheet.write_column(
 				1,
 				2,

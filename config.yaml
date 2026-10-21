@@ -1,14 +1,14 @@
 data:
   competition: llm-classification-finetuning
   raw_dir: data/raw
-  processed_path: data/processed/train_folds.parquet
+  processed_path: data/processed/train_validation.parquet
 
-cross_validation:
-  n_splits: 5
+validation:
+  validation_fraction: 0.2
   random_state: 42
   tokenizer_name: Qwen/Qwen3-4B
   tokenizer_revision: 1cfa9a7208912126459214e8b04321603b3df60c
-  max_token_deviation: 0.01
+  max_token_deviation: 0.005
 
 gpu:
   device: cuda:0
@@ -43,7 +43,7 @@ qwen3_4b_lora:
   epochs: 2
   warmup_epochs: 1
   warmup_extraction_batch_size: 1
-  warmup_training_batch_size: 256
+  warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
   head_learning_rate: 0.0001
@@ -77,7 +77,7 @@ qwen3_4b_qlora:
   epochs: 2
   warmup_epochs: 1
   warmup_extraction_batch_size: 1
-  warmup_training_batch_size: 256
+  warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
   head_learning_rate: 0.0001

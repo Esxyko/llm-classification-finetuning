@@ -12,8 +12,15 @@ wheels/
 # Local secrets
 .env
 
-# Downloaded and generated competition data
-/data/
+# Downloaded and generated competition data, except model caches
+/data/*
+!/data/processed/
+/data/processed/*
+!/data/processed/token_cache/
+!/data/processed/embedding_cache/
+!/data/processed/adapter_batches/
+!/data/processed/qwen3_4b_lora_warmup/
+!/data/processed/qwen3_4b_qlora_warmup/
 
 # Locally archived model implementations
 /src/llm_classification_finetuning/models/archive/

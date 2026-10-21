@@ -44,12 +44,12 @@ Run these commands from the project root.
    uv run init
    ```
 
-   The output is `data/processed/train_folds.parquet`.
+   The output is `data/processed/train_validation.parquet`.
 
 ## Next steps
 
-- [Prepare training data](data-preparation.md) for the fold and augmentation format.
-- [Run models](models.md) for cross-validation, builds, and submissions.
+- [Prepare training data](data-preparation.md) for the split and augmentation format.
+- [Run models](models.md) for holdout validation, builds, and submissions.
 - [Command reference](commands.md) for all entry points and execution flags.
 - [Configuration](configuration.md) for paths, GPU settings, and batch experiments.
 - [Troubleshooting](troubleshooting.md) for setup and runtime failures.

@@ -25,10 +25,9 @@ from ..common import PairwiseClassificationHead
 
 @dataclass(frozen=True, slots=True)
 class WarmupCacheContext:
-	"""Data split and immutable encoding identities supplied by batch preparation."""
+	"""Training IDs and immutable encoding identities supplied by batch preparation."""
 
 	training_ids_sha256: str
-	validation_ids_sha256: str | None
 	serializer_version: str
 	base_revision: str | None
 	local_weights_sha256: str | None
@@ -47,7 +46,7 @@ class WarmupCacheEntry:
 class HeadWarmupCache:
 	"""Atomically store FP32 heads, named AdamW moments, scaling and RNG state."""
 
-	SCHEMA_VERSION = 2
+	SCHEMA_VERSION = 3
 
 	def __init__(
 		self,

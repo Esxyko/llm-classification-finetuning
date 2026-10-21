@@ -14,19 +14,18 @@ from ..profile import ModelProfile
 class ModelMode(Enum):
 	"""Supported model command execution modes."""
 
-	CROSS_VALIDATION = "cross-validation"
+	VALIDATION = "validation"
 	BUILD = "build"
 	SUBMIT = "submit"
 
 
 @dataclass(frozen=True, slots=True)
 class ModelRunResult:
-	"""Summary of a completed model cross-validation run."""
+	"""Summary of a completed single-holdout model run."""
 
 	output_dir: Path
-	folds: int
 	predictions: int
-	average_loss: float
+	validation_loss: float
 	cache_path: Path | None = None
 	cache_reused: bool = False
 
@@ -71,6 +70,6 @@ class ModelPipelineInterface(Protocol):
 	def run(
 		self,
 		*,
-		mode: ModelMode = ModelMode.CROSS_VALIDATION,
+		mode: ModelMode = ModelMode.VALIDATION,
 		refresh_cache: bool = False,
 	) -> ModelExecutionResult: ...

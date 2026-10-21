@@ -10,7 +10,7 @@ from typing import NoReturn, Sequence
 from dotenv import load_dotenv
 
 from .cli_config import add_config_argument
-from .cli_output import print_download_result, print_fold_result
+from .cli_output import print_download_result, print_split_result
 from .config import AppConfig
 from .errors import DataPreparationError
 from .pipeline import PrepareDataPipeline
@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="init",
 		description=(
-			"Download competition data and generate folded, A/B-augmented "
+			"Download competition data and generate holdout-split, A/B-augmented "
 			"training data."
 		),
 	)
@@ -36,7 +36,7 @@ def _prepare_data(config_path: Path) -> None:
 	)
 	config = AppConfig.load(config_path)
 	result = PrepareDataPipeline(config).run(on_download=print_download_result)
-	print_fold_result(result.folds)
+	print_split_result(result.splits)
 
 
 def run(arguments: Sequence[str] | None = None) -> int:

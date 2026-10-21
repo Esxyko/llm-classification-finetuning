@@ -10,9 +10,9 @@ non-quantized submissions.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 
-## Frozen-model cross-validation
+## Frozen-model holdout validation
 
-Prepare the [training data](data-preparation.md) first, then run cross-validation:
+Prepare the [training data](data-preparation.md) first, then run holdout validation:
 
 ```shell
 uv run model qwen3-4b
@@ -20,8 +20,10 @@ uv run model qwen3-4b
 
 The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
-CSV per fold plus `metrics.json` to a timestamped model-named results directory.
-See [validation reports and timing metrics](reports.md) for their interpretation.
+`validation.csv` plus `metrics.json` to a timestamped model-named results directory.
+All three profiles consume the same saved 80/20 split and initialize one model
+per default profile run. See [validation reports and timing metrics](reports.md)
+for their interpretation.
 
 Each [serialized conversation branch](data-preparation.md) is tokenized with
 special tokens enabled and right-truncated to `qwen3_4b.max_length` when needed.
@@ -39,37 +41,25 @@ Changing modes requires rebuilding the saved head;
 
 ## Training progress
 
-Cross-validation and full-data builds print progress whenever processed work
-reaches or crosses the next 5% milestone. Each model uses one counter across all
-stages and epochs, including all folds in cross-validation. Each line identifies
-the model, mode, stage, fold or build, current epoch, actual percentage, and
-processed/total weighted work units. Output is flushed immediately:
+Holdout validation and full-data builds print progress at 5% milestones. One
+counter spans all executed stages and epochs of the selected model. Each line
+identifies model, mode, stage, epoch, percentage, and processed/total work.
 
-```text
-qwen3_4b build head training Build epoch 1/2: progress=5.0% work=55.0/1,100.0
-```
-
-For the frozen model, each training batch and each validation batch count as one
-work unit. A cross-validation fold contributes
+For the frozen model, one training or validation batch counts as one work unit.
+A validation run uses
 `epochs * (ceil(training_rows / training_batch_size) + ceil(validation_rows / training_batch_size))`;
-builds contribute only `epochs * ceil(training_rows / training_batch_size)`.
-Training rows follow `A/B_swap`: both orientations for `aug`, original IDs only
-for `inf`. Validation always uses original IDs, with both probability orientations
-averaged inside each batch. Rounding each fold separately accounts for uneven
-folds and short final batches. [LoRA progress](lora.md#training-progress) includes
-joint-training gradient accumulation and counts each warmup batch at half weight
-in the same counter. Reused head warmup is excluded from that fold/build's
-total work.
+a build uses only `epochs * ceil(training_rows / training_batch_size)`.
+Training counts use both orientations for `aug` and originals for `inf`;
+validation counts use original IDs with probability averaging inside each batch.
+Short final batches are included. [LoRA progress](lora.md#training-progress)
+uses update groups and half-weighted warmup batches; reused warmup contributes
+no historical work.
 
-Training update groups and the validation batches after every epoch advance the
-same counter. Feature extraction, token/batch-plan preparation, cache operations,
-and checkpoint saving are excluded. Thus 100% covers the final epoch's validation
-when present; saving and result publication may still follow. Existing epoch loss
-and extraction logs remain available. With few work units, one group or batch may
-cross several milestones; they produce one line with the actual percentage.
-Each model prints 100% once when its final work unit is processed, with no forced
-completion log on failure. The counters run on the CPU without adding GPU
-synchronization.
+The final epoch's validation completes the same counter. Extraction, preparation,
+cache operations, checkpoint saving, and publication are excluded. A large
+work unit crossing multiple milestones prints one actual-percentage line.
+Each model prints 100% once on completion; failure does not force completion.
+Counters stay on the CPU without adding GPU synchronization.
 
 ## Build and submit
 
@@ -80,7 +70,7 @@ uv run model qwen3-4b --build
 uv run model qwen3-4b --submit
 ```
 
-Build mode replaces the saved classifier head and compatibility metadata. Submit
+Build mode uses every original ID from both partitions and replaces the saved classifier head and compatibility metadata. Submit
 mode validates `test.csv` against `sample_submission.csv`, loads that head, and
 writes a timestamped submission. The Qwen backbone is not stored in the
 checkpoint.

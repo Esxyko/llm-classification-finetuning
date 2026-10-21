@@ -6,7 +6,7 @@ import pandas as pd
 
 
 class ABAugmenter:
-	"""Append a swapped counterpart for every folded training row."""
+	"""Append a swapped counterpart for every partitioned source row."""
 
 	SWAP_COLUMN_PAIRS = (
 		("model_a", "model_b"),

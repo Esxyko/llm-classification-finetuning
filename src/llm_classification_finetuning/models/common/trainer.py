@@ -1,9 +1,8 @@
-"""Train pairwise MLP heads for validation folds or a full-data build."""
+"""Train one pairwise MLP head for holdout validation or a full-data build."""
 
 from __future__ import annotations
 
 import random
-from collections.abc import Iterator
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -37,14 +36,15 @@ class EpochMetrics:
 
 
 @dataclass(frozen=True, slots=True)
-class FoldTrainingResult:
-	"""Final probabilities and metrics for one validation fold."""
+class ValidationTrainingResult:
+	"""Final probabilities, selected row counts, and metrics for one holdout run."""
 
-	fold: int
 	ids: np.ndarray
 	probabilities: np.ndarray
 	epochs: tuple[EpochMetrics, ...]
 	total_time_seconds: float
+	training_rows: int
+	source_training_rows: int
 
 	@property
 	def final_loss(self) -> float:
@@ -53,12 +53,12 @@ class FoldTrainingResult:
 
 	@property
 	def training_time_seconds(self) -> float:
-		"""Sum training time across all epochs in the fold."""
+		"""Sum training time across all executed epochs."""
 		return sum(epoch.training_time_seconds for epoch in self.epochs)
 
 	@property
 	def validation_time_seconds(self) -> float:
-		"""Sum validation time across all epochs in the fold."""
+		"""Sum validation time across all executed epochs."""
 		return sum(epoch.validation_time_seconds for epoch in self.epochs)
 
 
@@ -114,18 +114,16 @@ class PairwiseEmbeddingDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
 		return h_a, h_b, self._labels[index]
 
 
-class ModelCrossValidator:
-	"""Train pairwise heads for cross-validation or a full-data build."""
+class ModelTrainer:
+	"""Train one pairwise head for holdout validation or a full-data build."""
 
 	def __init__(
 		self,
 		config: ModelConfig,
-		n_splits: int,
 		device: torch.device,
 		config_key: str,
 	) -> None:
 		self._config = config
-		self._n_splits = n_splits
 		self._device = device
 		self._config_key = config_key
 		self._criterion = CrossEntropyLoss()
@@ -134,35 +132,29 @@ class ModelCrossValidator:
 		self,
 		reference: pd.DataFrame,
 		embeddings: CachedEmbeddings,
-	) -> Iterator[FoldTrainingResult]:
-		"""Yield each fold's final predictions before training the next fold."""
-		selected = self._training_reference(reference)
-		originals = reference.loc[~reference["is_swapped"]]
+	) -> ValidationTrainingResult:
+		"""Train one head and return its final fixed-holdout predictions."""
+		training_reference = reference.loc[reference["split"].eq("train")]
+		validation_reference = reference.loc[reference["split"].eq("validation")]
+		if training_reference.empty or validation_reference.empty:
+			raise ModelExecutionError(
+				"Holdout training and validation sets must be nonempty."
+			)
+		selected = self._training_reference(training_reference)
+		originals = validation_reference.loc[~validation_reference["is_swapped"]]
 		batch_size = self._config.training_batch_size
 		progress = TrainingProgress(
 			model=self._config_key,
-			mode="cross-validation",
+			mode="validation",
 			total_steps=self._config.epochs
-			* sum(
-				(int(selected["fold"].ne(fold).sum()) + batch_size - 1) // batch_size
-				+ (int(originals["fold"].eq(fold).sum()) + batch_size - 1) // batch_size
-				for fold in range(self._n_splits)
+			* (
+				(len(selected) + batch_size - 1) // batch_size
+				+ (len(originals) + batch_size - 1) // batch_size
 			),
 		)
-		for fold in range(self._n_splits):
-			training_reference = reference.loc[reference["fold"].ne(fold)]
-			validation_reference = reference.loc[reference["fold"].eq(fold)]
-			if training_reference.empty or validation_reference.empty:
-				raise ModelExecutionError(
-					f"Fold {fold} has an empty training or validation set."
-				)
-			yield self._train_fold(
-				fold,
-				training_reference,
-				validation_reference,
-				embeddings,
-				progress=progress,
-			)
+		return self._train_holdout(
+			training_reference, validation_reference, embeddings, progress=progress
+		)
 
 	def train_all(
 		self,
@@ -216,17 +208,16 @@ class ModelCrossValidator:
 			training_losses=tuple(training_losses),
 		)
 
-	def _train_fold(
+	def _train_holdout(
 		self,
-		fold: int,
 		training_reference: pd.DataFrame,
 		validation_reference: pd.DataFrame,
 		embeddings: CachedEmbeddings,
 		*,
 		progress: TrainingProgress,
-	) -> FoldTrainingResult:
-		fold_started = self._timestamp()
-		seed = self._config.random_state + fold
+	) -> ValidationTrainingResult:
+		run_started = self._timestamp()
+		seed = self._config.random_state
 		self._seed_everything(seed)
 		training_loader = self._create_loader(
 			self._training_reference(training_reference),
@@ -257,14 +248,14 @@ class ModelCrossValidator:
 					optimizer,
 					training_loader,
 					progress=progress,
-					description=f"Fold {fold} epoch {epoch}/{self._config.epochs}",
+					description=f"Validation run epoch {epoch}/{self._config.epochs}",
 				)
 				training_finished = self._timestamp()
 				validation_loss, probabilities = self._evaluate(
 					head,
 					validation_loader,
 					progress=progress,
-					description=f"Fold {fold} epoch {epoch}/{self._config.epochs}",
+					description=f"Validation run epoch {epoch}/{self._config.epochs}",
 				)
 				validation_finished = self._timestamp()
 				final_probabilities = probabilities
@@ -278,7 +269,7 @@ class ModelCrossValidator:
 				)
 				epoch_metrics.append(metrics)
 				print(
-					f"Fold {fold} epoch {epoch}/{self._config.epochs}: "
+					f"Validation run epoch {epoch}/{self._config.epochs}: "
 					f"train_loss={metrics.training_loss:.6f} "
 					f"validation_loss={metrics.validation_loss:.6f}"
 				)
@@ -290,10 +281,9 @@ class ModelCrossValidator:
 
 		if final_probabilities is None:
 			raise ModelExecutionError(
-				f"Fold {fold} did not produce validation predictions."
+				"The holdout run did not produce validation predictions."
 			)
-		return FoldTrainingResult(
-			fold=fold,
+		return ValidationTrainingResult(
 			ids=validation_reference["id"].to_numpy(dtype=np.int64, copy=True),
 			probabilities=ABSwapAverager.align_rows(
 				validation_reference["id"].to_numpy(dtype=np.int64),
@@ -302,7 +292,9 @@ class ModelCrossValidator:
 				final_probabilities,
 			),
 			epochs=tuple(epoch_metrics),
-			total_time_seconds=self._timestamp() - fold_started,
+			total_time_seconds=self._timestamp() - run_started,
+			training_rows=len(self._training_reference(training_reference)),
+			source_training_rows=int((~training_reference["is_swapped"]).sum()),
 		)
 
 	def _timestamp(self) -> float:

@@ -1,4 +1,4 @@
-"""Coordinate live LoRA cross-validation, production builds, and inference."""
+"""Coordinate live LoRA holdout validation, production builds, and inference."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class LoRAModelPipeline:
 	def run(
 		self,
 		*,
-		mode: ModelMode = ModelMode.CROSS_VALIDATION,
+		mode: ModelMode = ModelMode.VALIDATION,
 		refresh_cache: bool = False,
 	) -> ModelExecutionResult:
 		"""Reuse training tokens, batch plans and head warmup before live joint training."""
@@ -90,13 +90,13 @@ class LoRAModelPipeline:
 			)
 			if submit_devices is not None:
 				return self._run_submit(trainer, submit_devices)
-			if mode not in (ModelMode.CROSS_VALIDATION, ModelMode.BUILD):
+			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			batches = LoRATrainingBatchRepository.from_config(
 				self._config, refresh_cache=refresh_cache, profile=self._profile
 			)
 			if mode is ModelMode.BUILD:
-				training = batches.get_training(None)
+				training = batches.get_training(full_data=True)
 				model = trainer.create_model(
 					seed=self._model_config.random_state, revision=batches.base_revision
 				)
@@ -121,15 +121,13 @@ class LoRAModelPipeline:
 					)
 				finally:
 					del model
-			folds = trainer.cross_validate(batches)
-			output_dir, average_loss, predictions = self._result_publisher.publish(
-				folds,
+			validation_result = trainer.validate(batches)
+			output_dir, validation_loss, predictions = self._result_publisher.publish(
+				validation_result,
 				self._model_config.model_name,
 				prediction_aggregation="ab_swap_average",
 			)
-			return ModelRunResult(
-				output_dir, batches.n_splits, predictions, average_loss
-			)
+			return ModelRunResult(output_dir, predictions, validation_loss)
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				f"CUDA ran out of memory during {self._model_label} execution. Lower "

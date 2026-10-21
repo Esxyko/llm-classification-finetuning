@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ...config import MAX_VALIDATION_ROW_DEVIATION
 from ...errors import ModelExecutionError
 
 
@@ -26,7 +27,7 @@ class TestInputs:
 
 
 class TrainingInputLoader:
-	"""Validate folds and orientation pairs before model-specific serialization."""
+	"""Validate holdout membership and orientation pairs before serialization."""
 
 	REQUIRED_COLUMNS = (
 		"id",
@@ -34,70 +35,98 @@ class TrainingInputLoader:
 		"response_a",
 		"response_b",
 		"label",
-		"fold",
+		"split",
+		"group_id",
 		"is_swapped",
 	)
 	SWAPPED_LABELS = {0: 1, 1: 0, 2: 2}
 
-	def __init__(self, processed_path: Path, n_splits: int) -> None:
+	def __init__(
+		self, processed_path: Path, *, validation_fraction: float | None = None
+	) -> None:
 		self._processed_path = processed_path.resolve()
-		self._n_splits = n_splits
+		self._validation_fraction = validation_fraction
 
 	def load(self) -> TrainingInputs:
 		if not self._processed_path.is_file():
 			raise ModelExecutionError(
-				f"Processed fold data not found: {self._processed_path}. "
-				"Run 'uv run init' first."
+				f"Processed split data not found: {self._processed_path}. "
+				"Run 'uv run preprocess' with the selected --config first."
 			)
 		try:
+			from pyarrow.parquet import read_schema
+
+			columns = read_schema(self._processed_path).names
+			if "fold" in columns and "split" not in columns:
+				raise ModelExecutionError(
+					"Legacy fold data is no longer supported. Set data.processed_path "
+					"to data/processed/train_validation.parquet and run 'uv run preprocess'."
+				)
 			data = pd.read_parquet(
 				self._processed_path, columns=list(self.REQUIRED_COLUMNS)
 			)
+		except ModelExecutionError:
+			raise
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not read processed fold data {self._processed_path}: {error}"
+				f"Could not read processed split data {self._processed_path}: {error}"
 			) from error
-		self._validate(data)
+		self.validate(data, validation_fraction=self._validation_fraction)
 		return TrainingInputs(data=data, fingerprint=_sha256(self._processed_path))
 
-	def _validate(self, data: pd.DataFrame) -> None:
+	@staticmethod
+	def validate(
+		data: pd.DataFrame, *, validation_fraction: float | None = None
+	) -> None:
+		"""Require complete, nonoverlapping train/validation orientation pairs."""
 		if data.empty:
-			raise ModelExecutionError("Processed fold data contains no rows.")
-		if data.loc[:, list(self.REQUIRED_COLUMNS)].isna().any().any():
+			raise ModelExecutionError("Processed split data contains no rows.")
+		if data.loc[:, list(TrainingInputLoader.REQUIRED_COLUMNS)].isna().any().any():
 			raise ModelExecutionError(
-				"Processed fold data contains missing required values."
+				"Processed split data contains missing required values."
 			)
 		if not data["label"].isin((0, 1, 2)).all():
 			raise ModelExecutionError("Processed labels must be 0, 1, or 2.")
 		if not data["is_swapped"].isin((True, False)).all():
 			raise ModelExecutionError("Processed is_swapped values must be boolean.")
-		expected_folds = set(range(self._n_splits))
-		actual_folds = {int(value) for value in data["fold"].unique()}
-		if actual_folds != expected_folds:
+		if set(data["split"].unique()) != {"train", "validation"}:
 			raise ModelExecutionError(
-				"Processed fold data must contain exactly the configured folds "
-				f"0 through {self._n_splits - 1}."
+				"Processed split data must contain nonempty 'train' and 'validation' partitions."
+			)
+		if data.groupby("group_id", sort=False)["split"].nunique().ne(1).any():
+			raise ModelExecutionError(
+				"A prompt group must not cross training and validation sets."
 			)
 
 		pairs = data.groupby("id", sort=False).agg(
 			rows=("id", "size"),
-			folds=("fold", "nunique"),
+			splits=("split", "nunique"),
+			groups=("group_id", "nunique"),
 			originals=("is_swapped", lambda values: int((~values).sum())),
 			swapped=("is_swapped", lambda values: int(values.sum())),
 		)
 		if (
 			pairs["rows"].ne(2)
-			| pairs["folds"].ne(1)
+			| pairs["splits"].ne(1)
+			| pairs["groups"].ne(1)
 			| pairs["originals"].ne(1)
 			| pairs["swapped"].ne(1)
 		).any():
 			raise ModelExecutionError(
-				"Each ID must have one original and one swapped row in one fold."
+				"Each ID must have one original and one swapped row in one split and prompt group."
 			)
 		originals = data.loc[~data["is_swapped"], ["id", "label"]].set_index("id")
+		if validation_fraction is not None:
+			original_rows = data.loc[~data["is_swapped"]]
+			share = float(original_rows["split"].eq("validation").mean())
+			if abs(share / validation_fraction - 1) >= MAX_VALIDATION_ROW_DEVIATION:
+				raise ModelExecutionError(
+					"The saved validation row fraction does not match validation.validation_fraction. "
+					"Run 'uv run preprocess' with the selected --config."
+				)
 		swapped = data.loc[data["is_swapped"], ["id", "label"]].set_index("id")
 		swapped = swapped.loc[originals.index]
-		translated = swapped["label"].map(self.SWAPPED_LABELS)
+		translated = swapped["label"].map(TrainingInputLoader.SWAPPED_LABELS)
 		if not translated.astype("int64").eq(originals["label"].astype("int64")).all():
 			raise ModelExecutionError(
 				"Swapped labels do not match their canonical labels."

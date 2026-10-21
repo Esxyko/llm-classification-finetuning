@@ -75,9 +75,11 @@ from the other training profile, including when files have been copied between
 directories. Older LoRA checkpoints without this field are treated as `none`.
 Other compatibility rules follow [LoRA checkpoints](lora.md#checkpoints).
 
-QLoRA shares content-addressed text tokens with the other profiles, while batch
-plans live separately under `qwen3_4b_qlora_batches/` beside the processed
-Parquet. Completed head warmup and its training state use the independent
+QLoRA shares content-addressed text tokens with the other profiles and shares
+`adapter_batches/plans/` with LoRA beside the processed Parquet. Batch plans are
+reused when selected IDs/orientations, branch lengths, budget, update-group size,
+and algorithm version match, independently of training quantization. Completed
+head warmup and its training state use the independent
 `qwen3_4b_qlora_warmup/` cache with the shared
 [warmup reuse rules](caching.md#loraqlora-head-warmup), including cross-precision
 reuse and `--refresh-cache`. Extracted features remain temporary and are never

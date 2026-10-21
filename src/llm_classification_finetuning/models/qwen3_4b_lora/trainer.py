@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gc
 import math
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -23,11 +22,11 @@ from ...errors import ModelExecutionError
 from ..common import (
 	ABSwapAverager,
 	EpochMetrics,
-	FoldTrainingResult,
 	PairwiseText,
 	PairwiseTokenStore,
 	TokenizationCache,
 	TrainingProgress,
+	ValidationTrainingResult,
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
@@ -124,83 +123,53 @@ class LoRATrainer:
 		)
 		return model
 
-	def cross_validate(
+	def validate(
 		self, batches: LoRATrainingBatchRepository
-	) -> Iterator[FoldTrainingResult]:
-		"""Yield each fresh model's fold predictions after alignment and cleanup."""
+	) -> ValidationTrainingResult:
+		"""Train one fresh model against the saved holdout and align final predictions."""
+		run_started = self._timestamp()
 		data = batches.data
-		selected = data.reference
-		if self._config.ab_swap == "inf":
-			selected = selected.loc[~selected["is_swapped"]]
-		training_rows = tuple(
-			int(selected["fold"].ne(fold).sum()) for fold in range(batches.n_splits)
-		)
-		originals = data.reference.loc[~data.reference["is_swapped"]]
-		validation_rows = tuple(
-			int(originals["fold"].eq(fold).sum()) for fold in range(batches.n_splits)
-		)
-		# Keep checked CPU states until their fold starts so progress uses actual work,
-		# even if another process subsequently replaces or removes a cache file.
-		warmup_entries = {
-			fold: self._prepare_warmup(
-				batches.warmup_context(fold), seed=self._config.random_state + fold
+		training = batches.get_training()
+		validation = data.reference.loc[data.reference["split"].eq("validation")]
+		originals = validation.loc[~validation["is_swapped"]]
+		if originals.empty:
+			raise ModelExecutionError("The holdout validation set is empty.")
+		seed = self._config.random_state
+		model = self.create_model(seed=seed, revision=batches.base_revision)
+		try:
+			history = self.fit(
+				model,
+				training,
+				data.canonical_texts,
+				seed=seed,
+				validation=originals,
+				description="Validation run",
 			)
-			for fold in range(batches.n_splits)
-		}
-		progress = self._create_progress(
-			training_rows,
-			mode="cross-validation",
-			validation_rows=validation_rows,
-			warmup_required=tuple(
-				entry is None or entry.state is None
-				for entry in warmup_entries.values()
+			if history.validation_probabilities is None:
+				raise ModelExecutionError(
+					"The holdout run did not produce validation predictions."
+				)
+			ids = validation["id"].to_numpy(dtype=np.int64, copy=True)
+			probabilities = ABSwapAverager.align_rows(
+				ids,
+				validation["is_swapped"].to_numpy(dtype=np.bool_),
+				originals["id"].to_numpy(dtype=np.int64),
+				history.validation_probabilities,
+			)
+		finally:
+			del model
+			gc.collect()
+			torch.cuda.empty_cache()
+		return ValidationTrainingResult(
+			ids=ids,
+			probabilities=probabilities,
+			epochs=history.epochs,
+			total_time_seconds=self._timestamp() - run_started,
+			training_rows=history.training_rows,
+			source_training_rows=int(
+				data.reference.loc[data.reference["split"].eq("train"), "id"].nunique()
 			),
 		)
-		for fold in range(batches.n_splits):
-			fold_started = self._timestamp()
-			training = batches.get_training(fold)
-			validation = data.reference.loc[data.reference["fold"].eq(fold)]
-			originals = validation.loc[~validation["is_swapped"]]
-			if originals.empty:
-				raise ModelExecutionError(
-					f"Fold {fold} has an empty training or validation set."
-				)
-			model = self.create_model(
-				seed=self._config.random_state + fold, revision=batches.base_revision
-			)
-			try:
-				history = self.fit(
-					model,
-					training,
-					data.canonical_texts,
-					seed=self._config.random_state + fold,
-					validation=originals,
-					description=f"Fold {fold}",
-					progress=progress,
-					warmup_cache_entry=warmup_entries.pop(fold),
-				)
-				if history.validation_probabilities is None:
-					raise ModelExecutionError(
-						f"Fold {fold} did not produce validation predictions."
-					)
-				ids = validation["id"].to_numpy(dtype=np.int64, copy=True)
-				probabilities = ABSwapAverager.align_rows(
-					validation["id"].to_numpy(dtype=np.int64),
-					validation["is_swapped"].to_numpy(dtype=np.bool_),
-					originals["id"].to_numpy(dtype=np.int64),
-					history.validation_probabilities,
-				)
-			finally:
-				del model
-				gc.collect()
-				torch.cuda.empty_cache()
-			yield FoldTrainingResult(
-				fold=fold,
-				ids=ids,
-				probabilities=probabilities,
-				epochs=history.epochs,
-				total_time_seconds=self._timestamp() - fold_started,
-			)
 
 	def fit(
 		self,
@@ -242,13 +211,13 @@ class LoRATrainer:
 			entry = warmup_cache_entry or self._prepare_warmup(context, seed=seed)
 		warmup_cache_entry = None
 		reused_warmup = entry is not None and entry.state is not None
-		mode = "cross-validation" if validation is not None else "build"
+		mode = "validation" if validation is not None else "build"
 		if progress is None:
 			progress = self._create_progress(
-				(len(reference),),
+				len(reference),
 				mode=mode,
-				validation_rows=() if validation is None else (len(validation),),
-				warmup_required=(not reused_warmup,),
+				validation_rows=0 if validation is None else len(validation),
+				warmup_required=not reused_warmup,
 			)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
@@ -411,45 +380,34 @@ class LoRATrainer:
 
 	def _create_progress(
 		self,
-		training_rows: tuple[int, ...],
+		training_rows: int,
 		*,
 		mode: str,
-		validation_rows: tuple[int, ...] = (),
-		warmup_required: tuple[bool, ...] | None = None,
+		validation_rows: int = 0,
+		warmup_required: bool = True,
 	) -> TrainingProgress:
-		"""Combine training and validation work, weighting all warmup work by half."""
+		"""Count one run's training and validation, weighting warmup work by half."""
 		warmup_batch_size = self._config.warmup_training_batch_size
 		joint_batch_size = (
 			self._config.training_batch_size * self._config.gradient_accumulation_steps
 		)
-		if warmup_required is None:
-			warmup_required = (True,) * len(training_rows)
-		validation_steps = (
-			tuple(
-				(rows + self._config.head_inference_batch_size - 1)
-				// self._config.head_inference_batch_size
-				for rows in validation_rows
-			)
-			if validation_rows
-			else (0,) * len(training_rows)
+		validation_steps = math.ceil(
+			validation_rows / self._config.head_inference_batch_size
 		)
-		warmup_steps = sum(
-			(rows + warmup_batch_size - 1) // warmup_batch_size + validation
-			for rows, validation, required in zip(
-				training_rows, validation_steps, warmup_required, strict=True
-			)
-			if required
-		)
-		joint_steps = sum(
-			(rows + joint_batch_size - 1) // joint_batch_size for rows in training_rows
-		)
-		validation_batches = sum(validation_steps)
+		warmup_steps = math.ceil(training_rows / warmup_batch_size) + validation_steps
+		joint_steps = math.ceil(training_rows / joint_batch_size)
 		return TrainingProgress(
 			model=self._model_key,
 			mode=mode,
 			total_steps=(
-				self.WARMUP_PROGRESS_WEIGHT * self._config.warmup_epochs * warmup_steps
-				+ self._config.epochs * (joint_steps + validation_batches)
+				(
+					self.WARMUP_PROGRESS_WEIGHT
+					* self._config.warmup_epochs
+					* warmup_steps
+					if warmup_required
+					else 0
+				)
+				+ self._config.epochs * (joint_steps + validation_steps)
 			),
 		)
 
@@ -705,7 +663,7 @@ class LoRATrainer:
 		return result
 
 	def _tokens_for(self, records: tuple[PairwiseText, ...]) -> PairwiseTokenStore:
-		"""Reuse token storage across folds while keeping tokenizer revisions aligned."""
+		"""Reuse token storage across stages while keeping tokenizer revisions aligned."""
 		if not self._model_initialized:
 			raise RuntimeError(
 				f"Initialize a {self._model_label} model before creating its loaders."

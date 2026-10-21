@@ -1,4 +1,4 @@
-"""Coordinate model cross-validation, builds, and submission inference."""
+"""Coordinate model holdout validation, builds, and submission inference."""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ from .extractor import QwenEmbeddingExtractor
 from .hardware import GPUEnvironment
 from .predictor import ModelPredictor
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
-from .trainer import ModelCrossValidator
+from .trainer import ModelTrainer
 
 
 class ModelPipeline:
-	"""Run cross-validation, build, or submission inference for one model profile."""
+	"""Run holdout validation, build, or submission inference for one model profile."""
 
 	CACHE_SCHEMA_VERSION = 2
 	CHECKPOINT_SCHEMA_VERSION = 2
@@ -59,7 +59,7 @@ class ModelPipeline:
 		)
 		self._training_repository = ModelDataRepository(
 			processed_path=config.data.processed_path,
-			n_splits=config.cross_validation.n_splits,
+			validation_fraction=config.validation.validation_fraction,
 		)
 		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
 		self._embedding_cache = EmbeddingCache(
@@ -84,7 +84,7 @@ class ModelPipeline:
 	def run(
 		self,
 		*,
-		mode: ModelMode = ModelMode.CROSS_VALIDATION,
+		mode: ModelMode = ModelMode.VALIDATION,
 		refresh_cache: bool = False,
 	) -> ModelExecutionResult:
 		"""Execute the selected model mode and return its summary."""
@@ -98,28 +98,26 @@ class ModelPipeline:
 			refresh_cache=refresh_cache,
 			device=device,
 		)
-		trainer = ModelCrossValidator(
+		trainer = ModelTrainer(
 			config=self._model_config,
-			n_splits=self._config.cross_validation.n_splits,
 			device=device,
 			config_key=self._profile.config_key,
 		)
 		if mode is ModelMode.BUILD:
 			return self._build(data, embeddings, trainer, cache_reused)
-		if mode is not ModelMode.CROSS_VALIDATION:
+		if mode is not ModelMode.VALIDATION:
 			raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 
-		fold_results = trainer.train(data.reference, embeddings)
-		output_dir, average_loss, prediction_count = self._result_publisher.publish(
-			fold_results,
+		validation_result = trainer.train(data.reference, embeddings)
+		output_dir, validation_loss, prediction_count = self._result_publisher.publish(
+			validation_result,
 			self._model_config.model_name,
 			prediction_aggregation="ab_swap_average",
 		)
 		return ModelRunResult(
 			output_dir=output_dir,
-			folds=self._config.cross_validation.n_splits,
 			predictions=prediction_count,
-			average_loss=average_loss,
+			validation_loss=validation_loss,
 			cache_path=self._embedding_cache.root,
 			cache_reused=cache_reused,
 		)
@@ -128,7 +126,7 @@ class ModelPipeline:
 		self,
 		data: ModelData,
 		embeddings: CachedEmbeddings,
-		trainer: ModelCrossValidator,
+		trainer: ModelTrainer,
 		cache_reused: bool,
 	) -> ModelBuildResult:
 		trained = trainer.train_all(data.reference, embeddings)

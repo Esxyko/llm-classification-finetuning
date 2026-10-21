@@ -1,4 +1,4 @@
-"""Validate and synthesize k-fold prediction files."""
+"""Validate and synthesize fixed-holdout prediction files."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..errors import ResultSynthesisError
+from ..errors import ModelExecutionError, ResultSynthesisError
+from ..models.common import TrainingInputLoader
 from .publisher import ResultPublisher
 
 
@@ -28,7 +29,6 @@ class ResultSynthesisResult:
 	source_dir: Path
 	workbook_path: Path
 	confusion_matrix_path: Path
-	folds: int
 	predictions: int
 	records: int
 	incorrects: int
@@ -115,7 +115,7 @@ class AugmentationReducer:
 			records = pd.DataFrame(
 				{
 					"id": original["id"].to_numpy(),
-					"fold": original["fold"].to_numpy(dtype=np.int16),
+					"split": original["split"].to_numpy(),
 					"expected_labels": expected.astype(np.int8),
 					"actual_labels": [str(label) for label in actual],
 					"incorrects": incorrects,
@@ -163,7 +163,7 @@ class AugmentationReducer:
 		records = pd.DataFrame(
 			{
 				"id": original["id"].to_numpy(),
-				"fold": original["fold"].to_numpy(dtype=np.int16),
+				"split": original["split"].to_numpy(),
 				"expected_labels": expected.astype(np.int8),
 				"actual_labels": actual_labels,
 				"incorrects": incorrects,
@@ -194,31 +194,28 @@ class ResultSynthesizer:
 		"winner_model_b",
 		"winner_tie",
 	)
-	REFERENCE_COLUMNS = ("id", "label", "fold", "is_swapped")
+	REFERENCE_COLUMNS = ("id", "label", "split", "is_swapped")
 	PROBABILITY_TOLERANCE = 1e-6
 
 	def __init__(
 		self,
 		processed_path: Path,
-		n_splits: int,
 		results_root: Path,
+		validation_fraction: float = 0.2,
 	) -> None:
 		self._processed_path = processed_path.resolve()
-		self._n_splits = n_splits
+		self._validation_fraction = validation_fraction
 		self._results_root = results_root.resolve()
 		self._reducer = AugmentationReducer()
 		self._publisher = ResultPublisher(self._results_root)
 
 	def synthesize(self, subfolder: str | None = None) -> ResultSynthesisResult:
-		"""Generate comprehensive artifacts for one cross-validation run."""
+		"""Generate comprehensive artifacts for one completed holdout run."""
 		try:
 			source_dir = self._select_source_dir(subfolder)
-			reference = self._read_reference()
-			predictions, fold_count = self._read_fold_predictions(
-				source_dir,
-				reference,
-			)
 			prediction_aggregation = self._read_prediction_aggregation(source_dir)
+			reference = self._read_reference()
+			predictions = self._read_validation_predictions(source_dir, reference)
 			reduced = self._reducer.reduce(
 				predictions,
 				prediction_aggregation=prediction_aggregation,
@@ -230,7 +227,7 @@ class ResultSynthesizer:
 			raise
 		except Exception as error:
 			raise ResultSynthesisError(
-				f"Could not synthesize fold results: {error}"
+				f"Could not synthesize validation results: {error}"
 			) from error
 
 		records = reduced.records
@@ -238,7 +235,6 @@ class ResultSynthesizer:
 			source_dir=source_dir,
 			workbook_path=workbook_path,
 			confusion_matrix_path=matrix_path,
-			folds=fold_count,
 			predictions=(
 				len(records)
 				if prediction_aggregation == AugmentationReducer.AVERAGED_AGGREGATION
@@ -267,7 +263,7 @@ class ResultSynthesizer:
 				in {name.casefold() for name in self.RESERVED_SOURCE_DIR_NAMES}
 			):
 				raise ResultSynthesisError(
-					"SUBFOLDER must name a cross-validation result directory and "
+					"SUBFOLDER must name a validation result directory and "
 					"cannot be a reserved output directory."
 				)
 			source_dir = (self._results_root / candidate_name).resolve()
@@ -292,63 +288,28 @@ class ResultSynthesizer:
 		return max(candidates, key=lambda path: (path.stat().st_mtime_ns, path.name))
 
 	def _read_reference(self) -> pd.DataFrame:
-		if not self._processed_path.is_file():
-			raise ResultSynthesisError(
-				f"Processed fold data not found: {self._processed_path}"
-			)
+		"""Validate the processed artifact and retain only the holdout rows."""
 		try:
-			reference = pd.read_parquet(
-				self._processed_path,
-				columns=list(self.REFERENCE_COLUMNS),
+			data = (
+				TrainingInputLoader(
+					self._processed_path, validation_fraction=self._validation_fraction
+				)
+				.load()
+				.data
 			)
-		except Exception as error:
-			raise ResultSynthesisError(
-				f"Could not read processed fold data {self._processed_path}: {error}"
-			) from error
-
-		if (
-			reference.empty
-			or reference.loc[:, list(self.REFERENCE_COLUMNS)].isna().any().any()
-		):
-			raise ResultSynthesisError(
-				"Processed fold data must contain complete validation records."
-			)
-		if not reference["label"].isin((0, 1, 2)).all():
-			raise ResultSynthesisError("Processed labels must be 0, 1, or 2.")
-
-		expected_folds = set(range(self._n_splits))
-		actual_folds = set(int(value) for value in reference["fold"].unique())
-		if actual_folds != expected_folds:
-			raise ResultSynthesisError(
-				"Processed fold data does not contain exactly the configured folds "
-				f"0 through {self._n_splits - 1}."
-			)
-
-		pair_summary = reference.groupby("id", sort=False).agg(
-			rows=("id", "size"),
-			folds=("fold", "nunique"),
-			originals=("is_swapped", lambda values: int((~values).sum())),
-			swapped=("is_swapped", lambda values: int(values.sum())),
-		)
-		invalid_pairs = pair_summary.loc[
-			pair_summary["rows"].ne(2)
-			| pair_summary["folds"].ne(1)
-			| pair_summary["originals"].ne(1)
-			| pair_summary["swapped"].ne(1)
-		]
-		if not invalid_pairs.empty:
-			raise ResultSynthesisError(
-				"Processed fold data must contain one original and one swapped row "
-				"per ID in the same fold."
-			)
-
-		return reference.reset_index(drop=True)
+		except ModelExecutionError as error:
+			raise ResultSynthesisError(str(error)) from error
+		return data.loc[
+			data["split"].eq("validation"), list(self.REFERENCE_COLUMNS)
+		].reset_index(drop=True)
 
 	@staticmethod
 	def _read_prediction_aggregation(source_dir: Path) -> str | None:
 		metrics_path = source_dir / "metrics.json"
 		if not metrics_path.is_file():
-			return None
+			raise ResultSynthesisError(
+				"Holdout reports require metrics.json. Legacy five-fold results are not supported; run the model again with the new split."
+			)
 		try:
 			metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
 		except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -357,6 +318,10 @@ class ResultSynthesizer:
 			) from error
 		if not isinstance(metrics, dict):
 			raise ResultSynthesisError("Result metadata must be a JSON object.")
+		if metrics.get("validation_strategy") != "holdout":
+			raise ResultSynthesisError(
+				"Legacy five-fold results are not supported. Preserve the old run and generate a new holdout run with the selected model."
+			)
 		aggregation = metrics.get("prediction_aggregation")
 		if aggregation is not None and not isinstance(aggregation, str):
 			raise ResultSynthesisError(
@@ -364,73 +329,28 @@ class ResultSynthesizer:
 			)
 		return aggregation
 
-	def _read_fold_predictions(
-		self,
-		source_dir: Path,
-		reference: pd.DataFrame,
-	) -> tuple[pd.DataFrame, int]:
-		csv_paths = sorted(
-			(path for path in source_dir.glob("*.csv") if path.is_file()),
-			key=lambda path: path.name.casefold(),
-		)
-		if len(csv_paths) != self._n_splits:
+	def _read_validation_predictions(
+		self, source_dir: Path, reference: pd.DataFrame
+	) -> pd.DataFrame:
+		"""Match exactly one validation.csv to the saved validation orientation order."""
+		csv_paths = [path for path in source_dir.glob("*.csv") if path.is_file()]
+		if len(csv_paths) != 1 or csv_paths[0].name != "validation.csv":
 			raise ResultSynthesisError(
-				f"Expected {self._n_splits} top-level CSV files in {source_dir}, "
-				f"found {len(csv_paths)}."
+				f"Expected only validation.csv in {source_dir}. Legacy fold CSVs are not supported; generate a new holdout run."
 			)
-
-		fold_references: dict[int, pd.DataFrame] = {}
-		for fold in range(self._n_splits):
-			fold_data = reference.loc[reference["fold"].eq(fold)]
-			if not fold_data.empty:
-				fold_references[fold] = fold_data.copy()
-		matched_folds: set[int] = set()
-		prediction_frames: list[pd.DataFrame] = []
-
-		for csv_path in csv_paths:
-			csv_data = self._read_prediction_csv(csv_path)
-			matching_folds = [
-				fold
-				for fold, fold_reference in fold_references.items()
-				if csv_data["id"]
-				.reset_index(drop=True)
-				.equals(fold_reference["id"].reset_index(drop=True))
-			]
-			if len(matching_folds) != 1:
-				raise ResultSynthesisError(
-					f"{csv_path.name} ID order does not exactly match one configured "
-					"validation fold."
-				)
-
-			fold = matching_folds[0]
-			if fold in matched_folds:
-				raise ResultSynthesisError(
-					f"More than one CSV matches validation fold {fold}."
-				)
-			matched_folds.add(fold)
-
-			fold_predictions = fold_references[fold].copy()
-			for column in self.REQUIRED_COLUMNS[1:]:
-				fold_predictions[column] = csv_data[column].to_numpy(dtype=np.float64)
-			fold_predictions["_reference_order"] = fold_predictions.index
-			prediction_frames.append(fold_predictions)
-
-		expected_folds = set(range(self._n_splits))
-		if matched_folds != expected_folds:
-			missing = ", ".join(
-				str(fold) for fold in sorted(expected_folds - matched_folds)
-			)
-			raise ResultSynthesisError(
-				f"Missing prediction CSVs for fold(s): {missing}."
-			)
-
-		predictions = (
-			pd.concat(prediction_frames, ignore_index=True)
-			.sort_values("_reference_order", kind="stable")
-			.drop(columns="_reference_order")
+		csv_data = self._read_prediction_csv(csv_paths[0])
+		if (
+			not csv_data["id"]
 			.reset_index(drop=True)
-		)
-		return predictions, len(matched_folds)
+			.equals(reference["id"].reset_index(drop=True))
+		):
+			raise ResultSynthesisError(
+				"validation.csv ID order does not exactly match the configured validation set; use the processed data for this run."
+			)
+		predictions = reference.copy()
+		for column in self.REQUIRED_COLUMNS[1:]:
+			predictions[column] = csv_data[column].to_numpy(dtype=np.float64)
+		return predictions
 
 	def _read_prediction_csv(self, csv_path: Path) -> pd.DataFrame:
 		try:

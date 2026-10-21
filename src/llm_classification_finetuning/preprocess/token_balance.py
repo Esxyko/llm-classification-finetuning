@@ -1,4 +1,4 @@
-"""Balance fold token volumes while preserving grouped class distributions."""
+"""Balance holdout token volume while preserving grouped class distributions."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from transformers import AutoConfig
 
-from ..config import CrossValidationConfig
+from ..config import ValidationConfig
 from ..errors import DataPreparationError
 from ..models.common import ConversationSerializer, TokenizationCache
 
@@ -18,33 +18,35 @@ from ..models.common import ConversationSerializer, TokenizationCache
 class TokenBalanceResult:
 	"""Balanced assignments and canonical A+B token counts in source-row order."""
 
-	folds: pd.Series
+	splits: pd.Series
 	pair_tokens: np.ndarray
 	swaps: int
 
 
-class FoldTokenBalancer:
+class SplitTokenBalancer:
 	"""Swap whole prompt groups with identical three-class count vectors."""
 
 	MAX_SWAPS = 1_000
 
-	def __init__(self, config: CrossValidationConfig) -> None:
+	def __init__(self, config: ValidationConfig) -> None:
 		self._config = config
 
 	def balance(self, data: pd.DataFrame, cache_dir: Path) -> TokenBalanceResult:
 		"""Count real tokens, then improve the initial stratified group assignment."""
 		if data.empty:
-			raise DataPreparationError("Cannot balance folds for empty training data.")
+			raise DataPreparationError(
+				"Cannot balance a split for empty training data."
+			)
 		pair_tokens = self._count_tokens(data, cache_dir)
 		groups = (
 			data.assign(_tokens=pair_tokens)
 			.groupby("group_id", sort=True)
-			.agg(fold=("fold", "first"), tokens=("_tokens", "sum"))
+			.agg(split=("split", "first"), tokens=("_tokens", "sum"))
 		)
 		class_counts = pd.crosstab(data["group_id"], data["label"]).reindex(
 			index=groups.index, columns=(0, 1, 2), fill_value=0
 		)
-		folds = groups["fold"].to_numpy(dtype=np.int16, copy=True)
+		validation = groups["split"].eq("validation").to_numpy(copy=True)
 		tokens = groups["tokens"].to_numpy(dtype=np.int64)
 		buckets: dict[tuple[int, ...], list[int]] = {}
 		order = np.random.default_rng(self._config.random_state).permutation(
@@ -56,47 +58,46 @@ class FoldTokenBalancer:
 				int(index)
 			)
 		indices_by_class = tuple(np.asarray(indices) for indices in buckets.values())
-		totals = np.zeros(self._config.n_splits, dtype=np.int64)
-		np.add.at(totals, folds, tokens)
-		mean_tokens = float(totals.sum()) / self._config.n_splits
-		if mean_tokens <= 0:
+		validation_tokens = int(tokens[validation].sum())
+		target_tokens = float(tokens.sum()) * self._config.validation_fraction
+		if target_tokens <= 0:
 			raise DataPreparationError(
-				"Training inputs must contain tokens to balance folds."
+				"Training inputs must contain tokens to balance the validation split."
 			)
 
 		for swaps in range(self.MAX_SWAPS + 1):
-			deviation = float(np.abs(totals / mean_tokens - 1.0).max())
-			if deviation <= self._config.max_token_deviation:
-				assignments = pd.Series(folds, index=groups.index)
+			deviation = abs(validation_tokens / target_tokens - 1.0)
+			if deviation < self._config.max_token_deviation:
+				assignments = pd.Series(
+					np.where(validation, "validation", "train"), index=groups.index
+				)
 				print(
-					f"Token balancing: {swaps:,} prompt-group swaps; max deviation {deviation:.4%}."
+					f"Token balancing: {swaps:,} prompt-group swaps; validation deviation {deviation:.4%}."
 				)
 				return TokenBalanceResult(
-					folds=data["group_id"].map(assignments).astype("int16"),
+					splits=data["group_id"].map(assignments).astype("string"),
 					pair_tokens=pair_tokens,
 					swaps=swaps,
 				)
 			if swaps == self.MAX_SWAPS:
 				break
-			high, low = int(totals.argmax()), int(totals.argmin())
+			from_validation = validation_tokens > target_tokens
 			swap = self._best_swap(
-				folds,
+				validation,
 				tokens,
 				indices_by_class,
-				high,
-				low,
-				int(totals[high] - totals[low]),
+				from_validation,
+				abs(validation_tokens - target_tokens),
 			)
 			if swap is None:
 				break
 			left, right, delta = swap
-			folds[left], folds[right] = low, high
-			totals[high] -= delta
-			totals[low] += delta
+			validation[left], validation[right] = not from_validation, from_validation
+			validation_tokens += -delta if from_validation else delta
 
 		raise DataPreparationError(
-			f"Could not balance fold tokens within {self._config.max_token_deviation:.2%} "
-			f"of their mean after {swaps:,} swaps (max deviation {deviation:.4%}) "
+			f"Could not balance validation tokens below {self._config.max_token_deviation:.2%} "
+			f"of their target after {swaps:,} swaps (deviation {deviation:.4%}) "
 			"without changing class counts or splitting prompt groups. "
 			"The processed dataset was not replaced."
 		)
@@ -122,7 +123,7 @@ class FoldTokenBalancer:
 			)
 		except Exception as error:
 			raise DataPreparationError(
-				f"Could not prepare fold tokenizer {self._config.tokenizer_name}: {error}"
+				f"Could not prepare split tokenizer {self._config.tokenizer_name}: {error}"
 			) from error
 		print(
 			f"Counting canonical A/B tokens: {self._config.tokenizer_name}; revision: {revision}",
@@ -137,29 +138,28 @@ class FoldTokenBalancer:
 
 	@staticmethod
 	def _best_swap(
-		folds: np.ndarray,
+		validation: np.ndarray,
 		tokens: np.ndarray,
 		buckets: tuple[np.ndarray, ...],
-		high: int,
-		low: int,
-		gap: int,
+		from_validation: bool,
+		gap: float,
 	) -> tuple[int, int, int] | None:
-		"""Find the equal-class group swap closest to halving the token gap."""
+		"""Find an equal-class group swap closest to the holdout token deficit."""
 		best_distance = gap
 		best: tuple[int, int, int] | None = None
 		for indices in buckets:
-			left = indices[folds[indices] == high]
-			right = indices[folds[indices] == low]
+			left = indices[validation[indices] == from_validation]
+			right = indices[validation[indices] != from_validation]
 			if not len(left) or not len(right):
 				continue
 			right = right[np.argsort(tokens[right], kind="stable")]
-			positions = np.searchsorted(tokens[right], tokens[left] - gap / 2)
+			positions = np.searchsorted(tokens[right], tokens[left] - gap)
 			for candidates in (positions, positions - 1):
 				partners = right[np.clip(candidates, 0, len(right) - 1)]
 				deltas = tokens[left] - tokens[partners]
-				distances = np.abs(gap - 2 * deltas)
+				distances = np.abs(gap - deltas)
 				index = int(distances.argmin())
-				distance = int(distances[index])
+				distance = float(distances[index])
 				if distance < best_distance:
 					best_distance = distance
 					best = int(left[index]), int(partners[index]), int(deltas[index])

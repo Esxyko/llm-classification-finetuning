@@ -25,13 +25,12 @@ from .pipeline import ModelPipeline
 from .progress import TrainingProgress
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
 from .token_cache import PairwiseTokenStore, TokenizationCache, TokenizedTexts
-from .trainer import EpochMetrics, FoldTrainingResult
+from .trainer import EpochMetrics, ValidationTrainingResult
 
 __all__ = (
 	"ABSwapAverager",
 	"ConversationSerializer",
 	"EpochMetrics",
-	"FoldTrainingResult",
 	"GPUEnvironment",
 	"GPUMemoryMonitor",
 	"GPUMemoryPeak",
@@ -58,4 +57,5 @@ __all__ = (
 	"TokenizedTexts",
 	"TrainingInputLoader",
 	"TrainingProgress",
+	"ValidationTrainingResult",
 )

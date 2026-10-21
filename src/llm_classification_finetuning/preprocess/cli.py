@@ -1,4 +1,4 @@
-"""Command-line interface for generating folded, A/B-augmented data."""
+"""Command-line interface for generating holdout-split, A/B-augmented data."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import sys
 from typing import NoReturn, Sequence
 
 from ..cli_config import add_config_argument
-from ..cli_output import print_fold_result
+from ..cli_output import print_split_result
 from ..config import AppConfig
 from ..errors import DataPreparationError
-from .folds import FoldPreprocessor
+from .splits import SplitPreprocessor
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="preprocess",
 		description=(
-			"Generate grouped cross-validation folds and A/B augmentation from "
+			"Generate a grouped train/validation split and A/B augmentation from "
 			"raw training data."
 		),
 	)
@@ -32,11 +32,11 @@ def run(arguments: Sequence[str] | None = None) -> int:
 
 	try:
 		config = AppConfig.load(parsed_arguments.config)
-		result = FoldPreprocessor(config.cross_validation).prepare(
+		result = SplitPreprocessor(config.validation).prepare(
 			train_path=config.data.raw_dir / "train.csv",
 			output_path=config.data.processed_path,
 		)
-		print_fold_result(result)
+		print_split_result(result)
 		return 0
 	except DataPreparationError as error:
 		print(f"Error: {error}", file=sys.stderr)

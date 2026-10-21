@@ -1,4 +1,4 @@
-"""Synthesize cross-validation predictions into comprehensive reports."""
+"""Synthesize fixed-holdout predictions into comprehensive reports."""
 
 from .synthesizer import ResultSynthesisResult, ResultSynthesizer
 

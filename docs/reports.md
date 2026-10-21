@@ -2,18 +2,14 @@
 
 [Documentation index](../README.md)
 
-Run [cross-validation](models.md) first; builds and submissions do not produce
-validation-fold reports. The selected [configuration](configuration.md) supplies
-the processed reference file and fold count. Result-folder selection does not
-filter by model or the configuration recorded in `metrics.json`.
-
-Both models write each fold's final-epoch predictions to `fold-N.csv` as soon
-as that fold finishes, before training the next fold. All folds share one
-timestamped run directory. Each publication also updates `metrics.json` with
-the completed folds' counts, weighted average loss, epoch metrics, and timings.
-The first fold's CSV and metadata are exposed together; subsequent CSVs and
-metadata are staged and individually replaced atomically. Completed folds remain
-available if training is interrupted or a later fold fails.
+Run [holdout validation](models.md) first; builds and submissions do not produce
+validation reports. The selected configuration supplies the processed reference.
+Each of the three models writes the final epoch's holdout probabilities to
+`validation.csv` alongside `metrics.json` in one timestamped run directory.
+The two files are staged and published together after training succeeds.
+Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
+list, canonical `source_training_rows` and `validation_rows`, and the actual
+A/B-selected `training_rows`. No fold count or cross-fold average is recorded.
 
 Create reports for the latest validation run:
 
@@ -32,19 +28,18 @@ subfolder, excluding `comprehensive`, `submit`, and historical `test` directorie
 It also excludes `.comprehensive-*` staging/backup directories. The selected
 folder is then validated; discovery does not search for the latest valid run.
 
-Report generation still requires exactly one CSV per configured fold, so wait
-until all folds finish before running `result`. Each CSV must have these columns
-in order:
+Report generation requires exactly one top-level CSV named `validation.csv`
+and a `metrics.json` identifying a holdout run. Legacy five-fold runs are
+retained but rejected with a migration message. CSV columns must be:
 
 ```text
 id,winner_model_a,winner_model_b,winner_tie
 ```
 
-Rows must follow the corresponding fold's exact ID order in the configured
-processed Parquet, including both original and swapped rows. Filenames do not
-need to include the fold number because the command infers it from that
-sequence. Only top-level `.csv` files are counted. IDs must be finite integers;
-probabilities must be finite, lie in `[0, 1]`, and sum to one within an absolute
+Rows follow the exact ID order of the processed Parquet's `split=validation`
+rows, including original and swapped rows. Training rows do not enter reports.
+IDs must be finite integers; probabilities must be finite, lie in `[0, 1]`, and
+sum to one within an absolute
 tolerance of `1e-6`.
 
 ## Publication and outputs
@@ -60,7 +55,7 @@ directory as unavailable.
 | File | Contents |
 | --- | --- |
 | `confusion_matrix.png` | 3 × 3 counts and expected-class row percentages, after restoring swapped predictions to the original A/B orientation |
-| `records.xlsx` | One row per source ID with fold, expected and actual labels, incorrect count, and log loss |
+| `records.xlsx` | One row per source ID with split, expected and actual labels, incorrect count, and log loss |
 
 The workbook supports filtering; its `AVG` row recalculates over visible rows.
 Aggregation is selected by `metrics.json`, rather than the model's name:
@@ -69,8 +64,8 @@ Aggregation is selected by `metrics.json`, rather than the model's name:
   one confusion-matrix count, and the log loss of its averaged distribution.
   Original and A/B-restored swapped probabilities must already match within
   `1e-6`; the report command validates them and does not average distinct votes.
-  Both active models publish this marker.
-- Missing or null `prediction_aggregation` (including a missing `metrics.json`):
+  All three models publish this marker.
+- Missing or null `prediction_aggregation` in a valid holdout `metrics.json`:
   Each ID contributes two orientation votes to the confusion matrix.
   `actual_labels` contains both labels, `incorrects` ranges from 0 to 2, and
   `contributed_loss` is the mean of the two orientation log losses.
@@ -82,10 +77,10 @@ its CSVs so report synthesis uses the intended policy.
 
 For both frozen and LoRA models (including head warmup), `metrics.json` records
 `training_time`, `validation_time`, and `total_time` as `HH:MM:SS` strings rounded
-to whole seconds for every epoch and fold. Hours can exceed 24.
+to whole seconds for every executed epoch and run. Hours can exceed 24.
 Training and validation times measure each phase's elapsed wall time after
-waiting for GPU work to finish. Fold totals also include initialization,
-prediction alignment, and LoRA fold cleanup; epoch totals include epoch setup.
+waiting for GPU work to finish. Run totals also include initialization,
+prediction alignment, and LoRA cleanup; epoch totals include epoch setup.
 LoRA's first warmup training time includes canonical feature extraction for
 both training and validation IDs. Each LoRA joint-validation time includes fresh
 backbone extraction followed by head inference; warmup validation reuses the
@@ -94,21 +89,19 @@ to the new run; joint epoch numbers retain their configured warmup offset.
 Cache loading and saving are excluded from epoch phase timings and included
 in complete-run runtime. Full-data builds do not write `metrics.json`; their
 epoch counts include only epochs executed in the current run.
-During training, top-level `training_time`, `validation_time`, and `total_time`
-sum the corresponding durations of completed folds. Once all folds finish,
-top-level `total_time` measures the model's complete run, including pipeline
-initialization, input loading, embedding preparation, all folds, cleanup, and
-result publication. The final `config_total_time` field
-records the same duration for this model under the selected config. With
-`model ALL`, each model is timed separately and its metrics contain only its
-own elapsed time. The command also prints each model's duration at completion.
+Top-level `training_time` and `validation_time` sum the corresponding durations
+of executed epochs. Final `total_time` measures the complete model run, including
+initialization, input loading, embedding preparation, cleanup, and publication.
+`config_total_time` records the same duration for this model and selected config.
+With `model ALL`, each model is timed separately.
+The command also prints each model's duration at completion.
 
 ## GPU memory peaks
 
-Cross-validation automatically monitors the configured `gpu.device` for each
+Holdout validation automatically monitors the configured `gpu.device` for each
 model's complete run. Monitoring begins before pipeline initialization and covers
-model loading, embedding preparation, all folds and epochs (including LoRA head
-warmup), training, validation, cleanup, and result publication. Both models,
+model loading, embedding preparation, all executed epochs (including LoRA head
+warmup), training, validation, cleanup, and result publication. All three models,
 `model ALL`, and `scripts/validate_all_configs.py` use the same monitoring path.
 Builds and submissions do not enable this monitoring.
 
@@ -132,7 +125,7 @@ at the same time. They do not measure total GPU usage, other processes, or
 allocations outside PyTorch's allocator. See the
 [PyTorch memory management reference](https://docs.pytorch.org/docs/2.14/notes/cuda.html#memory-management).
 
-Peaks are reset once per model run, never between folds, epochs, or phases.
+Peaks are reset once per model run, never between epochs or phases.
 Monitoring does not clear cached memory or subtract the starting occupancy:
 memory still resident when a run begins contributes to its absolute peak. This
 also applies to sequential models in `model ALL`; a complete embedding-cache

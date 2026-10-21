@@ -22,7 +22,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | Section | Controls |
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
-| `cross_validation` | Fold count, random seed, tokenizer identity, and maximum fold token deviation |
+| `validation` | Holdout fraction, random seed, tokenizer identity, and maximum validation token deviation |
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `warmup_extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
@@ -32,7 +32,7 @@ Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
 
 Every command validates the entire selected YAML before doing work, including
-any model sections it will not use. `data`, `cross_validation`, and `gpu` are
+any model sections it will not use. `data`, `validation`, and `gpu` are
 required even for data preparation and reporting. Each model section, when
 present, must include all its required fields; config files do not inherit or
 merge values from the root `config.yaml`.
@@ -41,9 +41,10 @@ Only these YAML fields have parser defaults when omitted:
 
 | Field | Default |
 | --- | --- |
-| `cross_validation.tokenizer_name` | `Qwen/Qwen3-4B` |
-| `cross_validation.tokenizer_revision` | `null` (resolve the current revision) |
-| `cross_validation.max_token_deviation` | `0.01` (1% of the mean fold token count) |
+| `validation.tokenizer_name` | `Qwen/Qwen3-4B` |
+| `validation.tokenizer_revision` | `null` (resolve the current revision) |
+| `validation.validation_fraction` | `0.2` |
+| `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `qwen3_4b_qlora.A/B_swap` | `aug` |
 | `qwen3_4b_lora.training_token_budget` / `qwen3_4b_qlora.training_token_budget` | `0` |
@@ -53,14 +54,19 @@ All other fields in a present section are required, including `gpu.device`,
 rejected. Numeric values described as presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
 
-## Fold token balance
+## Holdout token balance
 
-`init` and `preprocess` first assign stratified prompt groups, then exchange
-whole groups with identical original class counts until each fold's canonical
-A+B token total is within `max_token_deviation` of the mean. The deviation must
-be a finite number strictly between 0 and 1; `0.01` means a maximum absolute
-relative deviation of 1%, rather than a 1% token share. Class counts and source
-row counts in each initial fold remain unchanged.
+`init` and `preprocess` assign one stratified grouped holdout, then exchange
+whole groups with identical original class counts. At the default fraction,
+validation contains approximately 20% of canonical rows and tokens. The token
+criterion is `abs(validation_tokens / (all_tokens * validation_fraction) - 1)
+< max_token_deviation`; row deviation must be strictly below 0.005 using the same
+formula for counts. The fraction and token tolerance must be finite numbers in
+`(0, 1)`. Group swaps preserve the initial class and row counts exactly.
+
+Legacy `cross_validation`/`n_splits` settings are rejected with a migration
+message. Use the new processed path and regenerate data; old artifacts remain
+available on disk. See [migration](data-preparation.md#migration-from-five-folds).
 
 Token counting uses the training conversation serializer, special tokens, and
 the shared `token_cache/` beside the processed Parquet. It excludes padding and
@@ -85,7 +91,7 @@ optimizer update per `warmup_training_batch_size` batch.
 
 ## GPU configuration
 
-Cross-validation and `--build` use the single CUDA device selected by
+Holdout validation and `--build` use the single CUDA device selected by
 the required `gpu.device` field. The root preset selects `cuda:0`.
 All models use one backbone for A and B; classifier head training uses the
 same GPU. LoRA and QLoRA encode A and B sequentially, while frozen extraction batches
@@ -146,14 +152,14 @@ untouched. For frozen extraction memory errors, see
 
 ## Batch experiments
 
-To cross-validate selected models for every `.yaml` or `.yml` file in `configs/`,
+To validate selected models on the fixed holdout for every `.yaml` or `.yml` file in `configs/`,
 run:
 
 ```shell
 uv run python scripts/validate_all_configs.py
 ```
 
-To train selected models on all folds and build a separate checkpoint for each
+To train selected models on all original training and validation IDs and build a separate checkpoint for each
 config, run:
 
 ```shell
@@ -164,12 +170,12 @@ Both scripts define `MODELS = ("qwen3-4b-lora",)` near the top. Edit each script
 tuple independently to select models and their execution order; supported model
 selectors are `qwen3-4b`, `qwen3-4b-lora`, and `qwen3-4b-qlora`. Config files run in filename order,
 with the selected models running sequentially for each config. The scripts are
-independent: the build script does not run or require cross-validation.
+independent: the build script does not run or require holdout validation.
 They locate `configs/` relative to the script's project root and run each model
 from that root, regardless of the directory from which the script was invoked.
 
 Each model's validation run publishes its own `metrics.json`; `config_total_time`
-covers only that model's cross-validation run under the selected config.
+covers only that model's holdout validation run under the selected config.
 The full-data build does not produce `metrics.json`. By default, it writes
 `models/qwen3_4b_lora/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
 also writes `models/qwen3_4b/head_CONFIG_STEM.pt`; selecting `qwen3-4b-qlora` writes

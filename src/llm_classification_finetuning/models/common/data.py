@@ -108,13 +108,17 @@ class ConversationSerializer:
 
 
 class ModelDataRepository:
-	"""Read and validate the processed fold artifact for model training."""
+	"""Read and validate the processed holdout artifact for model training."""
 
 	REQUIRED_COLUMNS = TrainingInputLoader.REQUIRED_COLUMNS
 	SWAPPED_LABELS = TrainingInputLoader.SWAPPED_LABELS
 
-	def __init__(self, processed_path: Path, n_splits: int) -> None:
-		self._loader = TrainingInputLoader(processed_path, n_splits)
+	def __init__(
+		self, processed_path: Path, *, validation_fraction: float | None = None
+	) -> None:
+		self._loader = TrainingInputLoader(
+			processed_path, validation_fraction=validation_fraction
+		)
 		self._serializer = ConversationSerializer()
 
 	@property
@@ -138,7 +142,7 @@ class ModelDataRepository:
 		)
 		fingerprint = inputs.fingerprint
 		return ModelData(
-			reference=data.loc[:, ["id", "label", "fold", "is_swapped"]]
+			reference=data.loc[:, ["id", "label", "split", "is_swapped"]]
 			.copy()
 			.reset_index(drop=True),
 			canonical_texts=canonical_texts,

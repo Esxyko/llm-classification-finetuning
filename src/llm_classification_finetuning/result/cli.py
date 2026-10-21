@@ -1,4 +1,4 @@
-"""Command-line interface for synthesizing cross-validation results."""
+"""Command-line interface for synthesizing fixed-holdout validation results."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="result",
 		description=(
-			"Synthesize k-fold prediction CSVs into a comprehensive workbook "
+			"Synthesize holdout validation.csv into a comprehensive workbook "
 			"and confusion matrix."
 		),
 	)
@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"subfolder",
 		nargs="?",
 		help=(
-			"Direct child of results containing fold CSVs. Defaults to the "
+			"Direct child of results containing validation.csv. Defaults to the "
 			"most recently modified result subfolder."
 		),
 	)
@@ -42,8 +42,8 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		config = AppConfig.load(parsed_arguments.config)
 		result = ResultSynthesizer(
 			processed_path=config.data.processed_path,
-			n_splits=config.cross_validation.n_splits,
 			results_root=Path.cwd() / "results",
+			validation_fraction=config.validation.validation_fraction,
 		).synthesize(parsed_arguments.subfolder)
 		_print_result(result)
 		return 0
@@ -55,8 +55,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
 def _print_result(result: ResultSynthesisResult) -> None:
 	print(f"Selected result run: {result.source_dir}")
 	print(
-		f"Synthesized {result.predictions:,} predictions from {result.folds} "
-		f"folds into {result.records:,} records."
+		f"Synthesized {result.predictions:,} holdout predictions into {result.records:,} records."
 	)
 	print(f"Incorrect predictions: {result.incorrects:,}")
 	print(f"Average log loss: {result.average_loss:.6f}")

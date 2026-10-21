@@ -362,7 +362,7 @@ class TokenizationCache:
 
 
 class PairwiseTokenStore:
-	"""Bind shared text encodings to canonical IDs, independent of label and fold."""
+	"""Bind shared text encodings to canonical IDs, independent of label and split."""
 
 	def __init__(
 		self,

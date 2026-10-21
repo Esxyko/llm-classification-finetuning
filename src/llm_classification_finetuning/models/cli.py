@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
 	"""Create the shared model command-line parser."""
 	parser = argparse.ArgumentParser(
 		prog="model",
-		description="Cross-validate, build, or submit a Qwen comparison model.",
+		description="Validate on a fixed holdout, build, or submit a Qwen comparison model.",
 	)
 	add_config_argument(parser)
 	parser.add_argument(
@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
 	modes.add_argument(
 		"--build",
 		action="store_true",
-		help="Train on all folds and save the classifier head and any LoRA adapters.",
+		help="Train on all training and validation IDs and save the head and any LoRA adapters.",
 	)
 	modes.add_argument(
 		"--submit",
@@ -126,7 +126,7 @@ def _run_registered_model(
 ) -> ModelExecutionResult:
 	model_started = perf_counter()
 	gpu_monitor = None
-	if mode is ModelMode.CROSS_VALIDATION:
+	if mode is ModelMode.VALIDATION:
 		gpu_monitor = GPUMemoryMonitor(config.gpu)
 		gpu_monitor.start()
 	try:
@@ -229,7 +229,7 @@ def _selected_mode(arguments: argparse.Namespace) -> ModelMode:
 		return ModelMode.BUILD
 	if arguments.submit:
 		return ModelMode.SUBMIT
-	return ModelMode.CROSS_VALIDATION
+	return ModelMode.VALIDATION
 
 
 def _print_result(selector: str, result: ModelExecutionResult) -> None:
@@ -248,10 +248,9 @@ def _print_result(selector: str, result: ModelExecutionResult) -> None:
 		print(f"Wrote model submission: {result.submission_path}")
 	elif isinstance(result, ModelRunResult):
 		print(
-			f"Generated {result.predictions:,} out-of-fold predictions across "
-			f"{result.folds} folds."
+			f"Generated {result.predictions:,} predictions for the fixed validation set."
 		)
-		print(f"Average out-of-fold log loss: {result.average_loss:.6f}")
+		print(f"Validation log loss: {result.validation_loss:.6f}")
 		print(f"Wrote model results: {result.output_dir}")
 	else:
 		raise TypeError(f"Unsupported model result: {type(result).__name__}")

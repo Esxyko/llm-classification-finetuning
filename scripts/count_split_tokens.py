@@ -1,4 +1,4 @@
-"""Count actual, unpadded A/B input tokens in the saved validation folds."""
+"""Count actual, unpadded A/B input tokens in the saved training and validation partitions."""
 
 from __future__ import annotations
 
@@ -13,14 +13,22 @@ import pandas as pd
 from transformers import AutoConfig, AutoTokenizer
 
 from llm_classification_finetuning.cli_config import add_config_argument
-from llm_classification_finetuning.config import AppConfig, LoRAModelConfig, ModelConfig
+from llm_classification_finetuning.config import (
+	MAX_VALIDATION_ROW_DEVIATION,
+	AppConfig,
+	LoRAModelConfig,
+	ModelConfig,
+)
 from llm_classification_finetuning.errors import DataPreparationError
 from llm_classification_finetuning.models import MODEL_REGISTRY
-from llm_classification_finetuning.models.common import ModelDataRepository
+from llm_classification_finetuning.models.common import (
+	ModelDataRepository,
+	TokenizationCache,
+)
 
 
-class FoldTokenStatistics:
-	"""Reuse training serialization and existing fold assignments for token counts."""
+class SplitTokenStatistics:
+	"""Reuse training serialization and the saved holdout assignment for token counts."""
 
 	def __init__(
 		self,
@@ -38,11 +46,15 @@ class FoldTokenStatistics:
 		self._local_files_only = local_files_only
 
 	def run(self, output_dir: Path) -> None:
-		"""Write per-ID counts, fold summaries, and reproducibility metadata."""
+		"""Write per-ID counts, partition summaries, and reproducibility metadata."""
 		repository = ModelDataRepository(
-			self._config.data.processed_path, self._config.cross_validation.n_splits
+			self._config.data.processed_path,
+			validation_fraction=self._config.validation.validation_fraction,
 		)
-		print("Loading saved folds and serializing canonical A/B inputs...", flush=True)
+		print(
+			"Loading saved train/validation split and serializing canonical A/B inputs...",
+			flush=True,
+		)
 		data = repository.load()
 		base_config = AutoConfig.from_pretrained(
 			self._model.model_name,
@@ -56,26 +68,23 @@ class FoldTokenStatistics:
 			local_files_only=self._local_files_only,
 		)
 		print(f"Tokenizer: {self._model.model_name}; revision: {revision}", flush=True)
+		cache = TokenizationCache(
+			self._config.data.processed_path.parent / "token_cache", tokenizer
+		)
 		records = data.canonical_texts
 		lengths = np.empty((len(records), 2), dtype=np.int64)
 		next_progress = 5
 		for start in range(0, len(records), self._batch_size):
 			batch = records[start : start + self._batch_size]
-			encoded = tokenizer(
+			encoded = cache.encode(
 				[text for row in batch for text in (row.response_a, row.response_b)],
 				add_special_tokens=True,
-				padding=False,
 				truncation=False,
-				return_attention_mask=False,
-				return_token_type_ids=False,
-				verbose=False,
 			)
 			stop = start + len(batch)
-			lengths[start:stop] = np.asarray(
-				[len(ids) for ids in encoded["input_ids"]], dtype=np.int64
-			).reshape(-1, 2)
+			lengths[start:stop] = np.diff(encoded.offsets).reshape(-1, 2)
 			if stop * 100 >= len(records) * next_progress:
-				print(f"Tokenized {stop:,}/{len(records):,} source IDs", flush=True)
+				print(f"Counted {stop:,}/{len(records):,} source IDs", flush=True)
 				next_progress += 5
 		rows = pd.DataFrame(
 			{
@@ -85,11 +94,11 @@ class FoldTokenStatistics:
 				"tokens_total": lengths.sum(axis=1),
 			}
 		).merge(
-			data.reference.loc[~data.reference["is_swapped"], ["id", "fold", "label"]],
+			data.reference.loc[~data.reference["is_swapped"], ["id", "split", "label"]],
 			on="id",
 			validate="one_to_one",
 		)
-		folds = self._summarize(rows)
+		splits = self._summarize(rows)
 		metadata = {
 			"processed_path": str(self._config.data.processed_path),
 			"processed_sha256": data.fingerprint,
@@ -107,52 +116,71 @@ class FoldTokenStatistics:
 			"source_rows": len(rows),
 			"tokens_total": int(lengths.sum()),
 			"tokens_augmented": int(lengths.sum()) * 2,
-			"fold_balance": {
-				"tokenizer_name": self._config.cross_validation.tokenizer_name,
-				"tokenizer_revision": self._config.cross_validation.tokenizer_revision,
-				"random_state": self._config.cross_validation.random_state,
-				"target_max_token_deviation": self._config.cross_validation.max_token_deviation,
+			"split_balance": {
+				"validation_fraction": self._config.validation.validation_fraction,
+				"target_max_row_deviation": MAX_VALIDATION_ROW_DEVIATION,
+				"measured_row_deviation": float(
+					splits.loc[splits["split"].eq("validation"), "row_deviation_pct"]
+					.abs()
+					.max()
+				)
+				/ 100,
+				"tokenizer_name": self._config.validation.tokenizer_name,
+				"tokenizer_revision": self._config.validation.tokenizer_revision,
+				"random_state": self._config.validation.random_state,
+				"target_max_token_deviation": self._config.validation.max_token_deviation,
 				"measured_max_token_deviation": float(
-					folds["token_deviation_pct"].abs().max()
+					splits.loc[splits["split"].eq("validation"), "token_deviation_pct"]
+					.abs()
+					.max()
 				)
 				/ 100,
 			},
 			"train_tokens_definition": (
-				"Unpadded, untruncated input tokens in the other folds for one pass "
+				"Unpadded, untruncated training-partition tokens for one pass "
 				"over the configured training orientations (aug=2x, inf=1x). "
 				"Excludes epoch repetition, warmup, validation, and cache reuse."
 			),
-			"folds": folds.to_dict(orient="records"),
+			"splits": splits.to_dict(orient="records"),
 		}
 		output_dir = output_dir.expanduser().resolve()
 		output_dir.mkdir(parents=True, exist_ok=True)
-		with TemporaryDirectory(prefix=".fold-tokens-", dir=output_dir) as staging:
+		with TemporaryDirectory(prefix=".split-tokens-", dir=output_dir) as staging:
 			staged = Path(staging)
 			rows.to_csv(staged / "per_id.csv", index=False)
-			folds.to_csv(staged / "folds.csv", index=False, float_format="%.2f")
+			splits.to_csv(staged / "splits.csv", index=False, float_format="%.8f")
 			(staged / "summary.json").write_text(
 				json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
 				encoding="utf-8",
 			)
 			for path in sorted(staged.iterdir()):
 				path.replace(output_dir / path.name)
-		print(folds.to_string(index=False, float_format=lambda value: f"{value:.2f}"))
+		print(splits.to_string(index=False, float_format=lambda value: f"{value:.2f}"))
 		print(f"Total canonical tokens: {int(lengths.sum()):,}")
 		print(f"Reports: {output_dir}")
 
 	def _summarize(self, rows: pd.DataFrame) -> pd.DataFrame:
 		total_tokens = int(rows["tokens_total"].sum())
-		mean_fold_tokens = total_tokens / self._config.cross_validation.n_splits
+		validation_fraction = self._config.validation.validation_fraction
 		training_multiplier = 2 if self._model.ab_swap == "aug" else 1
 		summaries = []
-		for fold, subset in rows.groupby("fold", sort=True):
+		for split, subset in rows.groupby("split", sort=True):
+			fraction = (
+				validation_fraction
+				if split == "validation"
+				else 1 - validation_fraction
+			)
+			multiplier = training_multiplier if split == "train" else 1
 			branches = subset[["tokens_a", "tokens_b"]].to_numpy().reshape(-1)
 			tokens = int(subset["tokens_total"].sum())
 			counts = subset["label"].value_counts().reindex((0, 1, 2), fill_value=0)
 			median, p95, p99 = np.quantile(branches, [0.5, 0.95, 0.99])
 			summaries.append(
 				{
-					"fold": int(fold),
+					"split": split,
+					"row_share_pct": len(subset) / len(rows) * 100,
+					"row_deviation_pct": (len(subset) / (len(rows) * fraction) - 1)
+					* 100,
 					"source_rows": len(subset),
 					"model_a_wins": int(counts.loc[0]),
 					"model_b_wins": int(counts.loc[1]),
@@ -161,9 +189,8 @@ class FoldTokenStatistics:
 					"tokens_b": int(subset["tokens_b"].sum()),
 					"tokens_total": tokens,
 					"tokens_augmented": tokens * 2,
-					"token_deviation_pct": (tokens / mean_fold_tokens - 1) * 100
-					if mean_fold_tokens
-					else 0,
+					"token_deviation_pct": (tokens / (total_tokens * fraction) - 1)
+					* 100,
 					"token_share_pct": tokens / total_tokens * 100
 					if total_tokens
 					else 0,
@@ -175,8 +202,8 @@ class FoldTokenStatistics:
 					"branches_over_max_length": int(
 						(branches > self._model.max_length).sum()
 					),
-					"train_rows": (len(rows) - len(subset)) * training_multiplier,
-					"train_tokens": (total_tokens - tokens) * training_multiplier,
+					"effective_rows": len(subset) * multiplier,
+					"effective_tokens": tokens * multiplier,
 				}
 			)
 		return pd.DataFrame(summaries)
@@ -197,20 +224,19 @@ def main() -> int:
 		config = AppConfig.load(args.config)
 		model = MODEL_REGISTRY[args.model].profile.resolve_config(config)
 		revision = args.revision
-		if (
-			revision is None
-			and model.model_name == config.cross_validation.tokenizer_name
-		):
-			revision = config.cross_validation.tokenizer_revision
-		FoldTokenStatistics(
+		if revision is None and model.model_name == config.validation.tokenizer_name:
+			revision = config.validation.tokenizer_revision
+		SplitTokenStatistics(
 			config,
 			model,
 			batch_size=args.batch_size,
 			revision=revision,
 			local_files_only=args.local_files_only,
-		).run(args.output_dir or config.data.processed_path.parent / "fold_token_stats")
+		).run(
+			args.output_dir or config.data.processed_path.parent / "split_token_stats"
+		)
 	except (DataPreparationError, OSError, ValueError) as error:
-		print(f"Could not count fold tokens: {error}")
+		print(f"Could not count split tokens: {error}")
 		return 1
 	return 0
 

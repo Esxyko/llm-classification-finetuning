@@ -28,10 +28,10 @@ and swapped rows are separate samples and are encoded separately. In `inf`
 mode, the two branch encodings are reused for both head orientations; joint
 training retains gradients through both encodings. In `inf` mode, training
 batch sizes, accumulation counts, and build row counts refer to original samples.
-Validation loss, fold predictions, and test submissions
-average original and A/B-restored swapped probabilities. Each validation fold
+Validation loss, holdout predictions, and test submissions
+average original and A/B-restored swapped probabilities. Each holdout run
 starts with fresh adapters and initializes the classifier from completed
-compatible warmup when available. Cross-validation saves warmup cache states,
+compatible warmup when available. Holdout validation saves warmup cache states,
 but no production adapter checkpoints.
 
 ## Hardware and input limits
@@ -72,7 +72,7 @@ longer than `max_length` raises an error with its ID, branch, actual token count
 and required minimum setting. Empty token sequences are also rejected.
 
 Tokenization uses a shared cache keyed by text content and tokenizer content,
-with compact int32 CPU views shared across epochs and folds. Identical texts
+with compact int32 CPU views shared across epochs and stages. Identical texts
 reuse encodings across IDs, dataset revisions, A/B modes, model profiles, and
 training/test inputs. Swapped rows select the opposite branch views. For Hub
 backbones, training preparation resolves a fixed base revision before loading
@@ -129,13 +129,14 @@ rates linearly decaying to zero. All these settings are configurable in
 does not read or write its cache. Otherwise a compatible completed
 [head-warmup cache](caching.md#loraqlora-head-warmup) restores weights, head
 AdamW moments, and random states, skipping warmup extraction, training, and
-validation. It matches the current original training/validation ID sets (all
-original IDs for builds), warmup optimization settings, and core model/input
+validation. It matches the current original training ID set (all original IDs
+for builds), warmup optimization settings, and core model/input
 identities. Compute precision, attention/TF32, extraction batch size, LoRA
 settings, local model paths with identical contents, and joint-training
-learning rates, epochs, or batching may change. LoRA/QLoRA and each split/build
-are isolated; changing assignments among other folds does not invalidate this
-split, and builds ignore fold assignments.
+learning rates, epochs, or batching may change. LoRA and QLoRA warmup states
+remain separate. Changing only validation IDs preserves warmup reuse; changing
+training IDs selects a new cache. Holdout/build mode does not independently
+restrict reuse, and builds use the full original ID set.
 `--refresh-cache` forces a fresh warmup. Across precision changes, the original
 warmup result is reused; only FP16-to-FP16 restores the gradient scaler.
 
@@ -152,7 +153,7 @@ orientation and retain their original labels and row order without storing
 augmented feature copies. Warmup validation averages the two head orientations
 over these same frozen features. All warmup epochs reuse the features; both
 training and validation views are released when joint training starts, and
-features are never written to disk or reused between folds. Only the completed
+features are never written to disk or reused between runs. Only the completed
 head and its training state are persisted. The full 57,477-ID
 Qwen3-4B feature tensor occupies about 0.55 GiB in BF16 or 1.10 GiB in FP32,
 excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
@@ -178,8 +179,8 @@ training histories and build summaries include both stages. A reused warmup
 leaves only the joint epochs in this run's history and build epoch count;
 epoch numbers retain their configured warmup offset. Old warmup losses and
 timings are not replayed.
-Each validation fold and full-data build follows these stages. Cross-validation
-evaluates its held-out fold after every executed warmup and joint epoch, and
+Each holdout run and full-data build follows these stages. Holdout validation
+evaluates the same saved validation set after every executed warmup and joint epoch, and
 publishes the final epoch's predictions. Full-data builds have no validation set and do
 not run validation. Replace the removed `warmup_ratio` key with `warmup_epochs`,
 `warmup_extraction_batch_size`, `warmup_training_batch_size`, and
@@ -204,28 +205,28 @@ exist. Submission inputs do not require labels.
 
 Warmup validation reuses its existing features. Each joint-validation call and
 submission extracts fresh features and releases them on return; features are
-never persisted or reused across joint epochs or folds. Joint-validation timing
+never persisted or reused across joint epochs or runs. Joint-validation timing
 includes both extraction and head inference. Extraction logs identify warmup,
 joint validation, or submission separately.
 
 ## Training progress
 
 Head warmup, joint training, and the validation batches after every epoch share
-one progress counter across all epochs and folds. Progress is printed at
+one progress counter across all executed epochs. Progress is printed at
 approximately 5% intervals, with the current stage identified in each line.
 Each warmup training batch and warmup validation batch counts as **0.5**
 work units; each joint-training update group and joint validation batch counts as
 **1**. With `warmup_epochs: 0` or reused warmup, the total contains only joint
-training and its validation for that fold/build.
+training and its validation for that holdout/build.
 
-For each fold, let `W` be
+For a holdout run, let `W` be
 `ceil(training_rows / warmup_training_batch_size)`,
 `J` be `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`,
 and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
-IDs. The fold contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
+IDs. The run contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
 units when warmup runs, or `epochs * (J + V)` when warmup is reused.
-Cross-validation sums the separately rounded fold counts; a build uses
-all selected training rows with `V = 0`. Training counts respect `A/B_swap`,
+The count covers one fixed split; a build uses all selected training rows
+with `V = 0`. Training counts respect `A/B_swap`,
 including original IDs only for `inf`.
 
 Training advances the counter after each warmup batch or complete joint
@@ -255,8 +256,8 @@ For example, add this key to the existing `qwen3_4b_lora` section:
 training_token_budget: 4096
 ```
 
-Each fold's training rows are globally planned before joint training, excluding
-its validation fold and selecting the configured A/B training orientations.
+The saved training partition is globally planned before joint training,
+excluding the validation set and selecting the configured A/B training orientations.
 Preparation tries stable sorts by `(A_length, B_length)`,
 `(B_length, A_length)`, and `(A_length + B_length, A_length, B_length)`, with
 `(id, is_swapped)` as the tie-breaker. Each candidate is divided into update
@@ -266,14 +267,14 @@ placed first into the existing batch with the least remaining token budget;
 a new batch is opened when none fits. Batch cost is
 `rows * (longest_A + longest_B)`. The chosen candidate minimizes micro-batch
 count, then total padded tokens; this heuristic does not guarantee a global
-optimum. A full-data build applies the same planning to all training folds.
+optimum. A full-data build applies the same planning to all original IDs from both partitions.
 The budget counts padded A/B input tokens, not GPU memory bytes. An
 over-budget singleton is allowed, so lowering the budget cannot reduce the
 tokens or memory needed by that individual input.
 
 Group membership stays fixed across epochs. A zero-based joint epoch uses
-`random_state + fold + joint_epoch` to shuffle update groups and their
-micro-batches; builds omit the fold term. Dynamic micro-batches can contain more
+`random_state + joint_epoch` to shuffle update groups and their
+micro-batches in both holdout and build modes. Dynamic micro-batches can contain more
 than `training_batch_size` rows, up to `G`. A single over-budget pair is processed
 alone without truncation. Losses are divided by each group's actual row count,
 even when the short group is shuffled into the middle of an epoch. Gradient

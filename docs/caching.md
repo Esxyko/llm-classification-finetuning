@@ -24,7 +24,7 @@ one another.
 Pooled vectors are stored as FP16 CPU tensors, including when backbone compute
 precision is BF16 or FP32; the classifier consumes them as FP32.
 
-Changing labels, folds, IDs, row order, or dataset file encoding does not
+Changing labels, splits, IDs, row order, or dataset file encoding does not
 invalidate existing vectors. Overlapping datasets and A/B branches reuse each
 other's entries; only missing inputs are encoded. Changing `max_length` or the
 serializer also reuses vectors when the resulting token IDs remain identical.
@@ -51,7 +51,7 @@ compatibility; see the separate [checkpoint rules](models.md#checkpoint-compatib
 LoRA training/warmup/validation, and LoRA test inference. Each SQLite shard
 identifies the tokenizer's encoding content, implementation/library versions,
 encoding options, and cache schema; entries identify individual UTF-8 texts by
-SHA-256. IDs, labels, folds, row order, dataset fingerprints, model names, model
+SHA-256. IDs, labels, splits, row order, dataset fingerprints, model names, model
 weight revisions, and training settings are excluded. Only changed or missing
 texts are encoded; duplicates and overlapping datasets reuse existing entries.
 The tokenizer is loaded to fingerprint its actual content, but cache hits do not
@@ -69,43 +69,47 @@ IDs for negative values; newly encoded IDs are checked before caching.
 
 ## LoRA batch plans
 
-LoRA's `qwen3_4b_lora_batches/plans/*.pt` files and QLoRA's independent
-`qwen3_4b_qlora_batches/plans/*.pt` files identify the
-sorted selected `(id, is_swapped, A_length, B_length)` rows, budget, update group
-size, and planning algorithm version. Labels, fold numbers, reference order,
+LoRA and QLoRA share `adapter_batches/plans/*.pt` beside the processed Parquet.
+Plans identify the sorted selected `(id, is_swapped, A_length, B_length)` rows,
+budget, update group
+size, and planning algorithm version. Labels, split names, reference order,
 text/token content beyond lengths, and unselected validation inputs do not enter
 the plan key. Cached groups store sample identities and are mapped to current
 dataset indices on every read; current labels are always used for training.
-A/B mode and fold selection determine membership before lookup. Changing
+A/B mode and holdout/build selection determine membership before lookup. Changing
 budget or effective batch size rebuilds plans while reusing tokens. With
 `training_token_budget: 0`, tokens are cached but no global plan is created.
-Earlier LoRA `tokens/*.pt` files are left untouched and are no longer read.
+Legacy per-model batch directories and per-model `tokens/*.pt` files are no
+longer read. Identical plan keys can be reused across LoRA and QLoRA; quantization
+does not affect planning. Different budgets or selected rows still select
+different plans.
 Both adapter profiles share the text-token cache when tokenizer content and
 encoding options match; quantization does not change token identity.
 
 `--refresh-cache` replaces requested token entries and model-specific caches,
-including head warmup. Shared training encodings remain reusable between folds
+including head warmup. Shared training encodings remain reusable across stages
 in that run. Warmup
 features and live LoRA encodings are never persisted in these token caches.
 
 ## LoRA/QLoRA head warmup
 
-Cross-validation and builds automatically save completed head warmup under
+Holdout validation and builds automatically save completed head warmup under
 `qwen3_4b_lora_warmup/<key>.pt` or `qwen3_4b_qlora_warmup/<key>.pt` beside the
-processed Parquet. Each validation fold and the full-data build have distinct
-identities. Checkpoint tags do not affect this cache. Submission inference
+processed Parquet. Identity follows the actual training data, rather than the
+holdout/build mode. Checkpoint tags do not affect this cache. Submission inference
 does not use it.
 
-For cross-validation, the data key hashes the sorted original training ID set
-and validation ID set separately. Reassigning training IDs among the other
-folds does not invalidate the current split. Builds hash only the full original
-ID set, independently of fold assignments, and use a separate build marker.
-Fold numbers are excluded from this data identity; the effective training seed
-is checked separately. File paths, Parquet bytes, reference order, text, and
-labels are excluded. Consequently, changing text or labels while retaining
-the selected ID sets deliberately reuses the old warmup; use `--refresh-cache`
-to retrain it. Input validation and token-length checks still run for the
-current data.
+The data key hashes only the sorted original training ID set. For builds this
+is the full original ID set; for holdout runs it is the saved training partition.
+Validation IDs and split names do not enter the key: validation only measures
+loss and does not update the head or choose an early-stopping checkpoint.
+Changing only the validation set therefore retains a compatible warmup cache.
+Holdout and build calls with the same training IDs and remaining settings can
+reuse the same state. The configured model seed is checked separately.
+
+File paths, Parquet bytes, reference order, text, and labels remain excluded.
+Changing training text or labels while retaining IDs thus reuses the old warmup;
+use `--refresh-cache` to retrain it. Input and token-length checks still run.
 
 Other keys identify the model and exact Hub revision or local weight/configuration
 content, backbone/head dimensions, tokenizer content, serialization version,
@@ -133,14 +137,14 @@ fresh warmup under the new settings. Rank/target-module changes can affect
 classification-head initialization through random-number consumption on a
 cache miss; cached heads and named optimizer states remain reusable.
 
-Schema v2 uses selected-ID identities. Legacy v1 warmup files use full fold
-assignment hashes and remain untouched; they are not read under this identity.
+Schema v3 uses training-ID identities without a validation-set binding. Legacy
+v1/v2 warmup files use obsolete identities and are no longer read.
 
 Reads use CPU tensor loading and validate metadata, exact head/moment shapes,
 FP32 dtypes, finite weights/moments, and restorable scaler/random states before
 changing the model. Missing, corrupt, and incompatible entries are rebuilt;
 write failures are reported as model execution errors. Logs show rebuild/reuse,
-fold/build, path, and precision. Skipped warmup contributes no progress work,
+holdout/build, path, and precision. Skipped warmup contributes no progress work,
 epoch history, or historical timing/validation metrics; joint epoch numbers
 retain their configured warmup offset. Build epoch counts report only epochs
 executed in the current run.
@@ -182,7 +186,8 @@ from llm_classification_finetuning.models.qwen3_4b_lora import (
 
 config = AppConfig.load(Path("config.yaml"))
 batches = LoRATrainingBatchRepository.from_config(config)
-training = batches.get_training(fold=0)  # None selects a full-data build.
+training = batches.get_training()  # Saved training partition only.
+# batches.get_training(full_data=True) selects all IDs for a build.
 training.set_epoch(0)  # Zero-based joint epoch; fixed batching keeps its RNG stream.
 loader = training.loader  # Yields PairwiseBatch; training.tokens is shared.
 ```

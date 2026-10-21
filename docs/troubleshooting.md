@@ -48,8 +48,9 @@
   checkpoint types allow changes to precision, attention implementation, TF32,
   `max_length`, and `A/B_swap`.
 - **Report rows or aggregation do not match:** Use the processed Parquet and
-  fold count corresponding to that run, preserve both orientations in each CSV,
-  and keep `metrics.json` beside the CSVs. See [report requirements](reports.md).
+  saved split corresponding to that run, preserve both orientations in
+  `validation.csv`, and keep its holdout `metrics.json`. Old five-fold data and
+  results require migration; regenerate the split and run the model again. See [report requirements](reports.md).
 
 For the complete setup, see [getting started](getting-started.md). For hardware
 settings and memory tuning, see [GPU configuration](configuration.md#gpu-configuration)
