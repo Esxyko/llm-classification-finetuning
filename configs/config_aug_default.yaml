@@ -91,7 +91,7 @@ qwen3_4b_qlora:
   gradient_checkpointing: true
   epochs: 2
   warmup_epochs: 1
-  extraction_batch_size: 1
+  extraction_batch_size: 8
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
