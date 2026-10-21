@@ -54,6 +54,8 @@ For LoRA, `head_inference_batch_size` is a required positive integer replacing
 key is rejected. `warmup_extraction_batch_size` controls backbone extraction for
 warmup, every joint-validation pass, and submissions, including when warmup is
 disabled. Head inference uses its own batch size after extraction completes.
+`gradient_accumulation_steps` applies only to joint training; warmup performs one
+optimizer update per `warmup_training_batch_size` batch.
 
 ## GPU configuration
 

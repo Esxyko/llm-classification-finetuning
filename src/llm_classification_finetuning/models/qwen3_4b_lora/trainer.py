@@ -331,10 +331,7 @@ class LoRATrainer:
 		validation_rows: tuple[int, ...] = (),
 	) -> TrainingProgress:
 		"""Combine training and validation work, weighting all warmup work by half."""
-		warmup_batch_size = (
-			self._config.warmup_training_batch_size
-			* self._config.gradient_accumulation_steps
-		)
+		warmup_batch_size = self._config.warmup_training_batch_size
 		joint_batch_size = (
 			self._config.training_batch_size * self._config.gradient_accumulation_steps
 		)
@@ -385,12 +382,12 @@ class LoRATrainer:
 		if head_only:
 			model.backbone.eval()
 		optimizer.zero_grad(set_to_none=True)
-		batch_size = (
+		effective_batch_size = (
 			self._config.warmup_training_batch_size
 			if head_only
 			else self._config.training_batch_size
+			* self._config.gradient_accumulation_steps
 		)
-		effective_batch_size = batch_size * self._config.gradient_accumulation_steps
 		total_rows = len(loader.dataset)
 		loss_total = torch.zeros((), device=self._device, dtype=torch.float64)
 		finite_losses = torch.ones((), device=self._device, dtype=torch.bool)

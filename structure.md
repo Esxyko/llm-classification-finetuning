@@ -169,6 +169,7 @@ exports over importing private helpers across package boundaries.
 | `structure.md` | Code ownership, runtime flow, artifact layout, and implementation invariants |
 | `scripts/validate_all_configs.py` | Cross-validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all folds for each YAML file in `configs/`, with separate tagged checkpoints |
+| `scripts/count_fold_tokens.py` | Count actual unpadded, untruncated A/B tokens in saved folds using training serialization; publish per-ID CSV, fold CSV, and tokenizer/source metadata |
 | `configs/` | Complete YAML configurations with both models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Default location for folded Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
@@ -243,8 +244,10 @@ modules. Do not make application logic depend on a particular timestamped run.
   No LoRA input is truncated: empty or over-limit branches fail before training/encoding with
   the offending ID and branch. Warmup extracts each training/validation ID once
   in canonical orientation using `warmup_extraction_batch_size`, then selects
-  oriented feature views with `warmup_training_batch_size`. Warmup validation
-  reuses the frozen CPU features in `head_inference_batch_size` batches. Both feature
+  oriented feature views with `warmup_training_batch_size`. Each warmup batch
+  performs one optimizer update without `gradient_accumulation_steps`, which
+  applies only to joint training. Warmup validation reuses the frozen CPU features
+  in `head_inference_batch_size` batches. Both feature
   views are released at the start of joint training; `warmup_epochs: 0` skips
   warmup feature extraction. Each joint-validation pass and test submission
   extracts fresh canonical features from the current model in eval/no-gradient
@@ -275,8 +278,9 @@ modules. Do not make application logic depend on a particular timestamped run.
   `--refresh-cache` refreshes requested shared token encodings and LoRA plans;
   test inference uses the same text cache with its checkpoint's tokenizer revision.
   Total epochs equal `warmup_epochs + epochs`; both phases retain the head's
-  optimizer state and normalize accumulation by actual row counts, including
-  incomplete groups. Validation and test average both orientations' probabilities.
+  optimizer state and normalize loss by actual row counts per update, including
+  short warmup batches and incomplete joint accumulation groups. Validation and
+  test average both orientations' probabilities.
 - Cross-validation and builds use one shared `gpu.device`. `--submit` requires
   exactly two distinct `gpu.submit_devices`, defaulting to `[cuda:0, cuda:1]`,
   independently of the training GPU. Both devices must support `gpu.precision`;
@@ -311,7 +315,7 @@ modules. Do not make application logic depend on a particular timestamped run.
   A/B-selected training rows and original validation IDs, rounding batches/groups
   separately per fold. Training groups (including FP16-skipped updates) and
   validation batches count as one unit, except LoRA warmup training/validation
-  count as half a unit each. Extraction, preparation, caches, and publication are
+  batches count as half a unit each. Extraction, preparation, caches, and publication are
   excluded. Dynamic micro-batches preserve update-group boundaries. See
   [training progress](docs/models.md#training-progress).
 - Cross-validation monitors PyTorch allocated and reserved memory peaks on

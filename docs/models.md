@@ -55,7 +55,8 @@ Training rows follow `A/B_swap`: both orientations for `aug`, original IDs only
 for `inf`. Validation always uses original IDs, with both probability orientations
 averaged inside each batch. Rounding each fold separately accounts for uneven
 folds and short final batches. [LoRA progress](lora.md#training-progress) includes
-gradient accumulation and merges warmup at half weight into the same counter.
+joint-training gradient accumulation and counts each warmup batch at half weight
+in the same counter.
 
 Training update groups and the validation batches after every epoch advance the
 same counter. Feature extraction, token/batch-plan preparation, cache operations,

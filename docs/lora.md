@@ -113,11 +113,13 @@ feature pool occupies about 1.10 GiB. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
 `warmup_training_batch_size` is a required positive integer controlling only the
-head-warmup micro-batch size over extracted features (root preset: `1`).
-Joint training uses `training_batch_size` and the
+head-warmup batch size over extracted features (root preset: `8`). Each warmup
+batch performs one optimizer update without gradient accumulation, independently
+of `gradient_accumulation_steps`. Joint training uses `training_batch_size`,
+`gradient_accumulation_steps`, and the
 [optional token budget](#optional-token-budget-training-batches).
-Both stages use `gradient_accumulation_steps` and normalize loss by the
-actual row count of each update group, including short final batches. The
+Both stages normalize loss by the actual row count of each update, including
+short final warmup batches and incomplete joint accumulation groups. The
 joint-training decay schedule uses only joint optimizer updates.
 `warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
@@ -161,13 +163,13 @@ joint validation, or submission separately.
 Head warmup, joint training, and the validation batches after every epoch share
 one progress counter across all epochs and folds. Progress is printed at
 approximately 10% intervals, with the current stage identified in each line.
-Each warmup training update group and warmup validation batch counts as **0.5**
+Each warmup training batch and warmup validation batch counts as **0.5**
 work units; each joint-training update group and joint validation batch counts as
 **1**. With `warmup_epochs: 0`, the total contains only joint training and its
 validation.
 
 For each fold, let `W` be
-`ceil(training_rows / (warmup_training_batch_size * gradient_accumulation_steps))`,
+`ceil(training_rows / warmup_training_batch_size)`,
 `J` be `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`,
 and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
 IDs. The fold contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
@@ -175,9 +177,10 @@ units. Cross-validation sums the separately rounded fold counts; a build uses
 all selected training rows with `V = 0`. Training counts respect `A/B_swap`,
 including original IDs only for `inf`.
 
-Training advances the counter after a complete accumulation group, including
-short groups and groups whose FP16 parameter update is skipped. Evaluation
-advances it once per head-validation batch, using the corresponding stage's weight.
+Training advances the counter after each warmup batch or complete joint
+accumulation group, including short batches/groups and skipped FP16 updates.
+Evaluation advances it once per head-validation batch, using the corresponding
+stage's weight.
 Dynamic token batches retain the same group counts regardless of how many
 micro-batches each group contains.
 Percentage logs replace the previous first-batch/every-100-batches training logs;
