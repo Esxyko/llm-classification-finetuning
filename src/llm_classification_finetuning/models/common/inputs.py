@@ -11,6 +11,7 @@ import pandas as pd
 
 from ...config import MAX_VALIDATION_ROW_DEVIATION
 from ...errors import ModelExecutionError
+from .cache_storage import CacheCorruptionError, CacheStorage
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +49,8 @@ class TrainingInputLoader:
 		self._validation_fraction = validation_fraction
 
 	def load(self) -> TrainingInputs:
-		if not self._processed_path.is_file():
+		storage = CacheStorage(self._processed_path)
+		if not storage.exists():
 			raise ModelExecutionError(
 				f"Processed split data not found: {self._processed_path}. "
 				"Run 'uv run preprocess' with the selected --config first."
@@ -56,15 +58,22 @@ class TrainingInputLoader:
 		try:
 			from pyarrow.parquet import read_schema
 
-			columns = read_schema(self._processed_path).names
-			if "fold" in columns and "split" not in columns:
-				raise ModelExecutionError(
-					"Legacy fold data is no longer supported. Set data.processed_path "
-					"to data/processed/train_validation.parquet and run 'uv run preprocess'."
+			with storage.open("r") as session:
+				columns = read_schema(session.path).names
+				if "fold" in columns and "split" not in columns:
+					raise ModelExecutionError(
+						"Legacy fold data is no longer supported. Set data.processed_path "
+						"to data/processed/train_validation.parquet and run 'uv run preprocess'."
+					)
+				data = pd.read_parquet(
+					session.path, columns=list(self.REQUIRED_COLUMNS)
 				)
-			data = pd.read_parquet(
-				self._processed_path, columns=list(self.REQUIRED_COLUMNS)
-			)
+				fingerprint = _sha256(session.path)
+		except CacheCorruptionError as error:
+			raise ModelExecutionError(
+				f"Corrupt processed split data {self._processed_path}: {error}. "
+				"Run 'uv run preprocess' with the selected --config to rebuild it."
+			) from error
 		except ModelExecutionError:
 			raise
 		except Exception as error:
@@ -72,7 +81,7 @@ class TrainingInputLoader:
 				f"Could not read processed split data {self._processed_path}: {error}"
 			) from error
 		self.validate(data, validation_fraction=self._validation_fraction)
-		return TrainingInputs(data=data, fingerprint=_sha256(self._processed_path))
+		return TrainingInputs(data=data, fingerprint=fingerprint)
 
 	@staticmethod
 	def validate(

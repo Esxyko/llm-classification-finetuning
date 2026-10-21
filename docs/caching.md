@@ -18,6 +18,11 @@ SQLite tables, and PyTorch payloads retain their existing formats. Logical paths
 such as `<key>.sqlite3` and `<key>.pt` identify caches even when the corresponding
 single file is replaced by volumes.
 
+The [processed training Parquet](data-preparation.md#processed-data) uses this
+same interface and size policy for pipeline output and input loading. Its
+configured `.parquet` path remains the logical path; the default saved split's
+manifest and volumes are tracked with regular Git storage.
+
 Files smaller than 100 MiB (104,857,600 bytes) remain single files. Files at or
 above that threshold are split into volumes of at most 99 MiB (103,809,024 bytes),
 keeping every published file below GitHub's 100 MiB per-file limit. This rule is

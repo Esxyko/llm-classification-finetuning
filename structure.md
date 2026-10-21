@@ -21,7 +21,7 @@ guide when a reader needs operational instructions.
 ```text
 selected YAML config (defaults to config.yaml)
   -> init -> Kaggle download -> stratified 80/20 holdout -> token balancing + A/B augmentation
-     -> data/processed/train_validation.parquet
+     -> data/processed/train_validation.parquet (single file or manifest + volumes)
 
 train_validation.parquet
   -> model MODEL (default) -> validation.csv + metrics -> result -> PNG + XLSX report
@@ -84,7 +84,8 @@ and print summaries. Business logic belongs below the CLI layer.
 - `preprocess/`
   - `splits.py`: Derives labels and canonical prompt hashes, assigns stratified
     group partitions, invokes token balancing and augmentation, summarizes canonical
-    token/class counts, and atomically writes Parquet only after balancing succeeds.
+    token/class counts, and atomically publishes Parquet through `CacheStorage`
+    only after balancing succeeds, applying the shared multipart size policy.
   - `token_balance.py`: Counts unpadded/untruncated canonical A+B tokens using
     the training serializer and shared token cache, then deterministically swaps
     equal-class whole prompt groups to meet the configured token tolerance.
@@ -160,8 +161,9 @@ and print summaries. Business logic belongs below the CLI layer.
       shared registry pipeline interface. `WarmupBuildResult` reports the
       logical cache path, reuse, oriented training rows, and executed epochs.
     - `inputs.py`: Loads training/test tables, checks required columns, split membership and prompt isolation,
-      orientation counts and label mappings, and test/template ID order; computes
-      source fingerprints for all active profiles.
+      orientation counts and label mappings, and test/template ID order; reads
+      processed Parquet through `CacheStorage` and computes source fingerprints
+      from reconstructed bytes for all active profiles.
     - `data.py`: Serializes aligned conversation branches for pairwise models.
     - `compatibility.py`: Builds shared cache and checkpoint compatibility keys.
     - `publishers.py`: Stages and atomically publishes validation.csv and single-run
@@ -174,8 +176,9 @@ and print summaries. Business logic belongs below the CLI layer.
       per-run allocator monitoring without clearing caches.
     - `extractor.py`: Resolve pinned backbone/token identities on CPU, hash local
       weights when needed, and lazily encode only missing frozen branches on GPU.
-    - `cache_storage.py`: Own the shared disk-backed cache file sessions, Windows/Linux
-      process locks, atomic publication, checksummed multipart storage at 100 MiB,
+    - `cache_storage.py`: Own the shared disk-backed cache and processed-Parquet
+      file sessions, Windows/Linux process locks, atomic publication, and
+      checksummed multipart storage at 100 MiB,
       and corruption archives. Volumes are at most 99 MiB; private `.cache-work/`
       files are Git-ignored and removed after sessions.
     - `cache.py`: Persist per-branch embeddings by effective tokens and backbone
@@ -224,7 +227,7 @@ exports over importing private helpers across package boundaries.
 | `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
-| `data/processed/train_validation.parquet` | Saved default train/validation split, versioned with Git LFS and required by standalone warmup |
+| `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/adapter_batches/` | Shared LoRA/QLoRA holdout/build batch-plan caches, keyed by selected rows, lengths, budget, and update-group size |
@@ -237,9 +240,9 @@ exports over importing private helpers across package boundaries.
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source
-modules. Git tracks the default `data/processed/train_validation.parquet` through
-Git LFS and the shared model-cache directories under `data/processed/`, including
-multipart manifests and volumes, while raw competition data, other processed
+modules. Git tracks the default `data/processed/train_validation.parquet` or its
+multipart manifest and volumes, and the shared model-cache directories under
+`data/processed/`, using regular Git storage. Raw competition data, other processed
 outputs, and `.cache-work/` directories remain ignored. Do not make application
 logic depend on a particular timestamped run.
 
@@ -492,14 +495,18 @@ logic depend on a particular timestamped run.
   alongside complete runtime in `metrics.json`; failed runs only attempt a
   terminal peak summary without masking the execution error. Builds and
   submissions do not enable monitoring. See [GPU memory peaks](docs/reports.md#gpu-memory-peaks).
-- All active persistent caches use the common `CacheStorage` interface without
-  changing their logical keys or serialization schemas. Serialized files at or
-  above 100 MiB are published as a manifest and SHA-256-checked volumes of at
+- All active persistent caches and the processed training Parquet use the common
+  `CacheStorage` interface without changing logical keys or serialization schemas.
+  Serialized files at or above 100 MiB are published as a manifest and
+  SHA-256-checked volumes of at
   most 99 MiB. Single-file and multipart inputs use the same read/update API;
   process locks cover reconstruction through publication or archival. Only
   changed cache sessions publish, and failed publication retains the previous
   valid artifact. Full working files and SQLite journals stay in Git-ignored
-  `.cache-work/` directories. Production checkpoints are outside this size rule.
+  `.cache-work/` directories. Processed-data readers recognize logical presence
+  through a single file or manifest and fingerprint reconstructed Parquet bytes;
+  corrupt volumes are archived and require preprocessing again. Production
+  checkpoints are outside this size rule.
   See [shared cache storage](docs/caching.md#shared-storage-and-multipart-files).
 - Generated files and directories are staged before publication. Report
   publication restores the previous directory after a recoverable promotion

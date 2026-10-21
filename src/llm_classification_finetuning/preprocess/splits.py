@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +12,7 @@ import pandas as pd
 
 from ..config import MAX_VALIDATION_ROW_DEVIATION, ValidationConfig
 from ..errors import DataPreparationError
-from ..models.common import TrainingInputLoader
+from ..models.common import CacheStorage, TrainingInputLoader
 from .augmentation import ABAugmenter
 from .token_balance import SplitTokenBalancer
 
@@ -219,36 +217,14 @@ class SplitPreprocessor:
 	@staticmethod
 	def _write_parquet(data: pd.DataFrame, output_path: Path) -> None:
 		try:
-			output_path.parent.mkdir(parents=True, exist_ok=True)
-		except OSError as error:
-			raise DataPreparationError(
-				f"Could not create processed data directory {output_path.parent}: {error}"
-			) from error
-
-		temporary_path: Path | None = None
-		try:
-			with tempfile.NamedTemporaryFile(
-				dir=output_path.parent,
-				prefix=f".{output_path.stem}-",
-				suffix=".tmp.parquet",
-				delete=False,
-			) as temporary_file:
-				temporary_path = Path(temporary_file.name)
-
-			data.to_parquet(
-				temporary_path,
-				engine="pyarrow",
-				compression="zstd",
-				index=False,
-			)
-			os.replace(temporary_path, output_path)
+			with CacheStorage(output_path).open("w") as session:
+				data.to_parquet(
+					session.path,
+					engine="pyarrow",
+					compression="zstd",
+					index=False,
+				)
 		except Exception as error:
 			raise DataPreparationError(
 				f"Could not write processed Parquet file {output_path}: {error}"
 			) from error
-		finally:
-			if temporary_path is not None:
-				try:
-					temporary_path.unlink(missing_ok=True)
-				except OSError:
-					pass

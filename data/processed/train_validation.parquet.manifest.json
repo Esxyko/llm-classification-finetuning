@@ -1,0 +1,17 @@
+{
+  "parts": [
+    {
+      "name": "000001-49863c5614b22cc3450b9f9e98cd330c3085d75a5b4a70bb7e5eab66b5b31705.part",
+      "sha256": "49863c5614b22cc3450b9f9e98cd330c3085d75a5b4a70bb7e5eab66b5b31705",
+      "size": 103809024
+    },
+    {
+      "name": "000002-257a6a27c48c5cf2879d3832973fcbafa81f11f63a0f336cf08316d553391fb1.part",
+      "sha256": "257a6a27c48c5cf2879d3832973fcbafa81f11f63a0f336cf08316d553391fb1",
+      "size": 40796313
+    }
+  ],
+  "sha256": "f2e9efb77dd2888609fb49c64b8b6884fd0deb05418e951151386667a64ab787",
+  "size": 144605337,
+  "version": 1
+}

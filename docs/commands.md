@@ -19,6 +19,10 @@ All commands accept [`--config PATH`](configuration.md#configuration-files-and-p
 | `uv run model MODEL --submit` | Creates a submission with the selected model's checkpoint | `results/submit/MODEL-*/submission.csv` |
 | `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
 
+Processed Parquet outputs use the listed logical path. Files at or above 100 MiB
+are stored as a manifest plus volumes of at most 99 MiB and loaded automatically;
+see [processed data](data-preparation.md#processed-data).
+
 ## Model selection and execution modes
 
 Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, `qwen3-4b-qlora`, `warmup`, or exact uppercase `ALL`.

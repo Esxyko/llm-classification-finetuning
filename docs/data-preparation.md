@@ -39,8 +39,25 @@ Parquet atomically published. Failure leaves any previous dataset in place.
 
 ## Processed data
 
-The default output is `data/processed/train_validation.parquet`. Source columns
-are retained, with these additions:
+The default logical output is `data/processed/train_validation.parquet`.
+The pipeline uses the same storage interface as caches: compressed Parquet files
+smaller than 100 MiB remain single files; files at or above that size are published
+as `train_validation.parquet.manifest.json` and a
+`train_validation.parquet.parts/` directory, with each volume at most 99 MiB.
+Commit the manifest and all referenced volumes together; the saved default split
+uses regular Git storage. Keep `data.processed_path` pointing to the logical
+`.parquet` path for either layout.
+
+Model training, standalone warmup, and token statistics automatically reconstruct
+and checksum multipart inputs in an ignored `.cache-work/` directory. The source
+fingerprint hashes the reconstructed Parquet bytes, preserving its identity
+across storage layouts. Existing single-file inputs remain readable and adopt
+the size rule when preprocessing next writes them. Corrupt multipart data is
+archived and loading fails with instructions to rerun preprocessing. See
+[shared storage](caching.md#shared-storage-and-multipart-files) for locks, atomic
+publication, and temporary disk-space requirements.
+
+Source columns are retained, with these additions:
 
 | Column | Meaning |
 | --- | --- |

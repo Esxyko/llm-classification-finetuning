@@ -18,6 +18,8 @@ wheels/
 !/data/processed/
 /data/processed/*
 !/data/processed/train_validation.parquet
+!/data/processed/train_validation.parquet.manifest.json
+!/data/processed/train_validation.parquet.parts/
 !/data/processed/token_cache/
 !/data/processed/embedding_cache/
 !/data/processed/adapter_batches/

@@ -6,7 +6,6 @@
 
 - Python 3.14 or newer
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
-- Git LFS for the versioned `data/processed/train_validation.parquet`
 - A Kaggle account with the competition rules accepted
 - One CUDA GPU for training and two CUDA GPUs for submission inference (data
   preparation and report generation do not require a GPU)
@@ -45,15 +44,14 @@ Run these commands from the project root.
    uv run init
    ```
 
-   The output is `data/processed/train_validation.parquet`.
+   The logical output is `data/processed/train_validation.parquet`. Large outputs
+   use a manifest and volumes; see [processed data](data-preparation.md#processed-data).
 
-For `uv run model warmup --build` with the saved default split, retrieve the
-versioned Parquet through Git LFS instead of downloading and preprocessing raw
-competition data:
+For `uv run model warmup --build` with the saved default split, use the versioned
+Parquet manifest and all referenced volumes included in the checkout. The loader
+reconstructs the split automatically, so raw competition data is not required:
 
 ```shell
-git lfs install --local
-git lfs pull --include="data/processed/train_validation.parquet"
 uv run model warmup --build
 ```
 

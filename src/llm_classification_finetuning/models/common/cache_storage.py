@@ -1,4 +1,4 @@
-"""Atomically publish cache files below GitHub's per-file size limit."""
+"""Atomically publish cache and processed-data files within the per-file size limit."""
 
 from __future__ import annotations
 
