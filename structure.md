@@ -155,6 +155,10 @@ and print summaries. Business logic belongs below the CLI layer.
       per-run allocator monitoring without clearing caches.
     - `extractor.py`: Resolve pinned backbone/token identities on CPU, hash local
       weights when needed, and lazily encode only missing frozen branches on GPU.
+    - `cache_storage.py`: Own the shared disk-backed cache file sessions, Windows/Linux
+      process locks, atomic publication, checksummed multipart storage at 100 MiB,
+      and corruption archives. Volumes are at most 99 MiB; private `.cache-work/`
+      files are Git-ignored and removed after sessions.
     - `cache.py`: Persist per-branch embeddings by effective tokens and backbone
       computation identity in SQLite shards shared across datasets/configs/modes;
       rebind vectors to current positions and recompute only missing/corrupt rows.
@@ -212,7 +216,9 @@ exports over importing private helpers across package boundaries.
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source
-modules. Do not make application logic depend on a particular timestamped run.
+modules. Git tracks the shared model-cache directories under `data/processed/`,
+including multipart manifests and volumes, while `.cache-work/` directories
+remain ignored. Do not make application logic depend on a particular timestamped run.
 
 ## Invariants to preserve
 
@@ -442,6 +448,15 @@ modules. Do not make application logic depend on a particular timestamped run.
   alongside complete runtime in `metrics.json`; failed runs only attempt a
   terminal peak summary without masking the execution error. Builds and
   submissions do not enable monitoring. See [GPU memory peaks](docs/reports.md#gpu-memory-peaks).
+- All active persistent caches use the common `CacheStorage` interface without
+  changing their logical keys or serialization schemas. Serialized files at or
+  above 100 MiB are published as a manifest and SHA-256-checked volumes of at
+  most 99 MiB. Single-file and multipart inputs use the same read/update API;
+  process locks cover reconstruction through publication or archival. Only
+  changed cache sessions publish, and failed publication retains the previous
+  valid artifact. Full working files and SQLite journals stay in Git-ignored
+  `.cache-work/` directories. Production checkpoints are outside this size rule.
+  See [shared cache storage](docs/caching.md#shared-storage-and-multipart-files).
 - Generated files and directories are staged before publication. Report
   publication restores the previous directory after a recoverable promotion
   failure and reports the backup path if restoration fails.

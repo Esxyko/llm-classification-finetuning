@@ -1,6 +1,7 @@
 """Shared Qwen comparison model execution infrastructure."""
 
 from .backbone import LocalBackboneFingerprint
+from .cache_storage import CacheCorruptionError, CacheFileSession, CacheStorage
 from .compatibility import ModelCompatibility
 from .contracts import (
 	ModelBuildResult,
@@ -29,6 +30,9 @@ from .trainer import EpochMetrics, ValidationTrainingResult
 
 __all__ = (
 	"ABSwapAverager",
+	"CacheCorruptionError",
+	"CacheFileSession",
+	"CacheStorage",
 	"ConversationSerializer",
 	"EpochMetrics",
 	"GPUEnvironment",

@@ -6,15 +6,16 @@ import hashlib
 import json
 import sqlite3
 from collections.abc import Sequence
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from uuid import uuid4
 
 import numpy as np
 import torch
 from torch import Tensor
 
 from ...errors import ModelExecutionError
+from .cache_storage import CacheCorruptionError, CacheStorage
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,22 +69,13 @@ class EmbeddingCache:
 		return self.root / f"{digest}.sqlite3"
 
 	@staticmethod
-	def _corrupt(error: sqlite3.DatabaseError) -> bool:
-		return getattr(error, "sqlite_errorcode", 0) & 0xFF in (
+	def _corrupt(error: sqlite3.DatabaseError | CacheCorruptionError) -> bool:
+		return isinstance(error, CacheCorruptionError) or getattr(
+			error, "sqlite_errorcode", 0
+		) & 0xFF in (
 			sqlite3.SQLITE_CORRUPT,
 			sqlite3.SQLITE_NOTADB,
 		)
-
-	@staticmethod
-	def _archive(path: Path) -> None:
-		archive = path.with_name(f"{path.stem}.corrupt-{uuid4().hex}.sqlite3")
-		try:
-			path.replace(archive)
-		except OSError as error:
-			raise ModelExecutionError(
-				f"Could not archive embedding cache {path}: {error}"
-			) from error
-		print(f"Archived corrupt embedding cache: {archive}", flush=True)
 
 	def load(
 		self,
@@ -101,47 +93,49 @@ class EmbeddingCache:
 			(len(input_keys), key.hidden_size), dtype=torch.float16, device="cpu"
 		)
 		path = self.path(key)
-		if refresh_cache or not path.is_file():
+		storage = CacheStorage(path)
+		if refresh_cache or not storage.exists():
 			return EmbeddingCacheRows(features, missing, 0)
-		connection = None
 		try:
-			connection = sqlite3.connect(path, timeout=30)
-			names = list(positions)
-			for start in range(0, len(names), self.CHUNK_SIZE):
-				chunk = names[start : start + self.CHUNK_SIZE]
-				placeholders = ",".join("?" for _ in chunk)
-				for name, blob, checksum in connection.execute(
-					f"SELECT input_sha256, features, checksum FROM embeddings WHERE input_sha256 IN ({placeholders})",
-					chunk,
-				):
-					if (
-						not isinstance(blob, bytes)
-						or len(blob) != 2 * key.hidden_size
-						or hashlib.sha256(blob).hexdigest() != checksum
-					):
-						continue
-					values = np.frombuffer(blob, dtype="<f2")
-					vector = torch.from_numpy(values.astype(np.float16, copy=True))
-					features[positions[name]] = vector
-					del missing[name]
-		except sqlite3.DatabaseError as error:
-			if connection is not None:
-				connection.close()
-				connection = None
-			if self._corrupt(error):
-				self._archive(path)
-				missing = {name: tuple(indices) for name, indices in positions.items()}
-			elif "no such table: embeddings" not in str(error):
-				raise ModelExecutionError(
-					f"Could not read embedding cache {path}: {error}"
-				) from error
-		except OSError as error:
+			with storage.open("r") as session:
+				try:
+					with closing(
+						sqlite3.connect(session.path, timeout=30)
+					) as connection:
+						names = list(positions)
+						for start in range(0, len(names), self.CHUNK_SIZE):
+							chunk = names[start : start + self.CHUNK_SIZE]
+							placeholders = ",".join("?" for _ in chunk)
+							for name, blob, checksum in connection.execute(
+								f"SELECT input_sha256, features, checksum FROM embeddings WHERE input_sha256 IN ({placeholders})",
+								chunk,
+							):
+								if (
+									not isinstance(blob, bytes)
+									or len(blob) != 2 * key.hidden_size
+									or hashlib.sha256(blob).hexdigest() != checksum
+								):
+									continue
+								values = np.frombuffer(blob, dtype="<f2")
+								vector = torch.from_numpy(
+									values.astype(np.float16, copy=True)
+								)
+								features[positions[name]] = vector
+								del missing[name]
+				except sqlite3.DatabaseError as error:
+					if self._corrupt(error):
+						session.archive()
+						missing = {
+							name: tuple(indices) for name, indices in positions.items()
+						}
+					elif "no such table: embeddings" not in str(error):
+						raise
+		except CacheCorruptionError, FileNotFoundError:
+			missing = {name: tuple(indices) for name, indices in positions.items()}
+		except (sqlite3.Error, OSError) as error:
 			raise ModelExecutionError(
 				f"Could not read embedding cache {path}: {error}"
 			) from error
-		finally:
-			if connection is not None:
-				connection.close()
 		return EmbeddingCacheRows(features, missing, len(positions) - len(missing))
 
 	def save(self, key: EmbeddingCacheKey, rows: EmbeddingCacheRows) -> None:
@@ -149,16 +143,22 @@ class EmbeddingCache:
 		if not rows.missing:
 			return
 		path = self.path(key)
+		storage = CacheStorage(path)
 		try:
-			self.root.mkdir(parents=True, exist_ok=True)
 			for attempt in range(2):
 				try:
-					self._save_rows(path, key, rows)
+					with storage.open("rw") as session:
+						try:
+							self._save_rows(session.path, key, rows)
+						except sqlite3.DatabaseError as error:
+							if not attempt and self._corrupt(error):
+								session.archive()
+							raise
+						session.mark_dirty()
 					return
-				except sqlite3.DatabaseError as error:
+				except (sqlite3.DatabaseError, CacheCorruptionError) as error:
 					if attempt or not self._corrupt(error):
 						raise
-					self._archive(path)
 		except (sqlite3.Error, OSError) as error:
 			raise ModelExecutionError(
 				f"Could not write embedding cache {path}: {error}"

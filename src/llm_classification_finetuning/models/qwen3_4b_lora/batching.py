@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import pickle
-import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +19,7 @@ from transformers import AutoConfig
 from ...config import AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
 from ..common import (
+	CacheStorage,
 	LocalBackboneFingerprint,
 	ModelData,
 	ModelDataRepository,
@@ -253,10 +252,14 @@ class _BatchCache:
 
 	def load(self, kind: str, metadata: dict[str, Any]) -> dict[str, Any] | None:
 		path = self.path(kind, metadata)
-		if not path.is_file():
+		storage = CacheStorage(path)
+		if not storage.exists():
 			return None
 		try:
-			payload = torch.load(path, map_location="cpu", weights_only=True)
+			with storage.open("r") as session:
+				payload = torch.load(
+					session.path, map_location="cpu", weights_only=True
+				)
 			if isinstance(payload, dict) and payload.get("metadata") == metadata:
 				return payload
 		except (
@@ -276,26 +279,13 @@ class _BatchCache:
 
 	def save(self, kind: str, metadata: dict[str, Any], values: dict[str, Any]) -> None:
 		path = self.path(kind, metadata)
-		temporary_path: Path | None = None
 		try:
-			path.parent.mkdir(parents=True, exist_ok=True)
-			with tempfile.NamedTemporaryFile(
-				dir=path.parent, prefix=f".{path.stem}-", suffix=".tmp.pt", delete=False
-			) as temporary_file:
-				temporary_path = Path(temporary_file.name)
-			torch.save({"metadata": metadata, **values}, temporary_path)
-			os.replace(temporary_path, path)
-			temporary_path = None
+			with CacheStorage(path).open("w") as session:
+				torch.save({"metadata": metadata, **values}, session.path)
 		except Exception as error:
 			raise ModelExecutionError(
 				f"Could not write {self._model_label} batch cache {path}: {error}"
 			) from error
-		finally:
-			if temporary_path is not None:
-				try:
-					temporary_path.unlink(missing_ok=True)
-				except OSError:
-					pass
 
 
 class LoRATrainingBatchRepository:

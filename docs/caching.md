@@ -11,6 +11,76 @@ otherwise FP32) and are not persisted. Uncached warmup reuses its feature
 pool; each joint-validation or submission call extracts fresh features with the
 current model and releases them on return.
 
+## Shared storage and multipart files
+
+All four cache types use the common `CacheStorage` file interface. Cache keys,
+SQLite tables, and PyTorch payloads retain their existing formats. Logical paths
+such as `<key>.sqlite3` and `<key>.pt` identify caches even when the corresponding
+single file is replaced by volumes.
+
+Files smaller than 100 MiB (104,857,600 bytes) remain single files. Files at or
+above that threshold are split into volumes of at most 99 MiB (103,809,024 bytes),
+keeping every published file below GitHub's 100 MiB per-file limit. This rule is
+fixed, without compression or additional configuration, and does not apply to
+production model checkpoints. See [GitHub's file size limits](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
+
+A multipart cache uses `<original-name>.manifest.json` and an accompanying
+`<original-name>.parts/` directory. Manifest version 1 records the complete byte
+length and SHA-256, plus an ordered list of volume names, lengths, and SHA-256
+checksums. Volumes are named `000001-<sha256>.part`, `000002-<sha256>.part`, and
+so on. Commit the manifest and all referenced volumes together. Git preserves
+volume bytes without line-ending conversion through `.gitattributes`.
+
+Reads reconstruct and validate multipart files on disk rather than loading an
+entire serialized file into memory. Each session uses a private `.cache-work/`
+directory beside the logical cache, removed when the session ends; lock files
+remain there for reuse. These working directories are ignored by Git and may
+temporarily contain files larger than the publication limit. Allow disk space
+for a reconstructed file and newly staged volumes when updating large caches.
+
+Sessions hold a per-cache process lock on Windows and Linux, with a 30-second
+lock timeout. Updates operate on private working copies. After serialization
+and all file handles have closed, small files are atomically replaced; multipart
+updates publish all volumes before atomically replacing the manifest. Unchanged
+hits do not rewrite published files. Old volumes are cleaned after publication;
+an interrupted write or unsuccessful cleanup can leave unreferenced volumes,
+which the next successful write removes. A failed publication keeps the previous
+valid cache authoritative.
+
+Missing volumes, invalid metadata, and checksum mismatches archive the multipart
+artifact before reporting a cache miss or rebuilding, according to the cache
+type. SQLite corruption also uses the shared archive operation. Single-file
+archives at or above the threshold are split rather than retained as oversized
+files. Oversized corrupt manifest or volume components are themselves split
+inside the archive, preserving their bytes for inspection through `CacheStorage`.
+Legacy single-file caches remain readable and use the size rule on their
+next write. `--refresh-cache` keeps its existing meaning.
+
+The shared Python interface is exported from `models.common`:
+
+```python
+from pathlib import Path
+
+import torch
+
+from llm_classification_finetuning.models.common import CacheStorage
+
+storage = CacheStorage(Path("data/processed/adapter_batches/example.pt"))
+with storage.open("w") as session:
+    torch.save({"example": 1}, session.path)
+with storage.open("r") as session:
+    payload = torch.load(session.path, map_location="cpu", weights_only=True)
+```
+
+`open("w")` publishes on successful exit; `open("rw")` copies an existing cache
+or prepares a new path and publishes only after `session.mark_dirty()`.
+`open("r")` never publishes. Close SQLite connections or other file handles
+before leaving any session. `exists()` checks logical presence; `archive()`
+quarantines an artifact, and `session.archive()` does so within an existing
+session lock. Missing artifacts raise `FileNotFoundError` on reads; malformed
+multipart artifacts raise `CacheCorruptionError` after archival. These storage
+errors remain subject to each cache's existing recovery policy.
+
 ## Frozen embeddings
 
 The frozen model shares content-addressed embeddings between training and test

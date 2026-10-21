@@ -5,10 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import pickle
 import random
-import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -20,7 +18,7 @@ from torch.optim import AdamW
 
 from ...config import GPUConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
-from ..common import PairwiseClassificationHead
+from ..common import CacheStorage, PairwiseClassificationHead
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,9 +99,10 @@ class HeadWarmupCache:
 		if refresh:
 			return entry
 		try:
-			payload = torch.load(
-				self.path(entry), map_location="cpu", weights_only=True
-			)
+			with CacheStorage(self.path(entry)).open("r") as session:
+				payload = torch.load(
+					session.path, map_location="cpu", weights_only=True
+				)
 			self._validate(payload, metadata)
 			return WarmupCacheEntry(metadata, payload)
 		except (
@@ -128,7 +127,6 @@ class HeadWarmupCache:
 	) -> None:
 		"""Publish only after the final warmup validation has completed."""
 		path = self.path(entry)
-		temporary_path: Path | None = None
 		try:
 			numpy_state = np.random.get_state()
 			payload = {
@@ -162,24 +160,12 @@ class HeadWarmupCache:
 				},
 			}
 			self._validate(payload, entry.metadata)
-			path.parent.mkdir(parents=True, exist_ok=True)
-			with tempfile.NamedTemporaryFile(
-				dir=path.parent, prefix=f".{path.stem}-", suffix=".tmp.pt", delete=False
-			) as temporary_file:
-				temporary_path = Path(temporary_file.name)
-			torch.save(payload, temporary_path)
-			os.replace(temporary_path, path)
-			temporary_path = None
+			with CacheStorage(path).open("w") as session:
+				torch.save(payload, session.path)
 		except Exception as error:
 			raise ModelExecutionError(
 				f"Could not save {self._model_label} warmup cache {path}: {error}"
 			) from error
-		finally:
-			if temporary_path is not None:
-				try:
-					temporary_path.unlink(missing_ok=True)
-				except OSError:
-					pass
 
 	def restore(
 		self,

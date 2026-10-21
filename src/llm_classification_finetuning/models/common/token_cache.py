@@ -10,13 +10,13 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import numpy as np
 import transformers
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from ...errors import ModelExecutionError
+from .cache_storage import CacheCorruptionError, CacheStorage
 from .data import PairwiseText
 
 
@@ -255,25 +255,37 @@ class TokenizationCache:
 			return {}, 0, 0
 		namespace = self._namespace(options)
 		path = self.root / f"{namespace}.sqlite3"
+		storage = CacheStorage(path)
 		try:
-			self.root.mkdir(parents=True, exist_ok=True)
 			for attempt in range(2):
 				try:
-					return self._read_or_encode(
-						path, namespace, texts, options, refresh
-					)
-				except sqlite3.DatabaseError as error:
+					with storage.open("rw") as session:
+						try:
+							result = self._read_or_encode(
+								session.path, namespace, texts, options, refresh
+							)
+						except sqlite3.DatabaseError as error:
+							code = getattr(error, "sqlite_errorcode", 0) & 0xFF
+							if not attempt and code in (
+								sqlite3.SQLITE_CORRUPT,
+								sqlite3.SQLITE_NOTADB,
+							):
+								session.archive()
+							raise
+						if result[2]:
+							session.mark_dirty()
+					return result
+				except (sqlite3.DatabaseError, CacheCorruptionError) as error:
 					code = getattr(error, "sqlite_errorcode", 0) & 0xFF
-					if attempt or code not in (
-						sqlite3.SQLITE_CORRUPT,
-						sqlite3.SQLITE_NOTADB,
+					if attempt or (
+						not isinstance(error, CacheCorruptionError)
+						and code
+						not in (
+							sqlite3.SQLITE_CORRUPT,
+							sqlite3.SQLITE_NOTADB,
+						)
 					):
 						raise
-					archive = path.with_name(
-						f"{path.stem}.corrupt-{uuid4().hex}.sqlite3"
-					)
-					path.replace(archive)
-					print(f"Archived corrupt token cache: {archive}", flush=True)
 		except (sqlite3.Error, OSError) as error:
 			raise ModelExecutionError(
 				f"Could not read/write token cache {path}: {error}"
