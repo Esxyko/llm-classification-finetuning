@@ -43,7 +43,11 @@ head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
 All commands accept `--config PATH` and default to `config.yaml` in the working
 directory. Relative config-file paths resolve from the working directory.
 `AppConfig.load` reads `.env` there without overriding existing environment
-variables. Relative YAML data paths resolve from `DATA_PATH`, which defaults
+variables. Package initialization also loads that `.env` before HF imports.
+A non-empty `DATA_PATH` sets `HF_HOME` to `<DATA_PATH>/huggingface` and
+`HF_HUB_CACHE` to `<DATA_PATH>/huggingface/hub`, overriding those HF variables;
+missing or blank `DATA_PATH` preserves standard HF cache settings.
+Relative YAML data paths resolve from `DATA_PATH`, which defaults
 to the working directory when missing or blank; a relative `DATA_PATH` resolves
 from the working directory. Absolute YAML data paths stay absolute. Model
 artifacts and reports are rooted in the working directory, regardless of the
@@ -71,7 +75,9 @@ and print summaries. Business logic belongs below the CLI layer.
 
 `src/llm_classification_finetuning/`
 
-- `__init__.py`: Sets the default Hugging Face download endpoint to
+- `__init__.py`: Loads working-directory `.env` without overriding existing
+  environment variables before HF imports, roots downloaded model/tokenizer
+  caches in `DATA_PATH` when set, and sets the default HF download endpoint to
   `https://hf-mirror.com` before library imports, preserving an existing
   `HF_ENDPOINT` environment variable. For this mirror, also defaults
   `HF_HUB_DISABLE_XET` to `1` to use HTTP downloads, preserving an explicit
@@ -234,6 +240,8 @@ exports over importing private helpers across package boundaries.
 | `scripts/validate_all_configs.py` | Validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all original IDs from both partitions for each YAML file in `configs/`, with separate tagged checkpoints |
 | `scripts/count_split_tokens.py` | Count actual unpadded, untruncated A/B tokens in the saved split using training serialization; publish per-ID CSV, split CSV, and tokenizer/source metadata |
+| `scripts/migrate_hf_models.py` | Copy or move existing HF model repositories into `DATA_PATH/huggingface/hub`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
+| `<DATA_PATH>/huggingface/hub/` | Native HF cache for downloaded model weights, configurations, and tokenizers when `DATA_PATH` is set |
 | `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |

@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-Caches sit beside the processed Parquet selected by
+Training caches sit beside the processed Parquet selected by
 [`data.processed_path`](configuration.md#configuration-files-and-paths).
 Frozen embeddings, shared text encodings, adapter batch plans, and head-warmup
 states have separate compatibility rules. LoRA/QLoRA warmup, joint-validation,
@@ -10,6 +10,51 @@ and submission features stay in temporary CPU memory (BF16 in BF16 mode,
 otherwise FP32) and are not persisted. Uncached warmup reuses its feature
 pool; each joint-validation or submission call extracts fresh features with the
 current model and releases them on return.
+
+## Hugging Face model downloads
+
+Downloaded base models, tokenizers, and model configurations use
+`<DATA_PATH>/huggingface/hub` when `DATA_PATH` is non-empty in `.env` or the
+environment. Relative paths and `~` follow the same rules as
+[data paths](configuration.md#configuration-files-and-paths). With no `DATA_PATH`,
+Hugging Face keeps its usual cache configuration. These downloads use the native
+HF cache layout and are outside the training-cache multipart policy below.
+
+To migrate existing model downloads, set `DATA_PATH`, stop any processes using
+the source or destination cache, and run from the project root:
+
+```shell
+uv run python scripts/migrate_hf_models.py --move --dry-run
+uv run python scripts/migrate_hf_models.py --move
+```
+
+The source defaults to `HF_HUB_CACHE`, then legacy `HUGGINGFACE_HUB_CACHE`,
+then `<HF_HOME>/hub`, or `~/.cache/huggingface/hub` with the normal
+`XDG_CACHE_HOME` fallback. The script reads these settings before importing any
+project or HF module, so the new `DATA_PATH` does not replace the source path.
+If necessary, pass the old **Hub cache directory**, containing `models--*`
+directories, explicitly:
+
+```shell
+uv run python scripts/migrate_hf_models.py --source "C:/Users/me/.cache/huggingface/hub" --move
+```
+
+Without `--move`, the script copies and retains the source. `--dry-run` prints
+the plan without creating or deleting files. Each model repository is copied
+into a temporary destination directory, checked file by file with SHA-256, and
+published only after verification. `--move` removes that repository's source
+only after publication. Existing destination model directories are rejected
+without overwriting them; source and destination paths must not overlap.
+An error stops the script with exit code `1`; previously completed repositories
+remain in the destination.
+
+The script preserves `blobs`, `refs`, snapshots, and internal file symlinks;
+absolute links are rebased so they do not depend on the old cache. On Windows
+without symlink privileges, linked snapshots become regular files and may use
+more disk space. Only `models--*` repositories are migrated. Authentication
+tokens, datasets, spaces, download locks, and Xet caches are excluded. For a
+private model, use `HF_TOKEN` or set `HF_TOKEN_PATH` to the existing token file
+if authentication was previously stored under the old `HF_HOME`.
 
 ## Shared storage and multipart files
 

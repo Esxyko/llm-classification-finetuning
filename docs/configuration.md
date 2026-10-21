@@ -25,6 +25,16 @@ With the default YAML paths, this uses `D:/datasets/data/raw` and
 `D:/datasets/data/processed/train_validation.parquet`. Data caches stored beside
 the processed Parquet follow it to the selected location.
 
+A non-empty `DATA_PATH` also stores Hugging Face downloads under
+`D:/datasets/huggingface/hub` in this example. Package initialization loads
+`.env` before importing Hugging Face libraries and sets `HF_HOME` to
+`<DATA_PATH>/huggingface` and `HF_HUB_CACHE` to `<DATA_PATH>/huggingface/hub`.
+`DATA_PATH` takes precedence over existing values of these two HF variables.
+If `DATA_PATH` is missing or blank, Hugging Face keeps its usual cache settings.
+This applies to downloaded model weights, configurations, and tokenizers;
+locally configured model paths remain unchanged. See
+[model cache migration](caching.md#hugging-face-model-downloads) for existing downloads.
+
 For example, from the project root:
 
 ```shell

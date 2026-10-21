@@ -13,6 +13,9 @@ wheels/
 # Local secrets
 .env
 
+# Downloaded Hugging Face caches when DATA_PATH is inside this checkout
+huggingface/
+
 # Downloaded and generated competition data, except the saved split and model caches
 /data/*
 !/data/processed/

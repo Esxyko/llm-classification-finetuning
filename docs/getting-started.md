@@ -61,12 +61,17 @@ repository. Raw CSVs and token-statistics reports are not warmup inputs.
 
 ## Hugging Face downloads
 
+When `.env` or the environment specifies a non-empty `DATA_PATH`, downloaded
+models and tokenizers use `<DATA_PATH>/huggingface/hub`. Otherwise the standard
+Hugging Face cache settings apply. Existing downloads can be moved with the
+[model migration script](caching.md#hugging-face-model-downloads).
+
 Project commands and token-statistics downloads default to
 [`https://hf-mirror.com`](https://hf-mirror.com) for Hugging Face model,
 configuration, and tokenizer files. Package initialization sets `HF_ENDPOINT`
 before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
-variable takes precedence; set it before starting the command to use another
-endpoint. This default does not require a `.env` entry.
+variable takes precedence; set it in `.env` or before starting the command to
+use another endpoint. This default does not require a `.env` entry.
 
 When the endpoint is `https://hf-mirror.com`, initialization also defaults
 `HF_HUB_DISABLE_XET` to `1` so model weights use HTTP downloads instead of the
