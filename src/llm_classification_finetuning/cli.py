@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import NoReturn, Sequence
-
-from dotenv import load_dotenv
+from typing import NoReturn
 
 from .cli_config import add_config_argument
 from .cli_output import print_download_result, print_split_result
@@ -30,10 +29,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _prepare_data(config_path: Path) -> None:
-	load_dotenv(
-		dotenv_path=Path.cwd() / ".env",
-		override=False,
-	)
 	config = AppConfig.load(config_path)
 	result = PrepareDataPipeline(config).run(on_download=print_download_result)
 	print_split_result(result.splits)

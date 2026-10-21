@@ -4,6 +4,21 @@
 
 - **Kaggle download fails:** Accept the competition rules, verify
   `KAGGLE_API_TOKEN`, and check network access.
+- **Warmup or model download fails with `CAS Client Error` and `401 Unauthorized`:**
+  The Xet client failed to authenticate while downloading model weights. Project
+  commands now default to HTTP downloads when using `https://hf-mirror.com`.
+  Restart the command with the updated code. If Xet was explicitly enabled,
+  disable it before starting the command, for example in PowerShell:
+
+  ```powershell
+  $env:HF_HUB_DISABLE_XET = "1"
+  uv run model warmup --build
+  ```
+
+  For notebooks, restart the kernel and set the variable before importing
+  `transformers` or `huggingface_hub`. A `401` from the Hub itself can still
+  require a valid `HF_TOKEN` and access to the configured repository. See
+  [Hugging Face downloads](getting-started.md#hugging-face-downloads).
 - **Configuration file is missing:** Run from the intended working directory or
   pass the correct file path with `--config`.
 - **A configuration field is missing or unknown:** Each command validates the

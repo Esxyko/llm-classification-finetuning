@@ -41,9 +41,13 @@ head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
 ```
 
 All commands accept `--config PATH` and default to `config.yaml` in the working
-directory. Relative config-file and data paths resolve from the working
-directory. `init` and `data` read `.env` there; model artifacts and reports are
-also rooted there, regardless of the config file's location.
+directory. Relative config-file paths resolve from the working directory.
+`AppConfig.load` reads `.env` there without overriding existing environment
+variables. Relative YAML data paths resolve from `DATA_PATH`, which defaults
+to the working directory when missing or blank; a relative `DATA_PATH` resolves
+from the working directory. Absolute YAML data paths stay absolute. Model
+artifacts and reports are rooted in the working directory, regardless of the
+config file's location.
 The paths shown in the flow are those in the root preset; raw/processed paths
 follow the selected YAML. Batch-config scripts instead run each model from the
 project root derived from their own file location.
@@ -69,9 +73,12 @@ and print summaries. Business logic belongs below the CLI layer.
 
 - `__init__.py`: Sets the default Hugging Face download endpoint to
   `https://hf-mirror.com` before library imports, preserving an existing
-  `HF_ENDPOINT` environment variable.
-- `config.py`: Immutable config value objects, strict YAML validation, and path
-  resolution. `WarmupModelConfig` owns shared head-warmup fields;
+  `HF_ENDPOINT` environment variable. For this mirror, also defaults
+  `HF_HUB_DISABLE_XET` to `1` to use HTTP downloads, preserving an explicit
+  Xet setting and leaving other endpoints' Xet behavior unchanged.
+- `config.py`: Immutable config value objects, strict YAML validation, `.env`
+  loading, and data path resolution through optional `DATA_PATH`.
+  `WarmupModelConfig` owns shared head-warmup fields;
   `LoRAModelConfig` extends it with joint-training and adapter settings.
 - `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
@@ -218,7 +225,7 @@ exports over importing private helpers across package boundaries.
 | Path | Role |
 | --- | --- |
 | `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, three optional model sections, and an independent optional `warmup` section |
-| `.env.example` | Template for the local Kaggle token in `.env` |
+| `.env.example` | Template for the local Kaggle token and optional `DATA_PATH` in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `requirements-submit.txt` | Submission-only installation pins for PyTorch 2.11.0+cu128 and Transformers 5.16.1; retains the normal training lock |
 | `README.md` | Project overview and documentation index |

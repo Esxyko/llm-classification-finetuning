@@ -68,6 +68,13 @@ before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
 variable takes precedence; set it before starting the command to use another
 endpoint. This default does not require a `.env` entry.
 
+When the endpoint is `https://hf-mirror.com`, initialization also defaults
+`HF_HUB_DISABLE_XET` to `1` so model weights use HTTP downloads instead of the
+Xet client, avoiding its CAS authorization failures. An existing
+`HF_HUB_DISABLE_XET` value takes precedence; set it to `0` before starting the
+command to opt back into Xet. Other endpoints keep their existing Xet behavior.
+See the [Hugging Face environment variable reference](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhubdisablexet).
+
 For example, to select an endpoint in PowerShell:
 
 ```powershell
@@ -76,7 +83,9 @@ uv run model warmup --build
 ```
 
 When using the Python API, import `llm_classification_finetuning` before
-`transformers` or `huggingface_hub` so the default takes effect.
+`transformers` or `huggingface_hub` so the download defaults take effect. Restart
+an existing notebook kernel or Python process if those libraries were already
+imported.
 
 ## Submission environment: PyTorch 2.11 / CUDA 12.8
 

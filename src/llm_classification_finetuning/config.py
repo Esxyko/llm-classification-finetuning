@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 
 from .errors import ConfigurationError
 
@@ -117,7 +119,9 @@ class AppConfig:
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
-		"""Read YAML and resolve relative data paths from the working directory."""
+		"""Read YAML and .env, resolving relative data paths from DATA_PATH or cwd."""
+		working_dir = Path.cwd()
+		load_dotenv(dotenv_path=working_dir / ".env", override=False)
 		resolved_config_path = config_path.expanduser().resolve()
 		if not resolved_config_path.is_file():
 			raise ConfigurationError(
@@ -202,7 +206,9 @@ class AppConfig:
 		competition = _require_non_empty_string(
 			data_section.get("competition"), "data.competition"
 		)
-		base_dir = Path.cwd()
+		base_dir = _resolve_data_path(
+			working_dir, os.environ.get("DATA_PATH", "").strip()
+		)
 		raw_dir = _resolve_data_path(
 			base_dir,
 			_require_non_empty_string(data_section.get("raw_dir"), "data.raw_dir"),

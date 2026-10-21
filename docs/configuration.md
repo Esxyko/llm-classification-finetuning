@@ -6,10 +6,24 @@
 
 All commands read `config.yaml` from the working directory by default. Pass a
 complete YAML file with `--config PATH` to `init`, `data`, `preprocess`, `model`,
-or `result`. Relative config-file paths and relative `data.raw_dir` and
-`data.processed_path` values resolve from the working directory; absolute paths
-stay absolute. Model artifacts and reports also remain under the working
-directory. `init` and `data` load `.env` from the working directory.
+or `result`. Relative config-file paths resolve from the working directory.
+All commands load `.env` from that directory, preserving existing environment
+variables.
+
+Set `DATA_PATH` in `.env` to choose the base directory for relative
+`data.raw_dir` and `data.processed_path` values. If it is missing, empty, or
+whitespace-only, the base defaults to the working directory. A relative
+`DATA_PATH` resolves from the working directory, and `~` expands to the user's
+home directory. Absolute YAML data paths stay absolute. Model artifacts and
+reports remain under the working directory.
+
+```dotenv
+DATA_PATH=D:/datasets
+```
+
+With the default YAML paths, this uses `D:/datasets/data/raw` and
+`D:/datasets/data/processed/train_validation.parquet`. Data caches stored beside
+the processed Parquet follow it to the selected location.
 
 For example, from the project root:
 

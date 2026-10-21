@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
-from typing import NoReturn, Sequence
-
-from dotenv import load_dotenv
+from collections.abc import Sequence
+from typing import NoReturn
 
 from ..cli_config import add_config_argument
 from ..cli_output import print_download_result
@@ -31,7 +29,6 @@ def run(arguments: Sequence[str] | None = None) -> int:
 	parsed_arguments = build_parser().parse_args(arguments)
 
 	try:
-		load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
 		config = AppConfig.load(parsed_arguments.config)
 		result = CompetitionDataDownloader(config.data).ensure_available()
 		print_download_result(result)
