@@ -30,4 +30,17 @@ def print_fold_result(result: FoldPreparationResult) -> None:
 			f"{class_percentages[1]:>7.2f}%  "
 			f"{class_percentages[2]:>6.2f}%"
 		)
+	print("Canonical inputs (before A/B augmentation):")
+	print(
+		"fold  source_rows  model_a  model_b     tie     A+B tokens  augmented tokens  deviation"
+	)
+	for summary in result.folds:
+		print(
+			f"{summary.fold:>4}  {summary.source_rows:>11,}  "
+			f"{summary.source_class_counts[0]:>7,}  "
+			f"{summary.source_class_counts[1]:>7,}  "
+			f"{summary.source_class_counts[2]:>6,}  "
+			f"{summary.tokens_total:>13,}  {summary.tokens_augmented:>16,}  "
+			f"{summary.token_deviation_pct:>+8.4f}%"
+		)
 	print(f"Wrote processed data: {result.output_path}")

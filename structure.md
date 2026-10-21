@@ -20,7 +20,7 @@ guide when a reader needs operational instructions.
 
 ```text
 selected YAML config (defaults to config.yaml)
-  -> init -> Kaggle download -> fold assignment + A/B augmentation
+  -> init -> Kaggle download -> stratified folds -> token balancing + A/B augmentation
      -> data/processed/train_folds.parquet
 
 train_folds.parquet
@@ -77,7 +77,11 @@ and print summaries. Business logic belongs below the CLI layer.
     for existing files.
 - `preprocess/`
   - `folds.py`: Derives labels and canonical prompt hashes, assigns stratified
-    group folds, invokes augmentation, and atomically writes Parquet.
+    group folds, invokes token balancing and augmentation, summarizes canonical
+    token/class counts, and atomically writes Parquet only after balancing succeeds.
+  - `token_balance.py`: Counts unpadded/untruncated canonical A+B tokens using
+    the training serializer and shared token cache, then deterministically swaps
+    equal-class whole prompt groups to meet the configured token tolerance.
   - `augmentation.py`: Appends one A/B-swapped counterpart per source row.
 - `models/`
   - `__init__.py`: Registers each selector with its profile and pipeline.
@@ -187,6 +191,13 @@ modules. Do not make application logic depend on a particular timestamped run.
 ## Invariants to preserve
 
 - Rows with the same canonical prompt must stay in one fold.
+- Token balancing preserves each initial stratified fold's source row count and
+  three original class counts by exchanging only whole groups with identical
+  class-count vectors. Canonical A+B totals include special tokens and exclude
+  padding/truncation. Every fold must meet `cross_validation.max_token_deviation`
+  relative to the mean (default 1%) before publishing; stalled or over-1,000-swap
+  assignments fail without replacing the previous dataset. Augmentation doubles
+  token totals and therefore preserves the same relative balance.
 - Every source row has exactly one swapped row with the same `id`, `group_id`, and
   `fold`; A/B fields and labels `0`/`1` are reversed, while label `2` is unchanged.
 - Prediction CSVs use `id`, `winner_model_a`, `winner_model_b`, and `winner_tie`
@@ -292,6 +303,10 @@ modules. Do not make application logic depend on a particular timestamped run.
   the embedding device, pooling indices follow hidden states, and pooled features
   return to the head device. Hardware placement is excluded from checkpoint and
   cache compatibility, and complete frozen cache hits skip backbone loading.
+- LoRA SDPA encoding permits only Flash, memory-efficient, and cuDNN backends;
+  math fallback is disabled for warmup, joint training, validation, submission,
+  and gradient-checkpoint recomputation. Unsupported inputs fail, and scoped
+  backend flags are restored without changing the frozen profile's policy.
 - LoRA checkpoint compatibility excludes hardware, compute precision, and batch
   settings; model name, classifier size/dropout, LoRA settings, input format,
   schema/class count, pooling, truncation side, and bias are checked. Context

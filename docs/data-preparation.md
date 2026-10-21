@@ -18,8 +18,26 @@ The preparation pipeline:
    are missing.
 2. Keeps identical canonical prompts in the same stratified fold to prevent
    leakage.
-3. Adds one A/B-swapped copy of every training row to reduce position bias.
-4. Writes a Zstandard-compressed Parquet file.
+3. Counts canonical A+B tokens with the training serializer and configured
+   tokenizer, reusing the shared token cache without padding or truncation.
+4. Swaps complete prompt groups with identical three-class counts until every
+   fold's token total is within 1% of the mean by default. This preserves the
+   initial fold's source row count and each original class count exactly.
+5. Adds one A/B-swapped copy of every training row to reduce position bias.
+6. Writes a Zstandard-compressed Parquet file after reaching the balance target.
+
+Class balance distributes each original class across folds while retaining the
+dataset's class proportions; it does not resample the classes to equal sizes.
+The group exchanges are deterministic for the same inputs, tokenizer, settings,
+and random seed, and stop as soon as the target is reached. If no improving
+exchange exists, or 1,000 exchanges are insufficient, preparation fails and
+leaves the previous Parquet in place. Tokenizer or serialization failures also
+leave it unchanged. No model weights or GPU are required.
+
+The terminal summary shows both augmented class percentages and canonical row
+counts, class counts, A+B token totals, augmented token totals, and signed
+deviations from the mean. Configure the tokenizer and tolerance under
+[`cross_validation`](configuration.md#fold-token-balance).
 
 The processed file preserves the source columns and adds:
 
@@ -42,7 +60,8 @@ and `response_b` must be JSON arrays with the same nonzero turn count. Prompts
 must be strings; response entries may be strings or `null`, with `null`
 serialized as an empty response. Training requires exactly one original and one
 swapped row per ID in the same fold, with labels translated back consistently.
-These input checks happen when the model loads the processed data.
+Conversation checks run during preprocessing and when loading model inputs;
+fold and orientation-pair checks run when the model loads the processed data.
 
 ## Count tokens in each saved fold
 
@@ -57,11 +76,16 @@ serialization as training, preserving the saved folds. It counts special tokens
 and excludes padding and truncation. The default model is `qwen3-4b-lora`;
 `--model qwen3-4b`, `--config PATH`, `--revision REVISION`, and `--output-dir PATH`
 are also supported. Omit `--local-files-only` to allow downloading tokenizer files.
-No model weights are loaded.
+When the selected model name matches `cross_validation.tokenizer_name`, the
+script defaults to its pinned `tokenizer_revision`; `--revision` overrides it.
+No model weights are loaded. Run this command after regeneration to refresh
+the reports for the new assignments.
 
 Reports default to `data/processed/fold_token_stats/`: `per_id.csv` contains A/B
-lengths, `folds.csv` contains fold totals and branch-length percentiles, and
-`summary.json` records the source fingerprint and tokenizer revision. Each fold's
+lengths and original labels, `folds.csv` contains original class counts, fold
+totals, signed `token_deviation_pct`, and branch-length percentiles, and
+`summary.json` records the source fingerprint, tokenizer revision, configured
+balance settings, and measured maximum deviation. Each fold's
 `tokens_total` counts its original A/B inputs once; `tokens_augmented` includes
 both orientations. `train_tokens` counts the other folds using the configured
 training orientations (`aug` doubles the count; `inf` does not). These are input

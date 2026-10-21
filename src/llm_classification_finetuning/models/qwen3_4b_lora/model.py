@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+
 import torch
 from peft import LoraConfig, TaskType, get_peft_model
 from torch import Tensor, nn
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AutoModel
 
 from ...config import GPUConfig, LoRAModelConfig
@@ -54,7 +57,10 @@ class LoRAQwenClassifier(nn.Module):
 			self.backbone.to(device)
 		if config.gradient_checkpointing and device_map is None:
 			self.backbone.get_base_model().gradient_checkpointing_enable(
-				gradient_checkpointing_kwargs={"use_reentrant": False}
+				gradient_checkpointing_kwargs={
+					"use_reentrant": False,
+					"context_fn": self._checkpoint_contexts,
+				}
 			)
 		if device_map is not None:
 			self.backbone.get_base_model().gradient_checkpointing_disable()
@@ -73,10 +79,13 @@ class LoRAQwenClassifier(nn.Module):
 				if branch.attention_mask is not None
 				else None
 			)
-			with torch.autocast(
-				device_type="cuda",
-				dtype=self.dtype,
-				enabled=self.dtype != torch.float32,
+			with (
+				self._attention_context(),
+				torch.autocast(
+					device_type="cuda",
+					dtype=self.dtype,
+					enabled=self.dtype != torch.float32,
+				),
 			):
 				hidden = self.backbone(
 					input_ids=input_ids,
@@ -104,3 +113,20 @@ class LoRAQwenClassifier(nn.Module):
 		"""Average both head orientations after encoding each branch once."""
 		a, b = self.encode(batch)
 		return ABSwapAverager.log_probabilities(self.classifier, a, b)
+
+	@staticmethod
+	def _attention_context() -> AbstractContextManager[object]:
+		"""Require a fused SDPA kernel and restore backend flags after encoding."""
+		return sdpa_kernel(
+			[
+				SDPBackend.FLASH_ATTENTION,
+				SDPBackend.EFFICIENT_ATTENTION,
+				SDPBackend.CUDNN_ATTENTION,
+			]
+		)
+
+	def _checkpoint_contexts(
+		self,
+	) -> tuple[AbstractContextManager[object], AbstractContextManager[object]]:
+		"""Keep math disabled during checkpoint forward and backward recomputation."""
+		return self._attention_context(), self._attention_context()

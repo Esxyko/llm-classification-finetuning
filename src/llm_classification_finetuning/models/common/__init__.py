@@ -10,6 +10,7 @@ from .contracts import (
 	ModelSubmitResult,
 )
 from .data import (
+	ConversationSerializer,
 	ModelData,
 	ModelDataRepository,
 	ModelTestDataRepository,
@@ -27,6 +28,7 @@ from .trainer import EpochMetrics, FoldTrainingResult
 
 __all__ = (
 	"ABSwapAverager",
+	"ConversationSerializer",
 	"EpochMetrics",
 	"FoldTrainingResult",
 	"GPUEnvironment",

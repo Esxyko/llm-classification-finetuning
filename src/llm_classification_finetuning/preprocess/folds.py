@@ -16,6 +16,7 @@ from sklearn.model_selection import StratifiedGroupKFold
 from ..config import CrossValidationConfig
 from ..errors import DataPreparationError
 from .augmentation import ABAugmenter
+from .token_balance import FoldTokenBalancer
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,11 @@ class FoldSummary:
 	rows: int
 	groups: int
 	class_counts: tuple[int, int, int]
+	source_rows: int
+	source_class_counts: tuple[int, int, int]
+	tokens_total: int
+	tokens_augmented: int
+	token_deviation_pct: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +57,7 @@ class FoldPreprocessor:
 	def __init__(self, config: CrossValidationConfig) -> None:
 		self._config = config
 		self._augmenter = ABAugmenter()
+		self._token_balancer = FoldTokenBalancer(config)
 
 	def prepare(self, train_path: Path, output_path: Path) -> FoldPreparationResult:
 		"""Create folds, augment A/B order, and atomically write the artifact."""
@@ -64,8 +71,12 @@ class FoldPreprocessor:
 
 		unique_groups = int(data["group_id"].nunique())
 		data["fold"] = self._assign_folds(data)
+		balanced = self._token_balancer.balance(
+			data, output_path.parent / "token_cache"
+		)
+		data["fold"] = balanced.folds
 		data = self._augmenter.augment(data)
-		summaries = self._summarize_folds(data)
+		summaries = self._summarize_folds(data, balanced.pair_tokens)
 		self._write_parquet(data, output_path)
 
 		return FoldPreparationResult(
@@ -117,11 +128,20 @@ class FoldPreprocessor:
 
 		return pd.Series(fold_assignments, index=data.index, dtype="int16")
 
-	def _summarize_folds(self, data: pd.DataFrame) -> tuple[FoldSummary, ...]:
+	def _summarize_folds(
+		self, data: pd.DataFrame, pair_tokens: np.ndarray
+	) -> tuple[FoldSummary, ...]:
 		summaries: list[FoldSummary] = []
+		source = data.loc[~data["is_swapped"]].assign(_tokens=pair_tokens)
+		mean_tokens = float(pair_tokens.sum()) / self._config.n_splits
 		for fold in range(self._config.n_splits):
 			fold_data = data.loc[data["fold"].eq(fold)]
 			counts = fold_data["label"].value_counts().reindex((0, 1, 2), fill_value=0)
+			fold_source = source.loc[source["fold"].eq(fold)]
+			source_counts = (
+				fold_source["label"].value_counts().reindex((0, 1, 2), fill_value=0)
+			)
+			tokens = int(fold_source["_tokens"].sum())
 			summaries.append(
 				FoldSummary(
 					fold=fold,
@@ -132,6 +152,11 @@ class FoldPreprocessor:
 						int(counts.loc[1]),
 						int(counts.loc[2]),
 					),
+					source_rows=len(fold_source),
+					source_class_counts=tuple(int(value) for value in source_counts),
+					tokens_total=tokens,
+					tokens_augmented=tokens * 2,
+					token_deviation_pct=(tokens / mean_tokens - 1.0) * 100,
 				)
 			)
 		return tuple(summaries)

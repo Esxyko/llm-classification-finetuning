@@ -6,6 +6,9 @@ data:
 cross_validation:
   n_splits: 5
   random_state: 42
+  tokenizer_name: Qwen/Qwen3-4B
+  tokenizer_revision: 1cfa9a7208912126459214e8b04321603b3df60c
+  max_token_deviation: 0.01
 
 gpu:
   device: cuda:0

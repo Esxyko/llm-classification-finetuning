@@ -22,7 +22,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | Section | Controls |
 | --- | --- |
 | `data` | Competition name and raw/processed paths |
-| `cross_validation` | Fold count and random seed |
+| `cross_validation` | Fold count, random seed, tokenizer identity, and maximum fold token deviation |
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by both models |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `warmup_extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
@@ -40,6 +40,9 @@ Only these YAML fields have parser defaults when omitted:
 
 | Field | Default |
 | --- | --- |
+| `cross_validation.tokenizer_name` | `Qwen/Qwen3-4B` |
+| `cross_validation.tokenizer_revision` | `null` (resolve the current revision) |
+| `cross_validation.max_token_deviation` | `0.01` (1% of the mean fold token count) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` | `aug` |
 | `qwen3_4b_lora.training_token_budget` | `0` |
@@ -48,6 +51,28 @@ All other fields in a present section are required, including `gpu.device`,
 `warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys are
 rejected. Numeric values described as presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
+
+## Fold token balance
+
+`init` and `preprocess` first assign stratified prompt groups, then exchange
+whole groups with identical original class counts until each fold's canonical
+A+B token total is within `max_token_deviation` of the mean. The deviation must
+be a finite number strictly between 0 and 1; `0.01` means a maximum absolute
+relative deviation of 1%, rather than a 1% token share. Class counts and source
+row counts in each initial fold remain unchanged.
+
+Token counting uses the training conversation serializer, special tokens, and
+the shared `token_cache/` beside the processed Parquet. It excludes padding and
+truncation and loads no model weights or GPU. `tokenizer_name` accepts a Hub
+name or local tokenizer/model directory. `tokenizer_revision` is optional; pin
+an immutable revision for reproducible counts. Both active presets pin
+`Qwen/Qwen3-4B` to `1cfa9a7208912126459214e8b04321603b3df60c`.
+
+These settings are independent of the optional training model sections. When
+using a different training tokenizer, update the balance tokenizer as well.
+Missing tokenizer files may be downloaded on preparation. If equal-class group
+swaps cannot reach the target within 1,000 exchanges, preparation fails before
+replacing the processed dataset. See [data preparation](data-preparation.md).
 
 For LoRA, `head_inference_batch_size` is a required positive integer replacing
 `inference_batch_size`; rename the old key while preserving its value. The old

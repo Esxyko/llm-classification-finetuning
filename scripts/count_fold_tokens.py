@@ -85,7 +85,7 @@ class FoldTokenStatistics:
 				"tokens_total": lengths.sum(axis=1),
 			}
 		).merge(
-			data.reference.loc[~data.reference["is_swapped"], ["id", "fold"]],
+			data.reference.loc[~data.reference["is_swapped"], ["id", "fold", "label"]],
 			on="id",
 			validate="one_to_one",
 		)
@@ -107,6 +107,16 @@ class FoldTokenStatistics:
 			"source_rows": len(rows),
 			"tokens_total": int(lengths.sum()),
 			"tokens_augmented": int(lengths.sum()) * 2,
+			"fold_balance": {
+				"tokenizer_name": self._config.cross_validation.tokenizer_name,
+				"tokenizer_revision": self._config.cross_validation.tokenizer_revision,
+				"random_state": self._config.cross_validation.random_state,
+				"target_max_token_deviation": self._config.cross_validation.max_token_deviation,
+				"measured_max_token_deviation": float(
+					folds["token_deviation_pct"].abs().max()
+				)
+				/ 100,
+			},
 			"train_tokens_definition": (
 				"Unpadded, untruncated input tokens in the other folds for one pass "
 				"over the configured training orientations (aug=2x, inf=1x). "
@@ -132,20 +142,28 @@ class FoldTokenStatistics:
 
 	def _summarize(self, rows: pd.DataFrame) -> pd.DataFrame:
 		total_tokens = int(rows["tokens_total"].sum())
+		mean_fold_tokens = total_tokens / self._config.cross_validation.n_splits
 		training_multiplier = 2 if self._model.ab_swap == "aug" else 1
 		summaries = []
 		for fold, subset in rows.groupby("fold", sort=True):
 			branches = subset[["tokens_a", "tokens_b"]].to_numpy().reshape(-1)
 			tokens = int(subset["tokens_total"].sum())
+			counts = subset["label"].value_counts().reindex((0, 1, 2), fill_value=0)
 			median, p95, p99 = np.quantile(branches, [0.5, 0.95, 0.99])
 			summaries.append(
 				{
 					"fold": int(fold),
 					"source_rows": len(subset),
+					"model_a_wins": int(counts.loc[0]),
+					"model_b_wins": int(counts.loc[1]),
+					"ties": int(counts.loc[2]),
 					"tokens_a": int(subset["tokens_a"].sum()),
 					"tokens_b": int(subset["tokens_b"].sum()),
 					"tokens_total": tokens,
 					"tokens_augmented": tokens * 2,
+					"token_deviation_pct": (tokens / mean_fold_tokens - 1) * 100
+					if mean_fold_tokens
+					else 0,
 					"token_share_pct": tokens / total_tokens * 100
 					if total_tokens
 					else 0,
@@ -178,11 +196,17 @@ def main() -> int:
 	try:
 		config = AppConfig.load(args.config)
 		model = MODEL_REGISTRY[args.model].profile.resolve_config(config)
+		revision = args.revision
+		if (
+			revision is None
+			and model.model_name == config.cross_validation.tokenizer_name
+		):
+			revision = config.cross_validation.tokenizer_revision
 		FoldTokenStatistics(
 			config,
 			model,
 			batch_size=args.batch_size,
-			revision=args.revision,
+			revision=revision,
 			local_files_only=args.local_files_only,
 		).run(args.output_dir or config.data.processed_path.parent / "fold_token_stats")
 	except (DataPreparationError, OSError, ValueError) as error:

@@ -38,6 +38,15 @@ Set `gpu.device` to a single `cuda:N` identifier for training and choose
 GPU's capabilities. FP16 uses gradient scaling; adapters and classifier weights
 remain FP32 in all three modes.
 
+With `gpu.attention_implementation: sdpa`, LoRA permits only Flash, memory-efficient,
+and cuDNN attention kernels. The `math` backend is disabled during every backbone
+encoding, including warmup, validation, submission, and gradient-checkpoint
+recomputation. If none of these fused kernels supports the current GPU, precision,
+and inputs, execution fails instead of falling back to `math`. Backend flags are
+restored after each scoped call. Explicit `eager` attention remains available.
+This uses PyTorch's [SDPA backend context](https://docs.pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html)
+and checkpoint [forward/recomputation contexts](https://docs.pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint).
+
 The root [`config.yaml`](../config.yaml) preset allows **each branch** up to
 16,384 tokens, dynamically pads A and B independently, processes branches
 sequentially, and enables non-reentrant activation checkpointing with KV caching

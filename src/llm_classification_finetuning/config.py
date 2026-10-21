@@ -28,6 +28,9 @@ class CrossValidationConfig:
 
 	n_splits: int
 	random_state: int
+	tokenizer_name: str = "Qwen/Qwen3-4B"
+	tokenizer_revision: str | None = None
+	max_token_deviation: float = 0.01
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +148,13 @@ class AppConfig:
 		)
 		_reject_unknown_keys(
 			cross_validation_section,
-			{"n_splits", "random_state"},
+			{
+				"n_splits",
+				"random_state",
+				"tokenizer_name",
+				"tokenizer_revision",
+				"max_token_deviation",
+			},
 			"cross_validation",
 		)
 		gpu_section = _require_mapping(root.get("gpu"), "gpu")
@@ -195,6 +204,23 @@ class AppConfig:
 			cross_validation_section.get("random_state"),
 			"cross_validation.random_state",
 		)
+		tokenizer_name = _require_non_empty_string(
+			cross_validation_section.get("tokenizer_name", "Qwen/Qwen3-4B"),
+			"cross_validation.tokenizer_name",
+		)
+		tokenizer_revision = cross_validation_section.get("tokenizer_revision")
+		if tokenizer_revision is not None:
+			tokenizer_revision = _require_non_empty_string(
+				tokenizer_revision, "cross_validation.tokenizer_revision"
+			)
+		max_token_deviation = _require_float(
+			cross_validation_section.get("max_token_deviation", 0.01),
+			"cross_validation.max_token_deviation",
+		)
+		if not 0.0 < max_token_deviation < 1.0:
+			raise ConfigurationError(
+				"cross_validation.max_token_deviation must be in (0, 1)."
+			)
 
 		device = _require_cuda_device(gpu_section.get("device"), "gpu.device")
 		submit_devices = gpu_section.get("submit_devices", ["cuda:0", "cuda:1"])
@@ -232,6 +258,9 @@ class AppConfig:
 			cross_validation=CrossValidationConfig(
 				n_splits=n_splits,
 				random_state=random_state,
+				tokenizer_name=tokenizer_name,
+				tokenizer_revision=tokenizer_revision,
+				max_token_deviation=max_token_deviation,
 			),
 			gpu=GPUConfig(
 				device=device,
