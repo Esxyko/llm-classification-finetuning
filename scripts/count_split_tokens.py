@@ -10,7 +10,6 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
-from transformers import AutoConfig, AutoTokenizer
 
 from llm_classification_finetuning.cli_config import add_config_argument
 from llm_classification_finetuning.config import (
@@ -47,6 +46,8 @@ class SplitTokenStatistics:
 
 	def run(self, output_dir: Path) -> None:
 		"""Write per-ID counts, partition summaries, and reproducibility metadata."""
+		from transformers import AutoConfig, AutoTokenizer
+
 		repository = ModelDataRepository(
 			self._config.data.processed_path,
 			validation_fraction=self._config.validation.validation_fraction,

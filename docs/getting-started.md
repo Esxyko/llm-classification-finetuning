@@ -59,6 +59,25 @@ Install the locked dependencies first. The command downloads the configured
 Hugging Face model and tokenizer as needed; these are not stored in this
 repository. Raw CSVs and token-statistics reports are not warmup inputs.
 
+## Hugging Face downloads
+
+Project commands and token-statistics downloads default to
+[`https://hf-mirror.com`](https://hf-mirror.com) for Hugging Face model,
+configuration, and tokenizer files. Package initialization sets `HF_ENDPOINT`
+before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
+variable takes precedence; set it before starting the command to use another
+endpoint. This default does not require a `.env` entry.
+
+For example, to select an endpoint in PowerShell:
+
+```powershell
+$env:HF_ENDPOINT = "https://hf-mirror.com"
+uv run model warmup --build
+```
+
+When using the Python API, import `llm_classification_finetuning` before
+`transformers` or `huggingface_hub` so the default takes effect.
+
 ## Submission environment: PyTorch 2.11 / CUDA 12.8
 
 For submission inference with **PyTorch 2.11.0+cu128**, **CUDA 12.8**, and

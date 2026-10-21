@@ -67,6 +67,9 @@ and print summaries. Business logic belongs below the CLI layer.
 
 `src/llm_classification_finetuning/`
 
+- `__init__.py`: Sets the default Hugging Face download endpoint to
+  `https://hf-mirror.com` before library imports, preserving an existing
+  `HF_ENDPOINT` environment variable.
 - `config.py`: Immutable config value objects, strict YAML validation, and path
   resolution. `WarmupModelConfig` owns shared head-warmup fields;
   `LoRAModelConfig` extends it with joint-training and adapter settings.
