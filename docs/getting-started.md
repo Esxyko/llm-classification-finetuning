@@ -6,6 +6,7 @@
 
 - Python 3.14 or newer
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
+- Git LFS for the versioned `data/processed/train_validation.parquet`
 - A Kaggle account with the competition rules accepted
 - One CUDA GPU for training and two CUDA GPUs for submission inference (data
   preparation and report generation do not require a GPU)
@@ -45,6 +46,20 @@ Run these commands from the project root.
    ```
 
    The output is `data/processed/train_validation.parquet`.
+
+For `uv run model warmup --build` with the saved default split, retrieve the
+versioned Parquet through Git LFS instead of downloading and preprocessing raw
+competition data:
+
+```shell
+git lfs install --local
+git lfs pull --include="data/processed/train_validation.parquet"
+uv run model warmup --build
+```
+
+Install the locked dependencies first. The command downloads the configured
+Hugging Face model and tokenizer as needed; these are not stored in this
+repository. Raw CSVs and token-statistics reports are not warmup inputs.
 
 ## Submission environment: PyTorch 2.11 / CUDA 12.8
 

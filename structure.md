@@ -224,6 +224,7 @@ exports over importing private helpers across package boundaries.
 | `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
 | `data/raw/` | Downloaded competition CSVs |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
+| `data/processed/train_validation.parquet` | Saved default train/validation split, versioned with Git LFS and required by standalone warmup |
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/adapter_batches/` | Shared LoRA/QLoRA holdout/build batch-plan caches, keyed by selected rows, lengths, budget, and update-group size |
@@ -236,9 +237,11 @@ exports over importing private helpers across package boundaries.
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source
-modules. Git tracks the shared model-cache directories under `data/processed/`,
-including multipart manifests and volumes, while `.cache-work/` directories
-remain ignored. Do not make application logic depend on a particular timestamped run.
+modules. Git tracks the default `data/processed/train_validation.parquet` through
+Git LFS and the shared model-cache directories under `data/processed/`, including
+multipart manifests and volumes, while raw competition data, other processed
+outputs, and `.cache-work/` directories remain ignored. Do not make application
+logic depend on a particular timestamped run.
 
 ## Invariants to preserve
 

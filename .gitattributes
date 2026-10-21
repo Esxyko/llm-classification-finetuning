@@ -1,2 +1,5 @@
 # Cache volumes must retain their exact bytes on Windows and Linux.
 *.part -text
+
+# The saved training split exceeds GitHub's regular file-size limit.
+/data/processed/train_validation.parquet filter=lfs diff=lfs merge=lfs -text
