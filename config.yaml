@@ -50,7 +50,7 @@ qwen3_4b_lora:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 13514
-  training_token_budget: 40960
+  training_token_budget: 32768
   training_batch_size: 1
   head_inference_batch_size: 1024
   gradient_accumulation_steps: 32
@@ -84,7 +84,7 @@ qwen3_4b_qlora:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 13514
-  training_token_budget: 57344
+  training_token_budget: 49152
   training_batch_size: 1
   head_inference_batch_size: 1024
   gradient_accumulation_steps: 32
