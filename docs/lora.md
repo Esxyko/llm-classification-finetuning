@@ -52,13 +52,12 @@ averaging. Trainable parameters, gradients, and AdamW moment tensors remain
 FP32. RMSNorm retains FP32 variance calculation with BF16 weights and outputs.
 FP16 and FP32 modes retain FP32 pooled/CPU features and classifier computation.
 
-With `gpu.attention_implementation: sdpa`, LoRA permits only
-`SDPBackend.FLASH_ATTENTION` during every backbone encoding, including warmup,
-joint training, validation, submission, and gradient-checkpoint recomputation.
-Memory-efficient, cuDNN, and math backends are disabled. If Flash Attention does
-not support the current GPU, precision, or inputs, execution fails without
-fallback. Backend flags are restored after each scoped call. Explicit `eager`
-attention remains available.
+With `gpu.attention_implementation: sdpa`, LoRA permits only Flash, memory-efficient,
+and cuDNN attention kernels. The `math` backend is disabled during every backbone
+encoding, including warmup, validation, submission, and gradient-checkpoint
+recomputation. If none of these fused kernels supports the current GPU, precision,
+and inputs, execution fails instead of falling back to `math`. Backend flags are
+restored after each scoped call. Explicit `eager` attention remains available.
 This uses PyTorch's [SDPA backend context](https://docs.pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html)
 and checkpoint [forward/recomputation contexts](https://docs.pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint).
 
@@ -85,7 +84,7 @@ pooling selects the last real token using positions computed on the CPU. With
 SDPA and standard Qwen3-4B, omitting the padding mask enables Transformers' native
 GQA path during training and validation without explicitly repeating K/V heads.
 Submission uses the [PyTorch 2.11 / CUDA 12.8 compatibility path](getting-started.md#submission-environment-pytorch-211--cuda-128),
-which explicitly repeats K/V heads and also requires Flash Attention.
+which explicitly repeats K/V heads to support memory-efficient SDPA on T4 GPUs.
 Kernel selection and floating-point rounding can differ from masked encoding.
 Encoding releases the
 full hidden-state tensor after pooling, while joint training still retains both
