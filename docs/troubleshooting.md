@@ -31,13 +31,13 @@
   set it in `gpu.device` for training, or select two distinct available devices
   in `gpu.submit_devices` for submissions. Both submission GPUs must support the
   selected precision; use `fp16` or `fp32` if either does not support `bf16`.
-- **T4 submission fails with `No available kernel`:** Use the
-  [submission environment requirements](getting-started.md#submission-environment-pytorch-211--cuda-128),
-  `gpu.precision: fp16`, and `gpu.attention_implementation: sdpa`. The submission
-  pipeline applies the K/V-head expansion workaround inside the inference
-  process, including subprocesses. A patch applied only in a notebook does not
-  affect a separate Python process. Math fallback remains disabled, so
-  unsupported fused-kernel inputs still fail explicitly.
+- **SDPA fails with `No available kernel`:** LoRA/QLoRA SDPA encoding and all model
+  SDPA submissions require `SDPBackend.FLASH_ATTENTION`. Use a GPU, precision, and
+  inputs supported by Flash Attention. Memory-efficient, cuDNN, and math
+  backends are disabled, so the previous memory-efficient T4 submission path
+  is unavailable. Explicit `gpu.attention_implementation: eager` remains
+  available. See the
+  [submission setup](getting-started.md#submission-environment-pytorch-211--cuda-128).
 - **Embedding extraction runs out of memory:** Reduce
   `qwen3_4b.extraction_batch_size`. Lowering `qwen3_4b.max_length` also reduces
   input length by truncating longer branches; a saved frozen head requires the

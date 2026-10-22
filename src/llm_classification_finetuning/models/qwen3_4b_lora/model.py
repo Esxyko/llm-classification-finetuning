@@ -182,17 +182,11 @@ class LoRAQwenClassifier(nn.Module):
 
 	@staticmethod
 	def _attention_context() -> AbstractContextManager[object]:
-		"""Require a fused SDPA kernel and restore backend flags after encoding."""
-		return sdpa_kernel(
-			[
-				SDPBackend.FLASH_ATTENTION,
-				SDPBackend.EFFICIENT_ATTENTION,
-				SDPBackend.CUDNN_ATTENTION,
-			]
-		)
+		"""Require Flash Attention and restore backend flags after encoding."""
+		return sdpa_kernel(SDPBackend.FLASH_ATTENTION)
 
 	def _checkpoint_contexts(
 		self,
 	) -> tuple[AbstractContextManager[object], AbstractContextManager[object]]:
-		"""Keep math disabled during checkpoint forward and backward recomputation."""
+		"""Require Flash during checkpoint forward and backward recomputation."""
 		return self._attention_context(), self._attention_context()

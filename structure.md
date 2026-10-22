@@ -177,7 +177,7 @@ and print summaries. Business logic belongs below the CLI layer.
     frozen pairwise models.
   - `common/`
     - `attention.py`: Scope SDPA submission compatibility to the inference process;
-      force Transformers K/V-head expansion, enable fused backends without math,
+      force Transformers K/V-head expansion, enable only Flash Attention,
       and restore the GQA predicate and backend flags after success or failure.
     - `backbone.py`: Fingerprint local backbone weights/configuration by content
       for frozen embedding and adapter head-warmup caches.
@@ -455,18 +455,17 @@ logic depend on a particular timestamped run.
   Qwen3-4B, this enables native GQA without explicit K/V head repetition during
   training and validation.
 - All three profiles' SDPA submissions temporarily disable Transformers' native
-  GQA predicate before model loading so K/V heads are explicitly repeated. This
-  permits memory-efficient SDPA on T4 with PyTorch 2.11.0+cu128 and Transformers
-  5.16.1. Flash, memory-efficient, and cuDNN backends are enabled, with math
-  disabled. Both the original predicate and backend flags are restored on exit,
-  including exceptions and sequential `ALL` runs. Explicit eager attention and
+  GQA predicate before model loading so K/V heads are explicitly repeated.
+  Only `SDPBackend.FLASH_ATTENTION` is enabled; memory-efficient, cuDNN, and math
+  backends are disabled. Both the original predicate and backend flags are
+  restored on exit, including exceptions and sequential `ALL` runs. Explicit eager attention and
   training/validation retain their existing policies. The compatibility path
   runs inside the submission process, including subprocesses, without an
   external notebook patch. See [submission setup](docs/getting-started.md#submission-environment-pytorch-211--cuda-128).
-- LoRA SDPA encoding permits only Flash, memory-efficient, and cuDNN backends;
-  math fallback is disabled for warmup, joint training, validation, submission,
-  and gradient-checkpoint recomputation. Unsupported inputs fail, and scoped
-  backend flags are restored without changing the frozen profile's policy.
+- LoRA SDPA encoding permits only `SDPBackend.FLASH_ATTENTION` for warmup,
+  joint training, validation, submission, and gradient-checkpoint recomputation.
+  Memory-efficient, cuDNN, and math fallback are disabled. Unsupported inputs fail,
+  and scoped backend flags are restored without changing the frozen profile's policy.
 - LoRA/QLoRA BF16 mode keeps residual states, activation-checkpoint layer inputs,
   pooled features, and CPU feature storage in BF16. The LoRA-specific head
   inherits the shared MLP without changing state-dict keys, uses BF16 autocast
