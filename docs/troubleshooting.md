@@ -48,14 +48,16 @@
   validation, and submission inference.
 - **LoRA or QLoRA runs out of memory:** Lower the selected model section's `extraction_batch_size`,
   `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
-  for the affected stage, or lower `training_token_budget` when enabled.
+  for the affected stage, or lower a positive `gradient_checkpointing_budget`.
   `extraction_batch_size` also controls validation/submission backbone
   extraction; `head_inference_batch_size` controls only head inference over the
   extracted CPU features. Keep
-  `max_length` at least as large as the longest required branch. Enable
-  `gradient_checkpointing` and use FP16/BF16 instead of FP32 where supported.
-  Token budgets do not cap an over-budget singleton, and checkpointing applies
-  only to training. See [memory tuning](lora.md#memory-tuning).
+  `max_length` at least as large as the longest required branch. Gradient
+  checkpointing is automatic for over-budget singletons; at budget `0`, all
+  fixed joint-training batches use it. Positive-budget batches at or below the
+  budget disable it. Use FP16/BF16 instead of FP32 where supported. Budgets do
+  not shorten an over-budget singleton, and checkpointing applies only to joint
+  training. See [memory tuning](lora.md#memory-tuning).
 - **LoRA or QLoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
   token count to raise the limit before rerunning. Inputs are never silently
   truncated; lowering batch sizes or the token budget preserves their content.

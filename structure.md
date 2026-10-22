@@ -142,7 +142,11 @@ and print summaries. Business logic belongs below the CLI layer.
       shared pairwise MLP architecture through a LoRA-specific head subclass.
       The `warmup_only` path loads a non-quantized frozen base without adapter
       injection. Own BF16 frozen embedding/norm restoration, feature dtype, and head
-      autocast with FP32 logits. Quantized weights are placed during loading.
+      autocast with FP32 logits. Select gradient checkpointing once per joint
+      A/B micro-batch from the padded token budget, retaining the state through
+      backward and cleaning input-gradient hooks when disabled. Evaluation and
+      no-gradient extraction disable checkpointing. Quantized weights are placed
+      during loading.
     - `extractor.py`: Batch individual A/B branches and reconstruct one
       no-gradient canonical feature pair per needed ID for warmup, each
       joint-validation pass, or submission, retaining shared
@@ -373,8 +377,9 @@ logic depend on a particular timestamped run.
   update; exact multiples retain all full groups. Scheduling and progress use
   `max(1, training_rows // G)` updates per nonempty joint epoch in both profiles,
   holdout/build modes, and fixed/token-budget batching. Warmup is unchanged.
-  The default `training_token_budget: 0` retains fixed micro-batches and the
-  original seeded shuffle, while reusing cached tokens. A positive budget
+  The default `gradient_checkpointing_budget: 0` retains fixed micro-batches and
+  the original seeded shuffle with gradient checkpointing on every joint-training
+  batch, while reusing cached tokens. A positive budget
   compares three stable global A/B length sorts for each selected training set,
   forms cached packing groups of up to `G` rows, and
   best-fit packs each group by independently padded A/B token cost. Plans minimize
@@ -390,7 +395,12 @@ logic depend on a particular timestamped run.
   short group's micro-batches to the last shuffled full group for one final
   update. Micro-batches are shuffled within each resulting update group without
   repacking, preserving token costs and existing cache compatibility. A lone
-  short group runs by itself. Over-budget singletons retain all tokens.
+  short group runs by itself. With a positive budget, micro-batches whose padded
+  A/B cost is at or below the budget disable gradient checkpointing. Over-budget
+  singletons retain all tokens and enable it for both branches through backward.
+  Warmup and inference always disable it. The old token-budget name and boolean
+  checkpointing configuration are rejected. Plan metadata retains its `budget`
+  key and existing versions, preserving cache reuse after the configuration rename.
   Fixed and token-budget training use the same update-group row counts,
   clipping/update boundaries, and scheduler step counts; grouping, floating-point
   order, and dropout draws may differ.
@@ -485,8 +495,8 @@ logic depend on a particular timestamped run.
   weights are restored to BF16 after k-bit preparation, before adapter injection;
   RMSNorm retains FP32 variance math and returns BF16. K-bit preparation does
   not enable checkpointing or clear the allocator cache; the classifier
-  configures checkpointing once with its SDPA
-  recomputation context. Submission explicitly reloads the non-quantized base
+  selects checkpointing per joint A/B micro-batch with its SDPA recomputation
+  context. Submission explicitly reloads the non-quantized base
   at the saved revision using the existing two-GPU map, then restores adapters
   and head without merging or dequantizing a saved base. Checkpoints store a
   checked `training_quantization` marker (`bnb-nf4-double` versus LoRA's `none`);

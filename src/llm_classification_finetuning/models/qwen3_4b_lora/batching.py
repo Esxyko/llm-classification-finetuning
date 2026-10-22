@@ -476,7 +476,7 @@ class LoRATrainingBatchRepository:
 			"schema_version": self.PLAN_SCHEMA_VERSION,
 			"algorithm_version": _GlobalBatchPlanner.VERSION,
 			"rows_sha256": hashlib.sha256(memoryview(row_data)).hexdigest(),
-			"budget": config.training_token_budget,
+			"budget": config.gradient_checkpointing_budget,
 			"group_size": group_size,
 		}
 		key = self._cache.key(metadata)
@@ -496,14 +496,14 @@ class LoRATrainingBatchRepository:
 					),
 					payload["padded_tokens"],
 				)
-				plan.validate(dataset, group_size, config.training_token_budget)
+				plan.validate(dataset, group_size, config.gradient_checkpointing_budget)
 			except KeyError, TypeError, ValueError, OverflowError:
 				plan = None
 		if plan is None:
 			plan = _GlobalBatchPlanner(
-				dataset, reference, group_size, config.training_token_budget
+				dataset, reference, group_size, config.gradient_checkpointing_budget
 			).build()
-			plan.validate(dataset, group_size, config.training_token_budget)
+			plan.validate(dataset, group_size, config.gradient_checkpointing_budget)
 			payload = {
 				"groups": tuple(
 					tuple(
@@ -582,7 +582,7 @@ class LoRATrainingBatchRepository:
 		}
 		plan = None
 		sampler = None
-		if not self._warmup_only and self._config.training_token_budget > 0:
+		if not self._warmup_only and self._config.gradient_checkpointing_budget > 0:
 			plan = self._load_plan(reference, dataset, full_data=full_data)
 			sampler = _PlannedBatchSampler(plan, seed)
 			loader = DataLoader(dataset, batch_sampler=sampler, **options)

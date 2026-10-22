@@ -37,9 +37,13 @@ before adapter injection. This includes attention Q/K norms, both decoder-layer
 norms, and the final norm. RMSNorm retains FP32 variance calculation and returns
 BF16 outputs, keeping residual states and activation-checkpoint layer inputs in
 BF16. The NF4 weights and double-quantization state are unchanged. FP16/FP32
-preparation retains its existing behavior. Gradient checkpointing
-keeps the existing non-reentrant implementation and fused SDPA context during
-both forward execution and backward recomputation.
+preparation retains its existing behavior. `gradient_checkpointing_budget`
+controls packing and checkpointing as in LoRA: positive-budget batches at or
+below the budget disable it, over-budget singletons enable it, and budget `0`
+keeps fixed batches with checkpointing for every joint-training batch. Warmup
+and inference disable it. Enabled checkpointing keeps the existing non-reentrant
+implementation and fused SDPA context during both forward execution and backward
+recomputation.
 
 QLoRA reuses the [LoRA training workflow](lora.md): head-only warmup, joint
 adapter/head training, AdamW, linear decay, gradient accumulation, token-budget

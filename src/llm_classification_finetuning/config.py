@@ -93,7 +93,6 @@ class LoRAModelConfig(WarmupModelConfig):
 	training_batch_size: int
 	head_inference_batch_size: int
 	gradient_accumulation_steps: int
-	gradient_checkpointing: bool
 	epochs: int
 	learning_rate: float
 	head_learning_rate: float
@@ -101,7 +100,7 @@ class LoRAModelConfig(WarmupModelConfig):
 	lora_alpha: int
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
-	training_token_budget: int = 0
+	gradient_checkpointing_budget: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,11 +397,12 @@ def _load_lora_model_config(
 
 	warmup = _load_warmup_fields(section, section_name, allow_zero_epochs=True)
 	token_budget = _require_integer(
-		section.get("training_token_budget", 0), field("training_token_budget")
+		section.get("gradient_checkpointing_budget", 0),
+		field("gradient_checkpointing_budget"),
 	)
 	if token_budget < 0:
 		raise ConfigurationError(
-			f"{field('training_token_budget')} cannot be negative."
+			f"{field('gradient_checkpointing_budget')} cannot be negative."
 		)
 	targets = section.get("lora_target_modules")
 	if not isinstance(targets, list) or not targets:
@@ -423,9 +423,6 @@ def _load_lora_model_config(
 		training_batch_size=positive_integer("training_batch_size"),
 		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),
-		gradient_checkpointing=_require_boolean(
-			section.get("gradient_checkpointing"), field("gradient_checkpointing")
-		),
 		epochs=positive_integer("epochs"),
 		learning_rate=positive_float("learning_rate"),
 		head_learning_rate=positive_float("head_learning_rate"),
@@ -433,7 +430,7 @@ def _load_lora_model_config(
 		lora_alpha=positive_integer("lora_alpha"),
 		lora_dropout=fraction("lora_dropout"),
 		lora_target_modules=target_modules,
-		training_token_budget=token_budget,
+		gradient_checkpointing_budget=token_budget,
 	)
 
 

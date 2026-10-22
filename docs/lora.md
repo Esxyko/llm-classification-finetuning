@@ -62,10 +62,12 @@ This uses PyTorch's [SDPA backend context](https://docs.pytorch.org/docs/stable/
 and checkpoint [forward/recomputation contexts](https://docs.pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint).
 
 The root [`config.yaml`](../config.yaml) preset allows **each branch** up to
-16,384 tokens, dynamically pads A and B independently, processes branches
-sequentially, and enables non-reentrant activation checkpointing with KV caching
-disabled. It uses micro-batches of one pair and 16 accumulation steps, giving an
-effective batch of 16 augmented rows.
+13,514 tokens, dynamically pads A and B independently, and processes branches
+sequentially with KV caching disabled. Its `gradient_checkpointing_budget: 16384`
+packs micro-batches within that padded A/B token budget without checkpointing;
+over-budget pairs run alone with non-reentrant activation checkpointing.
+`training_batch_size: 1` and `gradient_accumulation_steps: 1024` give a target
+effective batch of 1,024 augmented rows, with dynamically packed micro-batches.
 LoRA never truncates inputs: all canonical branches are tokenized and checked
 before training, and inference checks its inputs before encoding them. An input
 longer than `max_length` raises an error with its ID, branch, actual token count,
@@ -269,13 +271,15 @@ validation rows, and both stages' epochs.
 
 ## Optional token-budget training batches
 
-`training_token_budget` is an optional nonnegative integer, defaulting to `0`.
-Zero preserves fixed micro-batches. A positive value enables dynamic micro-batches
-for joint training only; warmup and inference keep their configured batch sizes.
+`gradient_checkpointing_budget` is an optional nonnegative integer, defaulting
+to `0`. Zero or omission preserves fixed micro-batches and enables gradient
+checkpointing for every joint-training batch. A positive value enables dynamic
+micro-batches for joint training only; warmup and inference keep their configured
+batch sizes and disable checkpointing.
 For example, add this key to the existing `qwen3_4b_lora` section:
 
 ```yaml
-training_token_budget: 4096
+gradient_checkpointing_budget: 4096
 ```
 
 The saved training partition is globally planned before joint training,
@@ -290,9 +294,15 @@ a new batch is opened when none fits. Batch cost is
 `rows * (longest_A + longest_B)`. The chosen candidate minimizes micro-batch
 count, then total padded tokens; this heuristic does not guarantee a global
 optimum. A full-data build applies the same planning to all original IDs from both partitions.
-The budget counts padded A/B input tokens, not GPU memory bytes. An
-over-budget singleton is allowed, so lowering the budget cannot reduce the
-tokens or memory needed by that individual input.
+The budget counts padded A/B input tokens, not GPU memory bytes. For a positive
+budget, micro-batches at or below the budget disable gradient checkpointing,
+including singletons and batches exactly equal to the budget. An over-budget
+pair runs alone and enables checkpointing for both A and B. The choice is made
+once before encoding either branch and retained through the complete backward
+pass. Checkpointing uses the existing non-reentrant implementation and fused
+SDPA recomputation context. Disabling it also removes input-gradient hooks so
+repeated switches do not accumulate hooks. Over-budget singletons retain all
+tokens; lowering the budget does not shorten them or guarantee memory fit.
 
 Cached packing-group membership stays fixed across epochs. A zero-based joint
 epoch uses `random_state + joint_epoch` to shuffle the full groups first, then
@@ -313,9 +323,10 @@ updates per nonempty epoch; FP16 overflow can still skip an update as before.
 Fixed and token-budget batching use the same update sizes and schedule length.
 Positive budgets group rows by global lengths instead of fixed-batch random
 order. Floating-point accumulation order and dropout draws can
-differ. The root preset leaves the budget at `0`, retaining the
-original fixed-batch seeded shuffle. The example budget of `4096` is a starting
-point to try, not a measured recommendation for a particular GPU. Padded batches
+differ. A zero budget retains the original fixed-batch seeded shuffle. The root
+preset uses budgets of `16384` for LoRA and `32768` for QLoRA. The example budget
+of `4096` is a starting point to try, not a measured recommendation for a
+particular GPU. Padded batches
 can change SDPA kernel selection, so dynamic batching is not guaranteed to be
 faster or use less peak memory. No throughput or peak-VRAM benchmark has been
 run on the target 32 GB virtual GPU.
@@ -330,8 +341,8 @@ setting controls only classifier batches over CPU features. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
 desired effective batch. Keep `max_length` at least as large as the longest
 required input. Larger GPUs can use larger batches. Memory fit for the
-16,384-token preset on a 32 GB GPU has not been measured; execution reports OOM
-without silently lowering context length.
+`gradient_checkpointing_budget: 16384` preset on a 32 GB GPU has not been measured;
+execution reports OOM without silently lowering context length.
 
 ## Checkpoints
 

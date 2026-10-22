@@ -62,6 +62,10 @@ class LoRAQwenClassifier(nn.Module):
 		if warmup_only and quantize_backbone:
 			raise ValueError("Standalone warmup requires a non-quantized backbone.")
 		self.warmup_only = warmup_only
+		self._gradient_checkpointing_allowed = not warmup_only and device_map is None
+		self._gradient_checkpointing_budget = (
+			config.gradient_checkpointing_budget if not warmup_only else 0
+		)
 		self.device = device
 		self.dtype = GPUEnvironment.PRECISION_DTYPES[gpu.precision]
 		self.feature_dtype = (
@@ -93,7 +97,7 @@ class LoRAQwenClassifier(nn.Module):
 		backbone.config.use_cache = False
 		backbone.requires_grad_(False)
 		if quantize_backbone:
-			# Configure checkpointing once below, preserving our SDPA recomputation context.
+			# Select checkpointing per pairwise batch with our SDPA recomputation context.
 			backbone = prepare_model_for_kbit_training(
 				backbone, use_gradient_checkpointing=False, auto_clear_cache=False
 			)
@@ -123,15 +127,8 @@ class LoRAQwenClassifier(nn.Module):
 			)
 		if device_map is None and not quantize_backbone:
 			self.backbone.to(device)
-		if not warmup_only and config.gradient_checkpointing and device_map is None:
-			self.backbone.get_base_model().gradient_checkpointing_enable(
-				gradient_checkpointing_kwargs={
-					"use_reentrant": False,
-					"context_fn": self._checkpoint_contexts,
-				}
-			)
-		if not warmup_only and device_map is not None:
-			self.backbone.get_base_model().gradient_checkpointing_disable()
+		self._gradient_checkpointing_enabled = self.backbone.is_gradient_checkpointing
+		self._set_gradient_checkpointing(False)
 		self.classifier = _LoRAClassificationHead(
 			self.backbone_hidden_size,
 			config.hidden_size,
@@ -139,12 +136,55 @@ class LoRAQwenClassifier(nn.Module):
 			compute_dtype=self.feature_dtype,
 		).to(device=device, dtype=torch.float32)
 
+	def train(self, mode: bool = True) -> LoRAQwenClassifier:
+		"""Disable checkpointing for evaluation; joint encoding selects training state."""
+		super().train(mode)
+		if not mode:
+			self._set_gradient_checkpointing(False)
+		return self
+
+	def _set_gradient_checkpointing(self, enabled: bool) -> None:
+		"""Switch only when needed and remove input-gradient hooks when disabling."""
+		enabled = enabled and self._gradient_checkpointing_allowed
+		if enabled == self._gradient_checkpointing_enabled:
+			return
+		backbone = self.backbone if self.warmup_only else self.backbone.get_base_model()
+		if enabled:
+			backbone.gradient_checkpointing_enable(
+				gradient_checkpointing_kwargs={
+					"use_reentrant": False,
+					"context_fn": self._checkpoint_contexts,
+				}
+			)
+		else:
+			backbone.gradient_checkpointing_disable()
+			# Transformers may leave these hooks installed on PEFT-wrapped backbones.
+			backbone.disable_input_require_grads()
+		self._gradient_checkpointing_enabled = enabled
+
 	def encode(self, batch: PairwiseBatch) -> tuple[Tensor, Tensor]:
 		"""Pool the last real token of each branch, retaining both gradient graphs."""
+		padded_tokens = (
+			batch.branch_a.input_ids.numel() + batch.branch_b.input_ids.numel()
+		)
+		self._set_gradient_checkpointing(
+			self.training
+			and torch.is_grad_enabled()
+			and (
+				self._gradient_checkpointing_budget == 0
+				or (
+					batch.labels.shape[0] == 1
+					and padded_tokens > self._gradient_checkpointing_budget
+				)
+			)
+		)
+		# Retain one policy for both branches and the caller's complete backward pass.
 		return self.encode_branch(batch.branch_a), self.encode_branch(batch.branch_b)
 
 	def encode_branch(self, branch: BranchBatch) -> Tensor:
 		"""Encode one batch of branches for extraction or differentiable training."""
+		if not self.training or not torch.is_grad_enabled():
+			self._set_gradient_checkpointing(False)
 		input_device = self.backbone.get_input_embeddings().weight.device
 		input_ids = branch.input_ids.to(input_device, non_blocking=True)
 		with (

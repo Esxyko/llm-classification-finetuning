@@ -206,7 +206,10 @@ the plan key. Cached groups store sample identities and are mapped to current
 dataset indices on every read; current labels are always used for training.
 A/B mode and holdout/build selection determine membership before lookup. Changing
 budget or effective batch size rebuilds plans while reusing tokens. With
-`training_token_budget: 0`, tokens are cached but no global plan is created.
+`gradient_checkpointing_budget: 0`, tokens are cached but no global plan is
+created, and all fixed joint-training batches use gradient checkpointing.
+Renaming the configuration field preserves the stored `budget` metadata and
+plan versions, so existing plans with the same values remain reusable.
 Legacy per-model batch directories and per-model `tokens/*.pt` files are no
 longer read. Identical plan keys can be reused across LoRA and QLoRA; quantization
 does not affect planning. Different budgets or selected rows still select

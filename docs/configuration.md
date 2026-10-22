@@ -50,7 +50,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `warmup` | Independent non-quantized head-warmup model, input limit, classifier, optimization, and `A/B_swap` settings; used only by `model warmup --build` |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `training_token_budget`, accumulation, checkpointing, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_budget` for batch packing and automatic checkpointing, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_qlora` | Same fields as LoRA, with fixed 4-bit NF4 and double quantization for training/validation; submissions load a non-quantized base |
 
 Model sections are optional. Explicitly selecting a profile without its section
@@ -72,7 +72,7 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `qwen3_4b_qlora.A/B_swap` / `warmup.A/B_swap` | `aug` |
-| `qwen3_4b_lora.training_token_budget` / `qwen3_4b_qlora.training_token_budget` | `0` |
+| `qwen3_4b_lora.gradient_checkpointing_budget` / `qwen3_4b_qlora.gradient_checkpointing_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
 `warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys are
@@ -143,6 +143,15 @@ warmup, every joint-validation pass, and submissions, including when warmup is
 disabled. It counts individual A/B branches per backbone forward, matching the
 frozen model's `extraction_batch_size`; the standalone warmup section uses the
 same definition. Head inference uses its own batch size after extraction completes.
+
+`gradient_checkpointing_budget` is a nonnegative integer replacing
+`training_token_budget` and the `gradient_checkpointing` boolean; both old keys
+are rejected. A positive budget packs joint-training micro-batches by padded A/B
+token cost, disables checkpointing at or below the budget, and enables it only
+for over-budget singletons. Zero or omission keeps fixed micro-batches and
+enables checkpointing for every joint-training batch. Warmup and inference
+disable checkpointing. See [budget behavior](lora.md#optional-token-budget-training-batches).
+
 `gradient_accumulation_steps` applies only to joint training; warmup performs one
 optimizer update per `warmup_training_batch_size` batch.
 Joint updates target `G = training_batch_size * gradient_accumulation_steps`
