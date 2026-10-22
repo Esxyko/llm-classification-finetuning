@@ -18,6 +18,7 @@ from transformers import AutoConfig
 
 from ...config import AppConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
+from ...model_storage import load_pretrained
 from ..common import (
 	CacheStorage,
 	LocalBackboneFingerprint,
@@ -385,7 +386,7 @@ class LoRATrainingBatchRepository:
 					),
 					fingerprint=data.fingerprint,
 				)
-			base_config = AutoConfig.from_pretrained(model.model_name)
+			base_config = load_pretrained(AutoConfig.from_pretrained, model.model_name)
 			revision = getattr(base_config, "_commit_hash", None)
 			if revision is None and not Path(model.model_name).is_dir():
 				raise ModelExecutionError(

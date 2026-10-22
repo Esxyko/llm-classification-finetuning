@@ -61,9 +61,11 @@ repository. Raw CSVs and token-statistics reports are not warmup inputs.
 
 ## Hugging Face downloads
 
-When `.env` or the environment specifies a non-empty `DATA_PATH`, downloaded
-models and tokenizers use `<DATA_PATH>/huggingface/hub`. Otherwise the standard
-Hugging Face cache settings apply. Existing downloads can be moved with the
+When `.env` or the environment specifies a non-empty `MODEL_PATH`, each downloaded
+model and its tokenizer use one archive directly in that directory, for example
+`<MODEL_PATH>/models--Qwen--Qwen3-4B.zip`. Project loaders unpack it automatically
+into a temporary process cache. Otherwise the standard Hugging Face cache
+settings apply. Existing downloads can be packed and moved with the
 [model migration script](caching.md#hugging-face-model-downloads).
 
 Project commands and token-statistics downloads default to

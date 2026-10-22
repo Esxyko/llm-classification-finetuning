@@ -11,6 +11,7 @@ from transformers import AutoConfig
 
 from ...config import AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
+from ...model_storage import load_pretrained
 from ..common import (
 	GPUEnvironment,
 	ModelBuildResult,
@@ -163,8 +164,10 @@ class LoRAModelPipeline:
 		checkpoint = self._checkpoint_store.load(
 			self._compatibility(self._test_repository.serializer_version)
 		)
-		base_config = AutoConfig.from_pretrained(
-			self._model_config.model_name, revision=checkpoint.base_revision
+		base_config = load_pretrained(
+			AutoConfig.from_pretrained,
+			self._model_config.model_name,
+			revision=checkpoint.base_revision,
 		)
 		model = trainer.create_model(
 			seed=self._model_config.random_state,

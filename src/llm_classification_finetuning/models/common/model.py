@@ -6,6 +6,8 @@ import torch
 from torch import Tensor, nn
 from transformers import AutoModel
 
+from ...model_storage import load_pretrained
+
 
 class PairwiseClassificationHead(nn.Module):
 	"""Classify the concatenated pooled states of two response branches."""
@@ -46,7 +48,8 @@ class PairwiseQwenClassifier(nn.Module):
 	) -> None:
 		super().__init__()
 		self.device = device
-		self.backbone = AutoModel.from_pretrained(
+		self.backbone = load_pretrained(
+			AutoModel.from_pretrained,
 			model_name,
 			revision=revision,
 			dtype=dtype,

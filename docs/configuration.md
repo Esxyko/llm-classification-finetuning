@@ -10,33 +10,30 @@ or `result`. Relative config-file paths resolve from the working directory.
 All commands load `.env` from that directory, preserving existing environment
 variables.
 
-Set `DATA_PATH` in `.env` to choose the base directory for downloads, including
-relative `data.raw_dir` values for Kaggle files and the Hugging Face cache.
-For raw files, a missing, empty, or whitespace-only `DATA_PATH` defaults to the
-working directory. A relative `DATA_PATH` resolves from the working directory,
-and `~` expands to the user's home directory. Relative `data.processed_path`
-values resolve from the working directory independently of `DATA_PATH`.
-Absolute YAML data paths stay absolute. Generated data, training caches,
-model artifacts, and reports use working-directory paths by default.
+Set `MODEL_PATH` in `.env` to choose the directory for downloaded Hugging Face
+model archives. Each repository uses one file directly in that directory, such
+as `models--Qwen--Qwen3-4B.zip`. A relative `MODEL_PATH` resolves from the working
+directory, and `~` expands to the user's home directory.
 
 ```dotenv
-DATA_PATH=D:/datasets
+MODEL_PATH=D:/models
 ```
 
-With the default YAML paths, raw downloads use `D:/datasets/data/raw`, while
-generated data uses `./data/processed/train_validation.parquet`. Training caches
-stay beside the processed Parquet under `./data/processed/`, checkpoints under
-`./models/`, and reports under `./results/`.
-
-A non-empty `DATA_PATH` stores Hugging Face downloads under
-`D:/datasets/huggingface/hub` in this example. Package initialization loads
-`.env` before importing Hugging Face libraries and sets `HF_HOME` to
-`<DATA_PATH>/huggingface` and `HF_HUB_CACHE` to `<DATA_PATH>/huggingface/hub`.
-`DATA_PATH` takes precedence over existing values of these two HF variables.
-If `DATA_PATH` is missing or blank, Hugging Face keeps its usual cache settings.
-This applies to downloaded model weights, configurations, and tokenizers;
-locally configured model paths remain unchanged. See
+In this example, Qwen3-4B uses `D:/models/models--Qwen--Qwen3-4B.zip`.
+Archives unpack automatically into a private process cache under
+`<MODEL_PATH>/.cache-work/`; newly downloaded files are repacked and verified
+before publication. The private cache is removed when the process exits
+normally. Native Hub model names and commit hashes are preserved.
+If `MODEL_PATH` is missing or blank, Hugging Face keeps its usual cache settings.
+Explicit local model directories are loaded directly. See
 [model cache migration](caching.md#hugging-face-model-downloads) for existing downloads.
+
+`MODEL_PATH` controls model downloads only. `DATA_PATH` is no longer used.
+Relative YAML `data.raw_dir` and `data.processed_path` values resolve from the
+working directory; absolute YAML paths stay absolute. With the default YAML,
+raw files use `./data/raw`, processed data uses
+`./data/processed/train_validation.parquet`, training caches stay beside that
+Parquet, checkpoints use `./models/`, and reports use `./results/`.
 
 For example, from the project root:
 

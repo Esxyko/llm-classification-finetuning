@@ -16,6 +16,7 @@ import transformers
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from ...errors import ModelExecutionError
+from ...model_storage import load_pretrained
 from .cache_storage import CacheCorruptionError, CacheStorage
 from .data import PairwiseText
 
@@ -56,7 +57,10 @@ class TokenizationCache:
 		"""Load only the tokenizer; model name and revision are not cache identities."""
 		try:
 			return cls(
-				cache_dir, AutoTokenizer.from_pretrained(model_name, revision=revision)
+				cache_dir,
+				load_pretrained(
+					AutoTokenizer.from_pretrained, model_name, revision=revision
+				),
 			)
 		except ModelExecutionError:
 			raise

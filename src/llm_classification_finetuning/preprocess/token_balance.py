@@ -11,6 +11,7 @@ from transformers import AutoConfig
 
 from ..config import ValidationConfig
 from ..errors import DataPreparationError
+from ..model_storage import load_pretrained
 from ..models.common import ConversationSerializer, TokenizationCache
 
 
@@ -111,8 +112,10 @@ class SplitTokenBalancer:
 			for row in data.itertuples(index=False)
 		)
 		try:
-			base_config = AutoConfig.from_pretrained(
-				self._config.tokenizer_name, revision=self._config.tokenizer_revision
+			base_config = load_pretrained(
+				AutoConfig.from_pretrained,
+				self._config.tokenizer_name,
+				revision=self._config.tokenizer_revision,
 			)
 			revision = (
 				getattr(base_config, "_commit_hash", None)

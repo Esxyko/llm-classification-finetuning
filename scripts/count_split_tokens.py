@@ -19,6 +19,7 @@ from llm_classification_finetuning.config import (
 	ModelConfig,
 )
 from llm_classification_finetuning.errors import DataPreparationError
+from llm_classification_finetuning.model_storage import load_pretrained
 from llm_classification_finetuning.models import MODEL_REGISTRY
 from llm_classification_finetuning.models.common import (
 	ModelDataRepository,
@@ -57,13 +58,15 @@ class SplitTokenStatistics:
 			flush=True,
 		)
 		data = repository.load()
-		base_config = AutoConfig.from_pretrained(
+		base_config = load_pretrained(
+			AutoConfig.from_pretrained,
 			self._model.model_name,
 			revision=self._revision,
 			local_files_only=self._local_files_only,
 		)
 		revision = getattr(base_config, "_commit_hash", None) or self._revision
-		tokenizer = AutoTokenizer.from_pretrained(
+		tokenizer = load_pretrained(
+			AutoTokenizer.from_pretrained,
 			self._model.model_name,
 			revision=revision,
 			local_files_only=self._local_files_only,

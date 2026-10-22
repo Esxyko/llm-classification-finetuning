@@ -13,6 +13,7 @@ from transformers import AutoConfig
 
 from ...config import GPUConfig, ModelConfig
 from ...errors import ModelExecutionError
+from ...model_storage import load_pretrained
 from .backbone import LocalBackboneFingerprint
 from .data import PairwiseText
 from .hardware import GPUEnvironment
@@ -39,7 +40,9 @@ class QwenEmbeddingExtractor:
 		self._refresh_cache = refresh_cache
 		self._model: PairwiseQwenClassifier | None = None
 		try:
-			base_config = AutoConfig.from_pretrained(model_config.model_name)
+			base_config = load_pretrained(
+				AutoConfig.from_pretrained, model_config.model_name
+			)
 			self._device_map = (
 				GPUEnvironment.submission_device_map(base_config, submit_devices)
 				if submit_devices is not None

@@ -44,16 +44,18 @@ All commands accept `--config PATH` and default to `config.yaml` in the working
 directory. Relative config-file paths resolve from the working directory.
 `AppConfig.load` reads `.env` there without overriding existing environment
 variables. Package initialization also loads that `.env` before HF imports.
-A non-empty `DATA_PATH` sets `HF_HOME` to `<DATA_PATH>/huggingface` and
-`HF_HUB_CACHE` to `<DATA_PATH>/huggingface/hub`, overriding those HF variables;
-missing or blank `DATA_PATH` preserves standard HF cache settings.
-`DATA_PATH` applies only to downloads: relative YAML `data.raw_dir` values
-resolve from it, defaulting to the working directory when missing or blank.
-A relative `DATA_PATH` resolves from the working directory. Relative
-`data.processed_path` values and their generated training caches resolve from
-the working directory independently of `DATA_PATH`. Absolute YAML data paths
-stay absolute. Model artifacts and reports are rooted in the working directory,
-regardless of the config file's location.
+A non-empty `MODEL_PATH` stores each downloaded Hub repository in one ZIP64
+archive directly under that root, such as `models--Qwen--Qwen3-4B.zip`.
+`model_storage.load_pretrained` lazily restores native Hub files into a private
+process cache in `<MODEL_PATH>/.cache-work/`, preserves commit identities, and
+atomically republishes SHA-256-verified archives after completed downloads.
+The private cache is removed on normal process exit. `HF_HOME` and authentication
+settings are preserved; missing or blank `MODEL_PATH` retains native HF caching.
+Explicit local model directories bypass archive storage. A relative `MODEL_PATH`
+resolves from the working directory. `DATA_PATH` is no longer used.
+Relative YAML raw/processed paths, model artifacts, and reports resolve from the
+working directory regardless of the config file's location. Absolute YAML data
+paths stay absolute.
 The paths shown in the flow are those in the root preset; raw/processed paths
 follow the selected YAML. Batch-config scripts instead run each model from the
 project root derived from their own file location.
@@ -78,17 +80,19 @@ and print summaries. Business logic belongs below the CLI layer.
 `src/llm_classification_finetuning/`
 
 - `__init__.py`: Loads working-directory `.env` without overriding existing
-  environment variables before HF imports, roots downloaded model/tokenizer
-  caches in `DATA_PATH` when set, and sets the default HF download endpoint to
+  environment variables before HF imports, and sets the default HF download endpoint to
   `https://hf-mirror.com` before library imports, preserving an existing
   `HF_ENDPOINT` environment variable. For this mirror, also defaults
   `HF_HUB_DISABLE_XET` to `1` to use HTTP downloads, preserving an explicit
   Xet setting and leaving other endpoints' Xet behavior unchanged.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
-  loading, raw-download path resolution through optional `DATA_PATH`, and
-  processed-data path resolution from the working directory.
+  loading, and raw/processed-data path resolution from the working directory.
   `WarmupModelConfig` owns shared head-warmup fields;
   `LoRAModelConfig` extends it with joint-training and adapter settings.
+- `model_storage.py`: Owns one ZIP64 archive per Hub repository under optional
+  `MODEL_PATH`, SHA-256-verified atomic publication, safe native-cache extraction,
+  per-archive process locks, lazy private process caches, and the shared
+  `load_pretrained` wrapper for config/tokenizer/backbone loads.
 - `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
 - `timing.py`: Formats elapsed durations as unbounded `HH:MM:SS` values.
@@ -235,7 +239,7 @@ exports over importing private helpers across package boundaries.
 | Path | Role |
 | --- | --- |
 | `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, three optional model sections, and an independent optional `warmup` section |
-| `.env.example` | Template for the local Kaggle token and optional `DATA_PATH` in `.env` |
+| `.env.example` | Template for the local Kaggle token and optional `MODEL_PATH` in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `requirements-submit.txt` | Submission-only installation pins for PyTorch 2.11.0+cu128 and Transformers 5.16.1; retains the normal training lock |
 | `README.md` | Project overview and documentation index |
@@ -244,10 +248,11 @@ exports over importing private helpers across package boundaries.
 | `scripts/validate_all_configs.py` | Validate the top-level `MODELS` selection (LoRA by default) for each YAML file in `configs/` |
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all original IDs from both partitions for each YAML file in `configs/`, with separate tagged checkpoints |
 | `scripts/count_split_tokens.py` | Count actual unpadded, untruncated A/B tokens in the saved split using training serialization; publish per-ID CSV, split CSV, and tokenizer/source metadata |
-| `scripts/migrate_hf_models.py` | Copy or move existing HF model repositories into `DATA_PATH/huggingface/hub`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
-| `<DATA_PATH>/huggingface/hub/` | Native HF cache for downloaded model weights, configurations, and tokenizers when `DATA_PATH` is set |
+| `scripts/migrate_hf_models.py` | Pack existing HF model repositories into one verified ZIP64 file each directly under `MODEL_PATH`, optionally removing sources after publication; supports source selection and dry runs |
+| `<MODEL_PATH>/models--*.zip` | One downloaded Hub repository per archive, including weights, configurations, tokenizers, refs, and snapshots |
+| `<MODEL_PATH>/.cache-work/` | Ignored process-private native Hub caches and per-archive lock files; private model copies are removed on normal exit |
 | `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
-| `data/raw/` | Default downloaded competition CSV location, relative to `DATA_PATH` when set |
+| `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
 | `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |

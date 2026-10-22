@@ -12,6 +12,7 @@ from transformers import AutoModel, BitsAndBytesConfig
 from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
+from ...model_storage import load_pretrained
 from ..common import ABSwapAverager, GPUEnvironment, PairwiseClassificationHead
 from .data import BranchBatch, PairwiseBatch
 
@@ -80,7 +81,8 @@ class LoRAQwenClassifier(nn.Module):
 			if quantize_backbone
 			else None
 		)
-		backbone = AutoModel.from_pretrained(
+		backbone = load_pretrained(
+			AutoModel.from_pretrained,
 			config.model_name,
 			revision=revision,
 			dtype=self.dtype,

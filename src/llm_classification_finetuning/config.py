@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -119,7 +118,7 @@ class AppConfig:
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
-		"""Read YAML and .env, separating download and generated-data roots."""
+		"""Read YAML and .env, resolving data paths from the working directory."""
 		working_dir = Path.cwd()
 		load_dotenv(dotenv_path=working_dir / ".env", override=False)
 		resolved_config_path = config_path.expanduser().resolve()
@@ -206,11 +205,8 @@ class AppConfig:
 		competition = _require_non_empty_string(
 			data_section.get("competition"), "data.competition"
 		)
-		download_base_dir = _resolve_data_path(
-			working_dir, os.environ.get("DATA_PATH", "").strip()
-		)
 		raw_dir = _resolve_data_path(
-			download_base_dir,
+			working_dir,
 			_require_non_empty_string(data_section.get("raw_dir"), "data.raw_dir"),
 		)
 		processed_path = _resolve_data_path(
