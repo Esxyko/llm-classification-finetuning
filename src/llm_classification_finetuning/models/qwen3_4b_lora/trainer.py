@@ -31,7 +31,11 @@ from ..common import (
 	WarmupBuildResult,
 )
 from ..profile import ModelProfile
-from .batching import LoRATrainingBatchRepository, PreparedTrainingSplit
+from .batching import (
+	LoRATrainingBatchRepository,
+	OptimizerGroupLayout,
+	PreparedTrainingSplit,
+)
 from .data import (
 	BranchBatch,
 	BranchCollator,
@@ -366,13 +370,11 @@ class LoRATrainer:
 				):
 					group["lr"] = learning_rate
 				steps = (
-					math.ceil(
-						len(reference)
-						/ (
-							self._config.training_batch_size
-							* self._config.gradient_accumulation_steps
-						)
-					)
+					OptimizerGroupLayout(
+						len(reference),
+						self._config.training_batch_size
+						* self._config.gradient_accumulation_steps,
+					).update_count
 					* self._config.epochs
 				)
 				scheduler = get_linear_schedule_with_warmup(
@@ -483,7 +485,7 @@ class LoRATrainer:
 			validation_rows / self._config.head_inference_batch_size
 		)
 		warmup_steps = math.ceil(training_rows / warmup_batch_size) + validation_steps
-		joint_steps = math.ceil(training_rows / joint_batch_size)
+		joint_steps = OptimizerGroupLayout(training_rows, joint_batch_size).update_count
 		return TrainingProgress(
 			model=self._model_key,
 			mode=mode,
@@ -538,17 +540,26 @@ class LoRATrainer:
 		rows_total = 0
 		group_rows = 0
 		group_processed = 0
+		if not head_only:
+			expected_groups = OptimizerGroupLayout(
+				total_rows, effective_batch_size
+			).row_counts
+			if optimizer_group_rows is None:
+				optimizer_group_rows = expected_groups
+			elif optimizer_group_rows != expected_groups:
+				raise RuntimeError(
+					f"A {self._model_label} batch plan has invalid optimizer-group sizes."
+				)
 		planned_groups = (
 			None if optimizer_group_rows is None else iter(optimizer_group_rows)
 		)
 		for batch in loader:
 			if group_processed == 0:
-				# A cached short group may occur anywhere after shuffling update groups.
 				if planned_groups is None:
 					group_rows = min(effective_batch_size, total_rows - rows_total)
 				else:
 					group_rows = next(planned_groups, 0)
-					if not 0 < group_rows <= effective_batch_size:
+					if not 0 < group_rows <= total_rows - rows_total:
 						raise RuntimeError(
 							f"A {self._model_label} batch plan has an invalid optimizer group."
 						)

@@ -37,8 +37,31 @@ from .warmup_cache import WarmupCacheContext
 
 
 @dataclass(frozen=True, slots=True)
+class OptimizerGroupLayout:
+	"""Merge a short tail into the last full update, retaining all training rows."""
+
+	rows: int
+	group_size: int
+
+	def __post_init__(self) -> None:
+		if self.rows <= 0 or self.group_size <= 0:
+			raise ValueError("Optimizer groups require positive row and group sizes.")
+
+	@property
+	def update_count(self) -> int:
+		return max(1, self.rows // self.group_size)
+
+	@property
+	def row_counts(self) -> tuple[int, ...]:
+		full_groups = self.update_count - 1
+		return (self.group_size,) * full_groups + (
+			self.rows - full_groups * self.group_size,
+		)
+
+
+@dataclass(frozen=True, slots=True)
 class TrainingBatchPlan:
-	"""Fixed update groups containing variable-sized, independently padded batches."""
+	"""Cached packing groups containing independently padded micro-batches."""
 
 	groups: tuple[tuple[tuple[int, ...], ...], ...]
 	padded_tokens: int
@@ -53,12 +76,12 @@ class TrainingBatchPlan:
 		"""Reject missing, repeated, out-of-range, oversized, or misgrouped rows."""
 		rows = len(dataset)
 		if not rows or len(self.groups) != (rows + group_size - 1) // group_size:
-			raise ValueError("Adapter batch plan has an invalid update-group count.")
+			raise ValueError("Adapter batch plan has an invalid packing-group count.")
 		seen = np.zeros(rows, dtype=np.bool_)
 		padded_tokens = 0
 		for group_index, group in enumerate(self.groups):
 			if not group:
-				raise ValueError("Adapter update groups cannot be empty.")
+				raise ValueError("Adapter packing groups cannot be empty.")
 			group_rows = 0
 			for batch in group:
 				if not batch:
@@ -83,7 +106,9 @@ class TrainingBatchPlan:
 				group_rows += len(batch)
 				padded_tokens += cost
 			if group_rows != min(group_size, rows - group_index * group_size):
-				raise ValueError("Adapter batch plan has an invalid update-group size.")
+				raise ValueError(
+					"Adapter batch plan has an invalid packing-group size."
+				)
 		if (
 			not bool(seen.all())
 			or isinstance(self.padded_tokens, bool)
@@ -179,10 +204,12 @@ class _GlobalBatchPlanner:
 
 
 class _PlannedBatchSampler(Sampler[list[int]]):
-	"""Shuffle whole update groups and their micro-batches reproducibly per epoch."""
+	"""Shuffle full groups, then merge a short tail into the final epoch update."""
 
 	def __init__(self, plan: TrainingBatchPlan, seed: int) -> None:
 		self._plan = plan
+		group_rows = tuple(sum(map(len, group)) for group in plan.groups)
+		self._layout = OptimizerGroupLayout(sum(group_rows), group_rows[0])
 		self._seed = seed
 		self._epoch = 0
 
@@ -194,18 +221,20 @@ class _PlannedBatchSampler(Sampler[list[int]]):
 	def _group_order(self) -> tuple[list[int], torch.Generator]:
 		generator = torch.Generator().manual_seed(self._seed + self._epoch)
 		return torch.randperm(
-			len(self._plan.groups), generator=generator
+			self._layout.update_count, generator=generator
 		).tolist(), generator
 
 	@property
 	def group_row_counts(self) -> tuple[int, ...]:
-		order, _ = self._group_order()
-		return tuple(sum(map(len, self._plan.groups[index])) for index in order)
+		return self._layout.row_counts
 
 	def __iter__(self) -> Iterator[list[int]]:
 		order, generator = self._group_order()
-		for index in order:
+		for position, index in enumerate(order):
 			group = self._plan.groups[index]
+			if position == len(order) - 1 and len(self._plan.groups) > len(order):
+				# Reuse packed batches without changing their token cost or cached groups.
+				group += self._plan.groups[-1]
 			for batch_index in torch.randperm(len(group), generator=generator).tolist():
 				yield list(group[batch_index])
 
@@ -231,7 +260,7 @@ class PreparedTrainingSplit:
 
 	@property
 	def optimizer_group_rows(self) -> tuple[int, ...] | None:
-		"""Include a short group's size at its actual shuffled position."""
+		"""Report effective update sizes, including any merged final group."""
 		return None if self._sampler is None else self._sampler.group_row_counts
 
 
@@ -489,9 +518,10 @@ class LoRATrainingBatchRepository:
 		else:
 			status = "Reused"
 		self._plans[key] = payload
+		updates = OptimizerGroupLayout(len(reference), group_size).update_count
 		print(
 			f"{status} {self._model_label} batch plan ({'build' if full_data else 'holdout'}): "
-			f"{len(reference):,} rows, {len(plan.groups):,} updates, {plan.batch_count:,} micro-batches; "
+			f"{len(reference):,} rows, {updates:,} updates, {plan.batch_count:,} micro-batches; "
 			f"{self._cache.path('plans', metadata)}",
 			flush=True,
 		)

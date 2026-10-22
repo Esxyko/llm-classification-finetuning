@@ -132,8 +132,10 @@ and print summaries. Business logic belongs below the CLI layer.
       without padding masks, with CPU pooling positions.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist holdout/build
-      global batch plans, supply optional warmup identity contexts, and shuffle
-      fixed update groups with explicit row counts. Its `warmup_only` path
+      global batch plans, supply optional warmup identity contexts, and own
+      the merged optimizer-group layout shared with training and step counts.
+      Shuffle full packing groups before merging any short tail into the last
+      epoch update, supplying explicit row counts. Its `warmup_only` path
       prepares train-only tokens and references without joint batch plans.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       optionally load a single-GPU NF4/double-quantized training base and prepare
@@ -367,10 +369,16 @@ logic depend on a particular timestamped run.
   progress counts head batches with the original stage weights independently
   of whether a feature loader was supplied. Zero warmup epochs still permit
   validation/submission extraction.
+  Joint updates target `G = training_batch_size * gradient_accumulation_steps`
+  rows. A short final group merges into the preceding full update, with loss
+  normalized by their combined row count. An epoch smaller than `G` retains one
+  update; exact multiples retain all full groups. Scheduling and progress use
+  `max(1, training_rows // G)` updates per nonempty joint epoch in both profiles,
+  holdout/build modes, and fixed/token-budget batching. Warmup is unchanged.
   The default `training_token_budget: 0` retains fixed micro-batches and the
   original seeded shuffle, while reusing cached tokens. A positive budget
   compares three stable global A/B length sorts for each selected training set,
-  forms `training_batch_size * gradient_accumulation_steps` rows per update, and
+  forms cached packing groups of up to `G` rows, and
   best-fit packs each group by independently padded A/B token cost. Plans minimize
   candidate micro-batch counts, then padded tokens, and are cached separately
   from tokens. Plan keys use sorted selected identities/orientations and A/B
@@ -378,19 +386,22 @@ logic depend on a particular timestamped run.
   same plan namespace; quantization does not affect planning. Labels, source row order,
   split names, token content beyond lengths, and unselected inputs are
   excluded. Stored sample identities are rebound to current indices on every
-  read, and current labels are used. Group membership stays fixed;
-  each zero-based joint epoch shuffles groups and their micro-batches with
-  `random_state + joint_epoch` for both holdout runs and builds. The short group can
-  appear anywhere and supplies its actual row count to the trainer. Over-budget
-  singletons retain all tokens. Update-group row counts, clipping/update
-  boundaries, and scheduler step counts are preserved; grouping, floating-point
-  order, and dropout draws may differ from fixed-batch training.
+  read, and current labels are used. Cached packing-group membership stays fixed;
+  each zero-based joint epoch shuffles full groups with
+  `random_state + joint_epoch` for both holdout runs and builds, then appends any
+  short group's micro-batches to the last shuffled full group for one final
+  update. Micro-batches are shuffled within each resulting update group without
+  repacking, preserving token costs and existing cache compatibility. A lone
+  short group runs by itself. Over-budget singletons retain all tokens.
+  Fixed and token-budget training use the same update-group row counts,
+  clipping/update boundaries, and scheduler step counts; grouping, floating-point
+  order, and dropout draws may differ.
   `--refresh-cache` refreshes requested shared token encodings, LoRA plans,
   and completed head warmup;
   test inference uses the same text cache with its checkpoint's tokenizer revision.
   Uncached total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize loss by actual row counts per update, including
-  short warmup batches and incomplete joint accumulation groups. Validation and
+  short warmup batches and merged final joint accumulation groups. Validation and
   test average both orientations' probabilities.
 - LoRA/QLoRA head-warmup caches identify only the sorted original training ID
   set; builds use the full original ID set. Validation IDs and holdout/build mode
@@ -507,8 +518,8 @@ logic depend on a particular timestamped run.
   Complete runtime and GPU peaks are recorded after the model run succeeds.
 - Training progress uses one counter across all executed stages and epochs of a
   model run, including validation batches after every epoch. Totals use
-  A/B-selected training rows and original validation IDs, rounding training and
-  validation batches/groups separately. Training groups (including FP16-skipped updates) and
+  A/B-selected training rows and original validation IDs, counting merged joint
+  updates and rounding batch counts separately. Training groups (including FP16-skipped updates) and
   validation batches count as one unit, except LoRA warmup training/validation
   batches count as half a unit each. Extraction, preparation, caches, and publication are
   excluded, and reused warmup contributes no work. Dynamic micro-batches

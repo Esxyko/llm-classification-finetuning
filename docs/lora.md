@@ -178,7 +178,15 @@ of `gradient_accumulation_steps`. Joint training uses `training_batch_size`,
 `gradient_accumulation_steps`, and the
 [optional token budget](#optional-token-budget-training-batches).
 Both stages normalize loss by the actual row count of each update, including
-short final warmup batches and incomplete joint accumulation groups. The
+short final warmup batches and merged final joint accumulation groups.
+Joint updates target `G = training_batch_size * gradient_accumulation_steps`
+rows. If the final group has fewer than `G` rows, it is merged into the preceding
+full group before a single parameter update. Completeness is based on row count,
+even if the final group contains the configured number of micro-batches.
+An epoch with fewer than `G` rows still performs one update; exact multiples
+keep their full groups. For example, 15 rows with `G = 8` form one 15-row update,
+and 27 rows form updates of 8, 8, and 11 rows. This applies to both LoRA and QLoRA,
+holdout runs and builds, with fixed or token-budget micro-batches. The
 joint-training decay schedule uses only joint optimizer updates.
 `warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
@@ -233,7 +241,8 @@ training and its validation for that holdout/build.
 
 For a holdout run, let `W` be
 `ceil(training_rows / warmup_training_batch_size)`,
-`J` be `ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`,
+`J` be `max(1, training_rows // (training_batch_size * gradient_accumulation_steps))`
+for nonempty training data,
 and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
 IDs. The run contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
 units when warmup runs, or `epochs * (J + V)` when warmup is reused.
@@ -242,7 +251,8 @@ with `V = 0`. Training counts respect `A/B_swap`,
 including original IDs only for `inf`.
 
 Training advances the counter after each warmup batch or complete joint
-accumulation group, including short batches/groups and skipped FP16 updates.
+accumulation group, including short warmup batches, merged final groups,
+single short epochs, and skipped FP16 updates.
 Evaluation advances it once per head-validation batch, using the corresponding
 stage's weight.
 Dynamic token batches retain the same group counts regardless of how many
@@ -272,7 +282,7 @@ The saved training partition is globally planned before joint training,
 excluding the validation set and selecting the configured A/B training orientations.
 Preparation tries stable sorts by `(A_length, B_length)`,
 `(B_length, A_length)`, and `(A_length + B_length, A_length, B_length)`, with
-`(id, is_swapped)` as the tie-breaker. Each candidate is divided into update
+`(id, is_swapped)` as the tie-breaker. Each candidate is divided into cached packing
 groups of `G = training_batch_size * gradient_accumulation_steps` rows, with a
 possibly shorter final group. Inside each group, longest-total-length rows are
 placed first into the existing batch with the least remaining token budget;
@@ -284,20 +294,25 @@ The budget counts padded A/B input tokens, not GPU memory bytes. An
 over-budget singleton is allowed, so lowering the budget cannot reduce the
 tokens or memory needed by that individual input.
 
-Group membership stays fixed across epochs. A zero-based joint epoch uses
-`random_state + joint_epoch` to shuffle update groups and their
-micro-batches in both holdout and build modes. Dynamic micro-batches can contain more
-than `training_batch_size` rows, up to `G`. A single over-budget pair is processed
-alone without truncation. Losses are divided by each group's actual row count,
-even when the short group is shuffled into the middle of an epoch. Gradient
-clipping and optimizer/scaler/scheduler handling occur once per group.
-The planned joint schedule still has
-`ceil(training_rows / (training_batch_size * gradient_accumulation_steps))`
-updates per epoch; FP16 overflow can still skip an update as before.
+Cached packing-group membership stays fixed across epochs. A zero-based joint
+epoch uses `random_state + joint_epoch` to shuffle the full groups first, then
+appends the short group's micro-batches to the last shuffled full group.
+The merged group is always the epoch's final update, and its full-group partner
+can change across epochs. If there is only one short group, it runs by itself.
+Micro-batches are shuffled within each resulting update group without repacking,
+so cached plans and token-budget constraints remain valid. These rules apply in
+both holdout and build modes. Dynamic micro-batches can contain more than
+`training_batch_size` rows, up to `G`; merging retains their original sizes.
+A single over-budget pair is processed alone without truncation. Losses are
+divided by each update group's actual row count, including all rows in the
+merged final group. Gradient clipping and optimizer/scaler/scheduler handling
+occur once per resulting group. The planned joint schedule has
+`max(1, training_rows // (training_batch_size * gradient_accumulation_steps))`
+updates per nonempty epoch; FP16 overflow can still skip an update as before.
 
-The effective batch size and schedule length are preserved; positive budgets
-change update-group membership from the earlier random grouping to global
-length-based grouping. Floating-point accumulation order and dropout draws can
+Fixed and token-budget batching use the same update sizes and schedule length.
+Positive budgets group rows by global lengths instead of fixed-batch random
+order. Floating-point accumulation order and dropout draws can
 differ. The root preset leaves the budget at `0`, retaining the
 original fixed-batch seeded shuffle. The example budget of `4096` is a starting
 point to try, not a measured recommendation for a particular GPU. Padded batches

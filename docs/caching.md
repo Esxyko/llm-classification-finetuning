@@ -213,6 +213,14 @@ Legacy per-model batch directories and per-model `tokens/*.pt` files are no
 longer read. Identical plan keys can be reused across LoRA and QLoRA; quantization
 does not affect planning. Different budgets or selected rows still select
 different plans.
+
+Cached packing groups keep their existing format and membership, including any
+short final group. Each epoch shuffles the full groups, then appends the short
+group's micro-batches to the last shuffled full group for a single final update.
+An epoch containing only a short group runs it alone. Micro-batches are not
+repacked, so token costs and existing plan keys remain valid. The reported
+update count reflects the merged groups rather than the cached packing-group
+count.
 Both adapter profiles share the text-token cache when tokenizer content and
 encoding options match; quantization does not change token identity.
 

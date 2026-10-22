@@ -145,6 +145,13 @@ frozen model's `extraction_batch_size`; the standalone warmup section uses the
 same definition. Head inference uses its own batch size after extraction completes.
 `gradient_accumulation_steps` applies only to joint training; warmup performs one
 optimizer update per `warmup_training_batch_size` batch.
+Joint updates target `G = training_batch_size * gradient_accumulation_steps`
+rows. An incomplete final group is merged into the preceding full group, using
+the combined row count to normalize loss and performing one parameter update.
+An epoch smaller than `G` still performs one update. Token-budget training first
+shuffles full groups, then merges the short group into the last shuffled group.
+Both LoRA and QLoRA use `max(1, training_rows // G)` joint updates per nonempty
+epoch for scheduling and progress. See [LoRA training](lora.md).
 
 ## GPU configuration
 
