@@ -53,9 +53,9 @@ qwen3_4b_lora:
   training_token_budget: 131072
   training_batch_size: 8
   head_inference_batch_size: 16384
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 16
   gradient_checkpointing: true
-  epochs: 2
+  epochs: 3
   warmup_epochs: 1
   extraction_batch_size: 8
   warmup_training_batch_size: 1024
