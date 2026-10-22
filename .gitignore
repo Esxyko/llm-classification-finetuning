@@ -15,8 +15,9 @@ wheels/
 
 # Downloaded Hugging Face caches and model archives inside this checkout
 huggingface/
+models--*/
 models--*.zip
-.pack-model-*/
+.migrate-hf-*/
 
 # Downloaded and generated competition data, except the saved split and model caches
 /data/*

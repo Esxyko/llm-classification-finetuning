@@ -10,20 +10,20 @@ or `result`. Relative config-file paths resolve from the working directory.
 All commands load `.env` from that directory, preserving existing environment
 variables.
 
-Set `MODEL_PATH` in `.env` to choose the directory for downloaded Hugging Face
-model archives. Each repository uses one file directly in that directory, such
-as `models--Qwen--Qwen3-4B.zip`. A relative `MODEL_PATH` resolves from the working
+Set `MODEL_PATH` in `.env` to choose the persistent native Hugging Face Hub cache
+directory. Each repository uses a directory there, such
+as `models--Qwen--Qwen3-4B/`. A relative `MODEL_PATH` resolves from the working
 directory, and `~` expands to the user's home directory.
 
 ```dotenv
 MODEL_PATH=D:/models
 ```
 
-In this example, Qwen3-4B uses `D:/models/models--Qwen--Qwen3-4B.zip`.
-Archives unpack automatically into a private process cache under
-`<MODEL_PATH>/.cache-work/`; newly downloaded files are repacked and verified
-before publication. The private cache is removed when the process exits
-normally. Native Hub model names and commit hashes are preserved.
+In this example, Qwen3-4B uses `D:/models/models--Qwen--Qwen3-4B/`.
+Project model/config/tokenizer loaders pass `MODEL_PATH` as `cache_dir` and reuse
+downloaded files across processes. Hugging Face manages refs, snapshots, blobs,
+download locks, and resumable downloads in its native layout. Files remain on
+disk after the process exits; no packing or unpacking occurs.
 If `MODEL_PATH` is missing or blank, Hugging Face keeps its usual cache settings.
 Explicit local model directories are loaded directly. See
 [model cache migration](caching.md#hugging-face-model-downloads) for existing downloads.
