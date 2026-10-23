@@ -64,6 +64,28 @@ more disk space. Only native `models--*` repository directories are migrated.
 Authentication tokens, datasets, spaces, download locks, and Xet caches are
 excluded. Existing ZIP archives are not read by project loaders or this script.
 
+### Extract an uploaded Qwen3-4B archive
+
+Place `Qwen3-4B-lora-minimal.zip` directly in `MODEL_PATH`, configured in the
+environment or the working directory's `.env`. If available, place its
+`Qwen3-4B-lora-minimal.zip.sha256` beside it. Run from the project root:
+
+```shell
+uv run python scripts/extract_qwen3_4b.py
+```
+
+The script loads `.env` without overriding environment variables and extracts
+the nine-file minimal archive for revision
+`1cfa9a7208912126459214e8b04321603b3df60c` into
+`<MODEL_PATH>/models--Qwen--Qwen3-4B/`. It checks an adjacent SHA-256 file when
+present and always validates ZIP contents and CRCs. Extraction is staged under
+`<MODEL_PATH>/.cache-work/`; the model directory is published after successful
+extraction. Existing model directories are rejected without overwriting them,
+and the ZIP is retained. Allow approximately 8.06 GB of additional free space.
+
+Keep `model_name: Qwen/Qwen3-4B` in YAML. Set `HF_HUB_OFFLINE=1` in the
+environment or `.env` when loading the extracted model without network access.
+
 ## Shared storage and multipart files
 
 All four cache types use the common `CacheStorage` file interface. Cache keys,

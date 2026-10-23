@@ -254,6 +254,7 @@ exports over importing private helpers across package boundaries.
 | `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (LoRA by default) on all original IDs from both partitions for each YAML file in `configs/`, with separate tagged checkpoints |
 | `scripts/count_split_tokens.py` | Count actual unpadded, untruncated A/B tokens in the saved split using training serialization; publish per-ID CSV, split CSV, and tokenizer/source metadata |
 | `scripts/migrate_hf_models.py` | Copy or move existing native HF repositories directly into `MODEL_PATH`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
+| `scripts/extract_qwen3_4b.py` | Extract the uploaded `Qwen3-4B-lora-minimal.zip` from `MODEL_PATH` into a staged native Hub cache, verify ZIP integrity and an optional SHA-256 sidecar, and publish without overwriting an existing model |
 | `<MODEL_PATH>/models--*/` | Persistent native Hub repositories, including weights, configurations, tokenizers, refs, and snapshots |
 | `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
 | `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
