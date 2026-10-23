@@ -1,0 +1,33 @@
+{
+  "epochs": [
+    {
+      "epoch": 2,
+      "total_time": "02:28:13",
+      "training_loss": 0.9475297187594296,
+      "training_time": "02:12:37",
+      "validation_loss": 0.9520870784512288,
+      "validation_time": "00:15:36"
+    }
+  ],
+  "generated_at": "2026-10-23T11:28:47+08:00",
+  "model_name": "Qwen/Qwen3-4B",
+  "prediction_aggregation": "ab_swap_average",
+  "predictions": 11495,
+  "run_name": "qwen3-4b-lora-20261023-112847",
+  "source_training_rows": 45982,
+  "total_time": "02:46:13",
+  "training_rows": 91964,
+  "training_time": "02:12:37",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.9520870784512288,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:15:36",
+  "config": "configs/1.yaml",
+  "config_total_time": "02:46:13",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 84446304256,
+    "peak_reserved_bytes": 101097406464
+  }
+}
