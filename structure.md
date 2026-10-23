@@ -81,8 +81,8 @@ and print summaries. Business logic belongs below the CLI layer.
 
 - `__init__.py`: Loads working-directory `.env` without overriding existing
   environment variables before HF imports, and sets the default HF download endpoint to
-  `https://hf-mirror.com` before library imports, preserving an existing
-  `HF_ENDPOINT` environment variable. For this mirror, also defaults
+  `https://huggingface.co` before library imports, preserving an existing
+  `HF_ENDPOINT` environment variable. When explicitly using `https://hf-mirror.com`, also defaults
   `HF_HUB_DISABLE_XET` to `1` to use HTTP downloads, preserving an explicit
   Xet setting and leaving other endpoints' Xet behavior unchanged.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
