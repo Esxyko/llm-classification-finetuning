@@ -5,9 +5,10 @@
 - **Kaggle download fails:** Accept the competition rules, verify
   `KAGGLE_API_TOKEN`, and check network access.
 - **Warmup or model download fails with `CAS Client Error` and `401 Unauthorized`:**
-  The Xet client failed to authenticate while downloading model weights. To
-  retry with HTTP downloads, explicitly disable Xet before starting the command,
-  for example in PowerShell:
+  The Xet client failed to authenticate while downloading model weights. Project
+  commands now default to HTTP downloads when using `https://hf-mirror.com`.
+  Restart the command with the updated code. If Xet was explicitly enabled,
+  disable it before starting the command, for example in PowerShell:
 
   ```powershell
   $env:HF_HUB_DISABLE_XET = "1"
