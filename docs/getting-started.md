@@ -69,28 +69,19 @@ cache settings apply. Existing native downloads can be copied or moved with the
 [model migration script](caching.md#hugging-face-model-downloads).
 
 Project commands and token-statistics downloads default to
-[`https://hf-mirror.com`](https://hf-mirror.com) for Hugging Face model,
-configuration, and tokenizer files. Package initialization sets `HF_ENDPOINT`
-before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
-variable takes precedence; set it in `.env` or before starting the command to
-use another endpoint. This default does not require a `.env` entry.
+the official Hugging Face endpoint,
+[`https://huggingface.co`](https://huggingface.co), for model, configuration, and
+tokenizer files. The project does not set `HF_ENDPOINT`; leave it unset to use
+the official default. To use another endpoint, set `HF_ENDPOINT` in `.env` or
+before starting the command. An existing environment variable takes precedence
+over `.env`.
 
-When the endpoint is `https://hf-mirror.com`, initialization also defaults
-`HF_HUB_DISABLE_XET` to `1` so model weights use HTTP downloads instead of the
-Xet client, avoiding its CAS authorization failures. An existing
-`HF_HUB_DISABLE_XET` value takes precedence; set it to `0` before starting the
-command to opt back into Xet. Other endpoints keep their existing Xet behavior.
+Xet download behavior also follows Hugging Face defaults. The project does not
+set `HF_HUB_DISABLE_XET`; set it to `1` explicitly if you need to disable Xet.
 See the [Hugging Face environment variable reference](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhubdisablexet).
 
-For example, to select an endpoint in PowerShell:
-
-```powershell
-$env:HF_ENDPOINT = "https://hf-mirror.com"
-uv run model warmup --build
-```
-
 When using the Python API, import `llm_classification_finetuning` before
-`transformers` or `huggingface_hub` so the download defaults take effect. Restart
+`transformers` or `huggingface_hub` so settings from `.env` take effect. Restart
 an existing notebook kernel or Python process if those libraries were already
 imported.
 
