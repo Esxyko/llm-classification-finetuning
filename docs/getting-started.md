@@ -69,7 +69,7 @@ cache settings apply. Existing native downloads can be copied or moved with the
 [model migration script](caching.md#hugging-face-model-downloads).
 
 Project commands and token-statistics downloads default to
-[`https://huggingface.co`](https://huggingface.co) for Hugging Face model,
+[`https://hf-mirror.com`](https://hf-mirror.com) for Hugging Face model,
 configuration, and tokenizer files. Package initialization sets `HF_ENDPOINT`
 before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
 variable takes precedence; set it in `.env` or before starting the command to
@@ -85,7 +85,7 @@ See the [Hugging Face environment variable reference](https://huggingface.co/doc
 For example, to select an endpoint in PowerShell:
 
 ```powershell
-$env:HF_ENDPOINT = "https://huggingface.co"
+$env:HF_ENDPOINT = "https://hf-mirror.com"
 uv run model warmup --build
 ```
 
