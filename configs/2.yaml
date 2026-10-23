@@ -50,7 +50,7 @@ qwen3_4b_lora:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 13514
-  gradient_checkpointing_budget: 12288
+  gradient_checkpointing_budget: 11264
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 2048

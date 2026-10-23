@@ -91,7 +91,7 @@ class LoRAQwenClassifier(nn.Module):
 			revision=revision,
 			dtype=self.dtype,
 			attn_implementation=gpu.attention_implementation,
-			device_map={"": str(device)} if quantize_backbone else device_map,
+			device_map=device_map if device_map is not None else {"": str(device)},
 			quantization_config=quantization_config,
 		)
 		backbone.config.use_cache = False
@@ -125,8 +125,6 @@ class LoRAQwenClassifier(nn.Module):
 				),
 				autocast_adapter_dtype=True,
 			)
-		if device_map is None and not quantize_backbone:
-			self.backbone.to(device)
 		self._gradient_checkpointing_enabled = self.backbone.is_gradient_checkpointing
 		self._set_gradient_checkpointing(False)
 		self.classifier = _LoRAClassificationHead(

@@ -145,8 +145,9 @@ and print summaries. Business logic belongs below the CLI layer.
       autocast with FP32 logits. Select gradient checkpointing once per joint
       A/B micro-batch from the padded token budget, retaining the state through
       backward and cleaning input-gradient hooks when disabled. Evaluation and
-      no-gradient extraction disable checkpointing. Quantized weights are placed
-      during loading.
+      no-gradient extraction disable checkpointing. Backbone weights are placed
+      directly on their target GPUs during loading, including non-quantized
+      training and standalone warmup.
     - `extractor.py`: Batch individual A/B branches and reconstruct one
       no-gradient canonical feature pair per needed ID for warmup, each
       joint-validation pass, or submission, retaining shared
@@ -445,7 +446,11 @@ logic depend on a particular timestamped run.
   build epoch counts, timings, and progress include only actual executed work;
   joint epoch numbers retain the configured warmup offset. See
   [warmup caches](docs/caching.md#loraqlora-head-warmup).
-- Holdout validation and builds use one shared `gpu.device`. `--submit` requires
+- Holdout validation, builds, and standalone warmup use one shared `gpu.device`.
+  Single-GPU frozen and adapter backbones load with `device_map={"": str(device)}`
+  rather than moving the complete backbone after loading. Explicit submission
+  maps are preserved; the default loading map does not disable LoRA joint-training
+  gradient checkpointing. `--submit` requires
   exactly two distinct `gpu.submit_devices`, defaulting to `[cuda:0, cuda:1]`,
   independently of the training GPU. Both devices must support `gpu.precision`;
   GPU names and VRAM sizes are unrestricted. Embedding/rotary modules and the

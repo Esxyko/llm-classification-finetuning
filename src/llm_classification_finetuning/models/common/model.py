@@ -54,13 +54,11 @@ class PairwiseQwenClassifier(nn.Module):
 			revision=revision,
 			dtype=dtype,
 			attn_implementation=attention_implementation,
-			device_map=device_map,
+			device_map=device_map if device_map is not None else {"": str(device)},
 		)
 		self.backbone.config.use_cache = False
 		self.base_revision = getattr(self.backbone.config, "_commit_hash", None)
 		self.backbone.requires_grad_(False)
-		if device_map is None:
-			self.backbone.to(device)
 		self.backbone.eval()
 		self.backbone_hidden_size = int(self.backbone.config.hidden_size)
 		self.classifier = PairwiseClassificationHead(
