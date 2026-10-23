@@ -1,4 +1,4 @@
-"""Extract Qwen3-4B-lora-minimal.zip from MODEL_PATH into its native Hub cache."""
+"""Extract Qwen3-4B-lora-minimal.zip from FILE_PATH into DATA_PATH."""
 
 from __future__ import annotations
 
@@ -33,30 +33,33 @@ SNAPSHOT_FILES = (
 class Qwen3ArchiveExtractor:
 	"""Stage and validate the uploaded minimal archive before publishing its cache."""
 
-	def __init__(self, model_path: Path) -> None:
-		self._root = model_path.expanduser().resolve()
-		self._archive = self._root / ARCHIVE_NAME
+	def __init__(self, file_path: Path, data_path: Path) -> None:
+		self._root = data_path.expanduser().resolve()
+		self._archive = file_path.expanduser().resolve() / ARCHIVE_NAME
 		self._destination = self._root / REPOSITORY_NAME
 
 	def run(self) -> None:
 		"""Extract ordinary files, preserving the archive and any existing cache."""
 		self._check_destination()
 		if not self._archive.is_file():
-			raise ValueError(f"Place {ARCHIVE_NAME} in MODEL_PATH: {self._root}")
+			raise ValueError(
+				f"Place {ARCHIVE_NAME} in FILE_PATH: {self._archive.parent}"
+			)
 		print(f"Archive: {self._archive}", flush=True)
 		print(f"Destination: {self._destination}", flush=True)
 		self._verify_checksum()
 		with zipfile.ZipFile(self._archive) as archive:
 			members = self._validated_members(archive)
 			total_bytes = sum(member.file_size for member in members)
+			self._root.mkdir(parents=True, exist_ok=True)
 			if shutil.disk_usage(self._root).free < total_bytes:
 				raise ValueError(
-					f"Not enough free space in MODEL_PATH; need {total_bytes:,} bytes."
+					f"Not enough free space in DATA_PATH; need {total_bytes:,} bytes."
 				)
 			work_root = self._root / ".cache-work"
 			if work_root.resolve().parent != self._root:
 				raise ValueError(
-					f"Extraction work directory must stay in MODEL_PATH: {work_root}"
+					f"Extraction work directory must stay in DATA_PATH: {work_root}"
 				)
 			work_root.mkdir(exist_ok=True)
 			with TemporaryDirectory(prefix="extract-qwen3-4b-", dir=work_root) as work:
@@ -81,7 +84,7 @@ class Qwen3ArchiveExtractor:
 				self._check_destination()
 				(staging / REPOSITORY_NAME).rename(self._destination)
 		print(f"Extracted {len(members)} files ({total_bytes:,} bytes).", flush=True)
-		print(f"Ready to load Qwen/Qwen3-4B from MODEL_PATH: {self._root}")
+		print(f"To load Qwen/Qwen3-4B, set MODEL_PATH to: {self._root}")
 
 	def _check_destination(self) -> None:
 		if self._destination.exists() or self._destination.is_symlink():
@@ -142,11 +145,14 @@ def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.parse_args()
 	load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
-	model_path = os.environ.get("MODEL_PATH", "").strip()
-	if not model_path:
-		parser.error("Set a non-empty MODEL_PATH in .env or the environment first.")
+	file_path = os.environ.get("FILE_PATH", "").strip()
+	data_path = os.environ.get("DATA_PATH", "").strip()
+	if not file_path or not data_path:
+		parser.error(
+			"Set non-empty FILE_PATH and DATA_PATH directories in .env or the environment first."
+		)
 	try:
-		Qwen3ArchiveExtractor(Path(model_path)).run()
+		Qwen3ArchiveExtractor(Path(file_path), Path(data_path)).run()
 	except (OSError, ValueError, zipfile.BadZipFile, NotImplementedError) as error:
 		print(f"Model extraction failed: {error}", file=sys.stderr)
 		return 1

@@ -66,9 +66,17 @@ excluded. Existing ZIP archives are not read by project loaders or this script.
 
 ### Extract an uploaded Qwen3-4B archive
 
-Place `Qwen3-4B-lora-minimal.zip` directly in `MODEL_PATH`, configured in the
-environment or the working directory's `.env`. If available, place its
-`Qwen3-4B-lora-minimal.zip.sha256` beside it. Run from the project root:
+Set `FILE_PATH` to the directory containing `Qwen3-4B-lora-minimal.zip` and
+`DATA_PATH` to the extraction directory, using the environment or the working
+directory's `.env`. If available, place
+`Qwen3-4B-lora-minimal.zip.sha256` beside the ZIP in `FILE_PATH`. For example:
+
+```dotenv
+FILE_PATH=D:/uploads
+DATA_PATH=D:/models
+```
+
+Run from the project root:
 
 ```shell
 uv run python scripts/extract_qwen3_4b.py
@@ -77,14 +85,18 @@ uv run python scripts/extract_qwen3_4b.py
 The script loads `.env` without overriding environment variables and extracts
 the nine-file minimal archive for revision
 `1cfa9a7208912126459214e8b04321603b3df60c` into
-`<MODEL_PATH>/models--Qwen--Qwen3-4B/`. It checks an adjacent SHA-256 file when
+`<DATA_PATH>/models--Qwen--Qwen3-4B/`. Both paths are directories; relative
+paths resolve from the working directory, and `~` expands to the user's home
+directory. The script creates `DATA_PATH` if needed. It checks an adjacent SHA-256 file when
 present and always validates ZIP contents and CRCs. Extraction is staged under
-`<MODEL_PATH>/.cache-work/`; the model directory is published after successful
+`<DATA_PATH>/.cache-work/`; the model directory is published after successful
 extraction. Existing model directories are rejected without overwriting them,
-and the ZIP is retained. Allow approximately 8.06 GB of additional free space.
+and the ZIP is retained in `FILE_PATH`. Allow approximately 8.06 GB of free
+space in `DATA_PATH`.
 
-Keep `model_name: Qwen/Qwen3-4B` in YAML. Set `HF_HUB_OFFLINE=1` in the
-environment or `.env` when loading the extracted model without network access.
+To load the extracted model, set `MODEL_PATH` to the same directory as
+`DATA_PATH` and keep `model_name: Qwen/Qwen3-4B` in YAML. Set
+`HF_HUB_OFFLINE=1` in the environment or `.env` when loading without network access.
 
 ## Shared storage and multipart files
 

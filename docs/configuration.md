@@ -28,7 +28,8 @@ If `MODEL_PATH` is missing or blank, Hugging Face keeps its usual cache settings
 Explicit local model directories are loaded directly. See
 [model cache migration](caching.md#hugging-face-model-downloads) for existing downloads.
 
-`MODEL_PATH` controls model downloads only. `DATA_PATH` is no longer used.
+`MODEL_PATH` controls model downloads only. `FILE_PATH` and `DATA_PATH` configure
+only the [archive extraction script](caching.md#extract-an-uploaded-qwen3-4b-archive).
 Relative YAML `data.raw_dir` and `data.processed_path` values resolve from the
 working directory; absolute YAML paths stay absolute. With the default YAML,
 raw files use `./data/raw`, processed data uses
