@@ -17,6 +17,12 @@ MAX_VALIDATION_ROW_DEVIATION = 0.005
 
 MAX_VALIDATION_ROW_DEVIATION = 0.005
 
+LORA_WARMUP_FIELDS = (
+	"warmup_epochs",
+	"warmup_training_batch_size",
+	"warmup_learning_rate",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DataConfig:
@@ -88,7 +94,7 @@ class WarmupModelConfig:
 
 @dataclass(frozen=True, slots=True)
 class LoRAModelConfig(WarmupModelConfig):
-	"""Hyperparameters for live pairwise backbone adapter training."""
+	"""Effective adapter settings, with warmup optimization resolved from warmup."""
 
 	training_batch_size: int
 	head_inference_batch_size: int
@@ -189,10 +195,10 @@ class AppConfig:
 			"gpu",
 		)
 		qwen3_4b = _load_model_config(root, "qwen3_4b") if "qwen3_4b" in root else None
-		qwen3_4b_lora = (
-			_load_lora_model_config(root) if "qwen3_4b_lora" in root else None
-		)
 		warmup = _load_warmup_model_config(root) if "warmup" in root else None
+		qwen3_4b_lora = (
+			_load_lora_model_config(root, warmup) if "qwen3_4b_lora" in root else None
+		)
 
 		competition = _require_non_empty_string(
 			data_section.get("competition"), "data.competition"
@@ -300,11 +306,11 @@ def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
 	section = _require_mapping(root.get("warmup"), "warmup")
 	keys = set(WarmupModelConfig.__dataclass_fields__) - {"ab_swap"}
 	_reject_unknown_keys(section, keys | {"A/B_swap"}, "warmup")
-	return _load_warmup_fields(section, "warmup", allow_zero_epochs=False)
+	return _load_warmup_fields(section, "warmup")
 
 
 def _load_warmup_fields(
-	section: Mapping[str, Any], section_name: str, *, allow_zero_epochs: bool
+	section: Mapping[str, Any], section_name: str
 ) -> WarmupModelConfig:
 	"""Validate the same head-warmup fields for standalone and adapter training."""
 
@@ -329,11 +335,8 @@ def _load_warmup_fields(
 	warmup_epochs = _require_integer(
 		section.get("warmup_epochs"), field("warmup_epochs")
 	)
-	if allow_zero_epochs:
-		if warmup_epochs < 0:
-			raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
-	elif warmup_epochs <= 0:
-		raise ConfigurationError(f"{field('warmup_epochs')} must be greater than 0.")
+	if warmup_epochs < 0:
+		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
 	workers = _require_integer(
 		section.get("dataloader_workers"), field("dataloader_workers")
 	)
@@ -363,11 +366,19 @@ def _load_warmup_fields(
 
 
 def _load_lora_model_config(
-	root: Mapping[str, Any], section_name: str = "qwen3_4b_lora"
+	root: Mapping[str, Any],
+	warmup: WarmupModelConfig | None,
+	section_name: str = "qwen3_4b_lora",
 ) -> LoRAModelConfig:
 	section = _require_mapping(root.get(section_name), section_name)
-	keys = set(LoRAModelConfig.__dataclass_fields__) - {"ab_swap"}
+	keys = set(LoRAModelConfig.__dataclass_fields__) - {"ab_swap", *LORA_WARMUP_FIELDS}
 	_reject_unknown_keys(section, keys | {"A/B_swap"}, section_name)
+	if warmup is None:
+		raise ConfigurationError(
+			f"{section_name} requires a 'warmup' section. Move "
+			"warmup_epochs, warmup_training_batch_size, and warmup_learning_rate "
+			"there; set warmup.warmup_epochs to 0 to disable head warmup."
+		)
 
 	def field(name: str) -> str:
 		return f"{section_name}.{name}"
@@ -387,7 +398,10 @@ def _load_lora_model_config(
 			raise ConfigurationError(f"{field(name)} must be in [0, 1).")
 		return value
 
-	warmup = _load_warmup_fields(section, section_name, allow_zero_epochs=True)
+	shared = _load_warmup_fields(
+		{**section, **{name: getattr(warmup, name) for name in LORA_WARMUP_FIELDS}},
+		section_name,
+	)
 	token_budget = _require_integer(
 		section.get("gradient_checkpointing_budget", 0),
 		field("gradient_checkpointing_budget"),
@@ -411,7 +425,7 @@ def _load_lora_model_config(
 		)
 
 	return LoRAModelConfig(
-		**asdict(warmup),
+		**asdict(shared),
 		training_batch_size=positive_integer("training_batch_size"),
 		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),

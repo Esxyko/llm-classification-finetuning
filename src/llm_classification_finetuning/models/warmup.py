@@ -21,6 +21,10 @@ class WarmupModelPipeline:
 				"Model warmup requires a 'warmup' section in the selected configuration. "
 				"Select a matching YAML with --config."
 			)
+		if config.warmup.warmup_epochs <= 0:
+			raise ConfigurationError(
+				"Standalone warmup requires warmup.warmup_epochs > 0."
+			)
 		self._config = config
 		self._model_config = config.warmup
 

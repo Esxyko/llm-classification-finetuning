@@ -16,7 +16,7 @@ gpu:
   submit_devices:
   - cuda:0
   - cuda:1
-qwen3_4b_lora:
+warmup:
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   hidden_size: 512
@@ -26,6 +26,17 @@ qwen3_4b_lora:
   extraction_batch_size: 64
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+  A/B_swap: aug
+qwen3_4b_lora:
+  model_name: Qwen/Qwen3-4B
+  max_length: 13514
+  hidden_size: 512
+  dropout: 0.1
+  weight_decay: 0.01
+  extraction_batch_size: 64
   max_grad_norm: 1.0
   random_state: 42
   dataloader_workers: 0

@@ -300,7 +300,7 @@ that context automatically.
 
 ### Standalone warmup build
 
-`uv run model warmup --build` uses its independent `warmup` section and the
+`uv run model warmup --build` uses the `warmup` section and the
 shared data, validation, and GPU settings. It prepares tokens only for train
 IDs, applies the configured `A/B_swap` objective, and checks the same schema-v3
 non-quantized LoRA key. A valid cache returns before backbone-weight loading,
@@ -318,8 +318,10 @@ by LoRA under the existing key rules.
 `--refresh-cache` forces standalone warmup to replace its requested LoRA cache
 and refresh train tokens. Reuse logs include the actual source path and
 quantization. A train-partition cache does not match a normal
-full-data build; `warmup_epochs: 0` in an adapter section still disables all
-warmup cache I/O.
+full-data build; `warmup.warmup_epochs: 0` disables all LoRA warmup cache I/O.
+Warmup epochs, training batch size, and learning rate are shared through this
+section; its other settings configure standalone warmup. The standalone command
+requires positive warmup epochs.
 
 ## Python APIs
 

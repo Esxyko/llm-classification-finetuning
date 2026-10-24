@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ...config import AppConfig
+from ...config import LORA_WARMUP_FIELDS, AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
 from ...timing import format_duration
 from ..profile import ModelProfile
@@ -155,13 +155,21 @@ class ModelResultPublisher:
 	def _configuration_snapshot(
 		config: AppConfig, profile: ModelProfile
 	) -> dict[str, dict[str, object]]:
-		"""Serialize effective shared settings and only the current model section."""
+		"""Serialize current-model settings with its required shared warmup section."""
+		model_config = profile.resolve_config(config)
 		sections = {
 			"data": asdict(config.data),
 			"validation": asdict(config.validation),
 			"gpu": asdict(config.gpu),
-			profile.config_key: asdict(profile.resolve_config(config)),
 		}
+		model_section = asdict(model_config)
+		if isinstance(model_config, LoRAModelConfig):
+			if config.warmup is None:
+				raise ModelExecutionError("LoRA results require a 'warmup' section.")
+			sections["warmup"] = asdict(config.warmup)
+			for key in LORA_WARMUP_FIELDS:
+				model_section.pop(key)
+		sections[profile.config_key] = model_section
 		return {
 			section_name: {
 				"A/B_swap" if key == "ab_swap" else key: (

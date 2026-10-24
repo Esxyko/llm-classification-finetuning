@@ -48,7 +48,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `data` | Competition name and raw/processed paths |
 | `validation` | Holdout fraction, random seed, tokenizer identity, and maximum validation token deviation |
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
-| `warmup` | Independent non-quantized head-warmup model, input limit, classifier, optimization, and `A/B_swap` settings; used only by `model warmup --build` |
+| `warmup` | Shared warmup epochs, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, extraction, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_budget` for batch packing and automatic checkpointing, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
@@ -76,14 +76,20 @@ Only these YAML fields have parser defaults when omitted:
 | `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
-`warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys are
-rejected. Numeric values described as presets in these guides refer to the
+`warmup.warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys
+are rejected. Numeric values described as presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
 
 ## Standalone warmup
 
-The optional `warmup` section is independent of all model sections. A config
-containing `data`, `validation`, `gpu`, and `warmup` is sufficient for:
+The `warmup` section is required when `qwen3_4b_lora` is present. LoRA reads
+`warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
+this section; these three keys are rejected inside `qwen3_4b_lora`. Move their
+existing values into `warmup` when migrating an older configuration.
+Set `warmup.warmup_epochs: 0` to disable LoRA head warmup and its cache.
+
+The section can also be used without any model sections. A config containing
+`data`, `validation`, `gpu`, and `warmup` is sufficient for:
 
 ```shell
 uv run model warmup --build --config config.yaml
@@ -93,21 +99,22 @@ Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
 `warmup_epochs`, `extraction_batch_size`, `warmup_training_batch_size`,
 `warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
 `dataloader_workers`, and `A/B_swap`. All except `A/B_swap` are required;
-`A/B_swap` defaults to `aug`. Validation follows the corresponding LoRA fields,
-except standalone `warmup_epochs` must be strictly positive. Adapter sections
-continue to allow zero epochs to disable warmup and its cache entirely.
+`A/B_swap` defaults to `aug`. `warmup_epochs` must be nonnegative;
+`model warmup --build` requires it to be strictly positive. The other fields in
+this section configure standalone warmup; LoRA continues to use its own model,
+classifier, extraction, weight decay, clipping, seed, workers, and `A/B_swap` settings.
 
 The root preset copies the LoRA warmup settings: Qwen3-4B, `max_length: 13514`,
-a 512-unit head with dropout 0.1, one warmup epoch, extraction batch size 1,
+a 512-unit head with dropout 0.1, one warmup epoch, extraction batch size 16,
 training batch size 1024, learning rate 0.001, weight decay 0.01, clipping 1.0,
 seed 42, zero workers, and `A/B_swap: aug`. These are explicit preset values,
 not parser defaults. Shared GPU settings control its single training device
 and precision.
 
 To reuse the result in LoRA, its warmup compatibility fields and actual
-training IDs must match. Changing only the standalone section does not
-override the LoRA section. Full-data builds use a different training ID
-set and do not reuse this train-partition cache. See
+training IDs must match. The three shared warmup optimization fields apply to
+both commands; the remaining settings must be aligned separately. Full-data
+builds use a different training ID set and do not reuse this train-partition cache. See
 [warmup compatibility](caching.md#lora-head-warmup).
 
 ## Holdout token balance

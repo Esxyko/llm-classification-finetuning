@@ -122,10 +122,12 @@ The 512-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
 `0.0002`, head learning rate `0.001`, weight decay `0.01`, and gradient clipping
 at 1.0. Training starts with one head-only warmup epoch at a fixed learning rate
 of `0.001`, then jointly trains adapters and head for two epochs with learning
-rates linearly decaying to zero. All these settings are configurable in
-`qwen3_4b_lora`.
+rates linearly decaying to zero. Joint-training settings are configured in
+`qwen3_4b_lora`. Warmup epochs, head-training batch size, and learning rate are
+configured in the required top-level `warmup` section, shared with standalone
+warmup; their former keys inside `qwen3_4b_lora` are rejected.
 
-`warmup_epochs` is a required nonnegative integer; `0` skips head warmup and
+`warmup.warmup_epochs` is a required nonnegative integer; `0` skips head warmup and
 does not read or write its cache. Otherwise a compatible completed
 [head-warmup cache](caching.md#lora-head-warmup) restores weights, head
 AdamW moments, and random states, skipping warmup extraction, training, and
@@ -166,7 +168,7 @@ Qwen3-4B feature tensor occupies about 0.55 GiB in BF16 or 1.10 GiB in FP32,
 excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
-`warmup_training_batch_size` is a required positive integer controlling only the
+`warmup.warmup_training_batch_size` is a required positive integer controlling only the
 head-warmup batch size over extracted features (root preset: `1024`). Each warmup
 batch performs one optimizer update without gradient accumulation, independently
 of `gradient_accumulation_steps`. Joint training uses `training_batch_size`,
@@ -183,7 +185,7 @@ keep their full groups. For example, 15 rows with `G = 8` form one 15-row update
 and 27 rows form updates of 8, 8, and 11 rows. This applies to LoRA
 holdout runs and builds, with fixed or token-budget micro-batches. The
 joint-training decay schedule uses only joint optimizer updates.
-`warmup_learning_rate` is a required finite positive number, even when warmup is
+`warmup.warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
 reuses frozen features in `head_inference_batch_size` batches. Joint training
 restores backbone training mode while retaining the head's AdamW state.
@@ -197,9 +199,10 @@ timings are not replayed.
 Each holdout run and full-data build follows these stages. Holdout validation
 evaluates the same saved validation set after every executed warmup and joint epoch, and
 publishes the final epoch's predictions. Full-data builds have no validation set and do
-not run validation. Replace the removed `warmup_ratio` key with `warmup_epochs`,
-`extraction_batch_size`, `warmup_training_batch_size`, and
-`warmup_learning_rate`; old keys are rejected as unknown configuration options.
+not run validation. Replace the removed `warmup_ratio` key with
+`warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, and
+`warmup.warmup_learning_rate`, and configure `qwen3_4b_lora.extraction_batch_size`;
+old keys are rejected as unknown configuration options.
 
 ## Two-stage validation and submission
 

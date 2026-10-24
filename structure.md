@@ -85,7 +85,10 @@ and print summaries. Business logic belongs below the CLI layer.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
   loading, and raw/processed-data path resolution from the working directory.
   `WarmupModelConfig` owns shared head-warmup fields;
-  `LoRAModelConfig` extends it with joint-training and adapter settings.
+  `LoRAModelConfig` extends it with joint-training and adapter settings. The YAML
+  loader resolves its three warmup optimization fields from the required top-level
+  `warmup` section and rejects those keys in `qwen3_4b_lora`; zero warmup epochs
+  disable LoRA warmup, while the standalone command requires positive epochs.
 - `model_storage.py`: Routes config/tokenizer/backbone loads through the shared
   `load_pretrained` wrapper to a persistent native Hub cache at optional
   `MODEL_PATH`, preserving default caching and explicit local model paths.
@@ -117,7 +120,7 @@ and print summaries. Business logic belongs below the CLI layer.
     rejects unsupported flags before data/GPU setup, and keeps it out of `ALL`.
   - `profile.py`: Maps selectors to configuration and artifact namespaces.
   - `warmup.py`: Orchestrates train-partition-only non-quantized head-warmup
-    cache builds from the independent `warmup` section, reusing adapter batching
+    cache builds from the `warmup` section, reusing adapter batching
     and training without adapters, joint plans, validation, or checkpoints.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: LoRA adapter implementation with single-GPU training and
@@ -230,7 +233,9 @@ and print summaries. Business logic belongs below the CLI layer.
       metadata.
     - `predictor.py`: Runs no-gradient inference from a saved head.
     - `publishers.py`: Atomically publishes validation predictions, metrics, and
-      a YAML snapshot of the effective shared/current-model configuration;
+      a YAML snapshot of the effective shared/current-model configuration,
+      including the separate `warmup` section for LoRA and excluding its three
+      warmup optimization fields from the LoRA section;
       records complete-run timing/GPU peaks and publishes submission CSVs.
 - `result/`
   - `synthesizer.py`: Discovers and validates validation.csv, reverses swapped-row
@@ -248,7 +253,7 @@ exports over importing private helpers across package boundaries.
 
 | Path | Role |
 | --- | --- |
-| `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, two optional model sections, and an independent optional `warmup` section |
+| `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, two optional model sections, and a `warmup` section required by LoRA and standalone warmup |
 | `.env.example` | Template for the local Kaggle token and optional `MODEL_PATH` in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `requirements-submit.txt` | Submission-only installation pins for PyTorch 2.11.0+cu128 and Transformers 5.16.1; retains the normal training lock |
@@ -534,8 +539,10 @@ logic depend on a particular timestamped run.
 - Each holdout trainer returns one completed result after its final epoch.
   The publisher atomically exposes validation.csv, metrics.json, and config.yaml
   together. Metrics do not contain a `config` field; the adjacent YAML includes
-  only `data`, `validation`, `gpu`, and the current model section, excluding
-  other models and the independent standalone `warmup` section.
+  `data`, `validation`, `gpu`, and the current model section. LoRA snapshots also
+  include the required `warmup` section and omit the three warmup optimization
+  fields from `qwen3_4b_lora`; frozen-model snapshots omit `warmup`. Other model
+  sections are excluded.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
   Result synthesis consumes only split=validation, keeps both orientations for
