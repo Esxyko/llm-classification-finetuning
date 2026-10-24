@@ -60,7 +60,7 @@ qwen3_4b_lora:
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
-  head_learning_rate: 0.0000125
+  head_learning_rate: 0.000025
   hidden_size: 512
   weight_decay: 0.01
   dropout: 0.1
