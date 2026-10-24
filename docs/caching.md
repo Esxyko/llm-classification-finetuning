@@ -278,9 +278,9 @@ the cache atomically stores FP32 classifier weights, named head AdamW moments
 and step counters, gradient-scaler state, source precision, and Python, NumPy,
 Torch CPU, and selected-device CUDA random states. It contains no adapters or
 features. Reuse restores these states into a freshly initialized model, skips
-all warmup extraction/training/validation, and starts the current joint schedule
-with fresh adapters and the configured joint learning rates. Only FP16-to-FP16
-reuse restores the saved gradient scaler; other transitions initialize it for
+all warmup extraction/training/validation, and starts joint training with fresh
+adapters and the configured fixed joint learning rates. Only FP16-to-FP16 reuse
+restores the saved gradient scaler; other transitions initialize it for
 the current precision. Reuse across precision, extraction, or LoRA setting
 changes continues from the original warmup result rather than reproducing a
 fresh warmup under the new settings. Rank/target-module changes can affect

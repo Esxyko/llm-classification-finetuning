@@ -159,8 +159,8 @@ and print summaries. Business logic belongs below the CLI layer.
       temporary CPU features (BF16 in BF16 mode, otherwise FP32) with
       stage-specific logs and no persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
-      adapters/head for one holdout run or all-data build with linear decay, mixed
-      precision, row-normalized merged update groups in both stages,
+      adapters/head for one holdout run or all-data build with fixed learning
+      rates, mixed precision, row-normalized merged update groups in both stages,
       frozen-feature warmup validation,
       fresh-feature extraction followed by averaged head inference for joint
       validation/test, and one weighted progress counter
@@ -352,12 +352,12 @@ logic depend on a particular timestamped run.
   selected objective. Joint `aug` training encodes each oriented row separately;
   joint `inf` training reuses each branch encoding for both head orientations.
   Validation/test also reuse branch encodings for both head orientations.
-  Training batches, accumulation, scheduler steps, and build row counts use
+  Training batches, accumulation, optimizer steps, and build row counts use
   the selected training rows (original IDs only for `inf`).
   Optional head-only warmup trains the head at a fixed learning rate over features
   from a no-gradient, evaluation-mode backbone with adapter forward computation
-  disabled. Joint training then uses gradients through both branches and linear
-  learning-rate decay.
+  disabled. Joint training then uses gradients through both branches and fixed
+  adapter `learning_rate` and classifier `head_learning_rate` values.
   Canonical A/B token IDs are stored once in compact int32 CPU memory, cached on
   disk through the common text cache, and shared across epochs/stages/runs.
   For Hub backbones, a pinned base/tokenizer revision is resolved before training
@@ -436,7 +436,7 @@ logic depend on a particular timestamped run.
   packing groups are persisted, so the second-pass budget is excluded from cache
   keys and final epoch batches are never written to disk.
   Fixed and token-budget training use the same update-group row counts,
-  clipping/update boundaries, and scheduler step counts; grouping, floating-point
+  clipping/update boundaries, and optimizer step counts; grouping, floating-point
   order, and dropout draws may differ.
   `--refresh-cache` refreshes requested shared token encodings, LoRA plans,
   and completed head warmup;
@@ -467,7 +467,7 @@ logic depend on a particular timestamped run.
   after the final warmup validation (or training for builds). Reads validate all
   restorable components; missing/corrupt/incompatible files rebuild. Reuse skips
   warmup extraction/training/validation and restores no adapter weights. Joint
-  training retains current learning rates and schedule; only FP16-to-FP16 loads
+  training retains the configured fixed learning rates; only FP16-to-FP16 loads
   the saved scaler. Source quantization identities and directories remain
   distinct: the retained QLoRA branch first validates a non-quantized LoRA cache
   against all other current compatibility fields, then checks its own quantized cache, then runs

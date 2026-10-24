@@ -14,9 +14,8 @@ import pandas as pd
 import torch
 from torch.nn import functional as F
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from transformers import get_linear_schedule_with_warmup, set_seed
+from transformers import set_seed
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
@@ -251,7 +250,7 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
-		"""Warm up the head, then jointly optimize adapters and head with linear decay."""
+		"""Warm up the head, then jointly optimize adapters and head at fixed rates."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		if self._warmup_only and validation is not None:
@@ -314,7 +313,6 @@ class LoRATrainer:
 				},
 			)
 		optimizer = AdamW(parameter_groups, weight_decay=self._config.weight_decay)
-		scheduler: LambdaLR | None = None
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
 		if reused_warmup:
 			self._warmup_cache.restore(entry, model.classifier, optimizer, scaler)
@@ -369,19 +367,6 @@ class LoRATrainer:
 					strict=True,
 				):
 					group["lr"] = learning_rate
-				steps = (
-					OptimizerGroupLayout(
-						len(reference),
-						self._config.training_batch_size
-						* self._config.gradient_accumulation_steps,
-					).update_count
-					* self._config.epochs
-				)
-				scheduler = get_linear_schedule_with_warmup(
-					optimizer,
-					num_warmup_steps=0,
-					num_training_steps=steps,
-				)
 			training_started = self._timestamp()
 			if not head_only:
 				training.set_epoch(epoch - self._config.warmup_epochs - 1)
@@ -389,7 +374,6 @@ class LoRATrainer:
 				model,
 				loader,
 				optimizer,
-				scheduler,
 				scaler,
 				head_only=head_only,
 				optimizer_group_rows=None
@@ -514,7 +498,6 @@ class LoRATrainer:
 		model: LoRAQwenClassifier,
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]],
 		optimizer: AdamW,
-		scheduler: LambdaLR | None,
 		scaler: torch.amp.GradScaler,
 		*,
 		head_only: bool = False,
@@ -594,11 +577,8 @@ class LoRATrainer:
 					trainable_parameters,
 					self._config.max_grad_norm,
 				)
-				old_scale = scaler.get_scale()
 				scaler.step(optimizer)
 				scaler.update()
-				if scheduler is not None and scaler.get_scale() >= old_scale:
-					scheduler.step()
 				optimizer.zero_grad(set_to_none=True)
 				group_processed = 0
 				if progress is not None:

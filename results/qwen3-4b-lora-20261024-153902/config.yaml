@@ -58,4 +58,5 @@ qwen3_4b_lora:
   - gate_proj
   - up_proj
   - down_proj
-  gradient_checkpointing_budget: 11264
+  gradient_checkpointing_threshold: 11264
+  gradient_checkpointing_budget: 0

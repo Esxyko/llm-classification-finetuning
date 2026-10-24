@@ -123,9 +123,9 @@ target attention `q_proj`, `k_proj`, `v_proj`, `o_proj` and MLP `gate_proj`,
 The 512-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
 `0.0002`, head learning rate `0.001`, weight decay `0.01`, and gradient clipping
 at 1.0. Training starts with one head-only warmup epoch at a fixed learning rate
-of `0.001`, then jointly trains adapters and head for two epochs with learning
-rates linearly decaying to zero. Joint-training settings are configured in
-`qwen3_4b_lora`. Warmup epochs, head-training batch size, and learning rate are
+of `0.001`, then jointly trains adapters and head for two epochs at fixed learning
+rates. Joint-training settings are configured in `qwen3_4b_lora`.
+Warmup epochs, head-training batch size, and learning rate are
 configured in the required top-level `warmup` section, shared with standalone
 warmup; their former keys inside `qwen3_4b_lora` are rejected.
 
@@ -193,14 +193,13 @@ even if the final group contains the configured number of micro-batches.
 An epoch with fewer than `G` rows still performs one update; exact multiples
 keep their full groups. For example, 15 rows with `G = 8` form one 15-row update,
 and 27 rows form updates of 8, 8, and 11 rows. This applies to LoRA
-holdout runs and builds, with fixed or token-budget micro-batches. The
-joint-training decay schedule uses only joint optimizer updates.
+holdout runs and builds, with fixed or token-budget micro-batches.
 `warmup.warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
 reuses frozen features in `head_inference_batch_size` batches. Joint training
 restores backbone training mode while retaining the head's AdamW state.
-The joint-training schedule starts at the adapter `learning_rate`
-and classifier `head_learning_rate`, without a learning-rate ramp.
+Joint training keeps the adapter `learning_rate` and classifier
+`head_learning_rate` fixed throughout all joint epochs.
 Without cache reuse, training lasts `warmup_epochs + epochs` rounds and
 training histories and build summaries include both stages. A reused warmup
 leaves only the joint epochs in this run's history and build epoch count;
@@ -340,12 +339,12 @@ original batch order for either threshold mode. These rules apply in both holdou
 and build modes. Dynamic micro-batches can contain more than
 `training_batch_size` rows, up to the actual row count of their update. Losses are
 divided by each update group's actual row count, including all rows in the
-merged final group. Gradient clipping and optimizer/scaler/scheduler handling
-occur once per resulting group. The planned joint schedule has
+merged final group. Gradient clipping and optimizer/scaler handling
+occur once per resulting group. Joint training has
 `max(1, training_rows // (training_batch_size * gradient_accumulation_steps))`
 updates per nonempty epoch; FP16 overflow can still skip an update as before.
 
-Fixed and token-budget batching use the same update sizes and schedule length.
+Fixed and token-budget batching use the same update sizes and update counts.
 Positive thresholds group rows by global lengths instead of fixed-batch random
 order. Floating-point accumulation order and dropout draws can
 differ. With both settings at zero, training retains the original fixed-batch
