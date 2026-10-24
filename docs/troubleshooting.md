@@ -48,15 +48,18 @@
   validation, and submission inference.
 - **LoRA runs out of memory:** Lower the selected model section's `extraction_batch_size`,
   `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
-  for the affected stage, or lower a positive `gradient_checkpointing_budget`.
+  for the affected stage, lower a positive `gradient_checkpointing_threshold`,
+  or lower `gradient_checkpointing_budget` (`0` disables singleton merging).
   `extraction_batch_size` also controls validation/submission backbone
   extraction; `head_inference_batch_size` controls only head inference over the
   extracted CPU features. Keep
   `max_length` at least as large as the longest required branch. Gradient
-  checkpointing is automatic for over-budget singletons; at budget `0`, all
-  fixed joint-training batches use it. Positive-budget batches at or below the
-  budget disable it. Use FP16/BF16 instead of FP32 where supported. Budgets do
-  not shorten an over-budget singleton, and checkpointing applies only to joint
+  checkpointing is automatic for batches above the threshold; at threshold `0`,
+  all joint-training batches use it. Batches at or below a positive threshold
+  disable it. The budget only limits merging checkpointed singletons within
+  an optimizer update, and an individual sample above it still runs alone.
+  Use FP16/BF16 instead of FP32 where supported. Neither setting shortens
+  an input, and checkpointing applies only to joint
   training. See [memory tuning](lora.md#memory-tuning).
 - **LoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
   token count to raise the limit before rerunning. Inputs are never silently

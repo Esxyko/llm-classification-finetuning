@@ -36,9 +36,9 @@ qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 16384
-  extraction_batch_size: 128
+  extraction_batch_size: 8
   training_batch_size: 1024
-  hidden_size: 512
+  hidden_size: 1024
   dropout: 0.1
   epochs: 3
   learning_rate: 0.001
@@ -47,31 +47,32 @@ qwen3_4b:
   dataloader_workers: 0
 
 qwen3_4b_lora:
+  A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 13514
-  hidden_size: 512
-  dropout: 0.1
-  weight_decay: 0.01
-  extraction_batch_size: 64
-  max_grad_norm: 1.0
-  random_state: 42
-  dataloader_workers: 0
-  A/B_swap: aug
+  gradient_checkpointing_threshold: 10752
+  gradient_checkpointing_budget: 131072
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 1024
   epochs: 1
+  extraction_batch_size: 64
   learning_rate: 0.0001
-  head_learning_rate: 2.5e-05
+  head_learning_rate: 0.000025
+  hidden_size: 1024
+  weight_decay: 0.01
+  dropout: 0.1
+  max_grad_norm: 1.0
+  lora_dropout: 0.05
   lora_rank: 32
   lora_alpha: 64
-  lora_dropout: 0.05
   lora_target_modules:
-  - q_proj
-  - k_proj
-  - v_proj
-  - o_proj
-  - gate_proj
-  - up_proj
-  - down_proj
-  gradient_checkpointing_budget: 11264
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  random_state: 42
+  dataloader_workers: 0

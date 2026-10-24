@@ -199,29 +199,36 @@ IDs for negative values; newly encoded IDs are checked before caching.
 
 LoRA uses shared `adapter_batches/plans/*.pt` beside the processed Parquet.
 Plans identify the sorted selected `(id, is_swapped, A_length, B_length)` rows,
-budget, update group
-size, and planning algorithm version. Labels, split names, reference order,
+checkpointing threshold, update group size, and planning algorithm version.
+Labels, split names, reference order,
 text/token content beyond lengths, and unselected validation inputs do not enter
 the plan key. Cached groups store sample identities and are mapped to current
 dataset indices on every read; current labels are always used for training.
 A/B mode and holdout/build selection determine membership before lookup. Changing
-budget or effective batch size rebuilds plans while reusing tokens. With
-`gradient_checkpointing_budget: 0`, tokens are cached but no global plan is
+threshold or effective batch size rebuilds plans while reusing tokens. With
+`gradient_checkpointing_threshold: 0`, tokens are cached but no global plan is
 created, and all fixed joint-training batches use gradient checkpointing.
-Renaming the configuration field preserves the stored `budget` metadata and
-plan versions, so existing plans with the same values remain reusable.
+Plan schema version `4` stores `threshold` instead of the old `budget`
+metadata; older plan versions are rebuilt. The obsolete checked-in plans have
+been removed.
 Legacy per-model batch directories and per-model `tokens/*.pt` files are no
 longer read. Identical plan keys remain reusable across configurations and
-training modes. Different budgets or selected rows still select
+training modes. Different thresholds or selected rows still select
 different plans.
 
 Cached packing groups keep their existing format and membership, including any
 short final group. Each epoch shuffles the full groups, then appends the short
 group's micro-batches to the last shuffled full group for a single final update.
-An epoch containing only a short group runs it alone. Micro-batches are not
-repacked, so token costs and existing plan keys remain valid. The reported
-update count reflects the merged groups rather than the cached packing-group
-count.
+An epoch containing only a short group runs it alone. The optional
+`gradient_checkpointing_budget` pass then combines checkpointed singletons
+inside each final update group, before shuffling its micro-batches. That pass
+uses the configured budget and current epoch's merged membership, and is never
+written into the base plan. Changing only this budget therefore reuses the same
+base cache. A budget of `0` leaves the original micro-batches and their order
+unchanged. With a zero threshold and positive budget, fixed-size initial batches
+are shuffled by `random_state + joint_epoch` and repacked in memory without a
+global plan cache. The reported plan micro-batch count describes the base plan;
+the update count reflects the merged optimizer groups.
 LoRA shares the text-token cache across stages when tokenizer content and
 encoding options match.
 

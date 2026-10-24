@@ -135,14 +135,18 @@ class LoRAModelPipeline:
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				f"CUDA ran out of memory during {self._model_label} execution. Lower "
-				f"{self._profile.config_key}.gradient_checkpointing_budget when positive, or lower "
+				f"{self._profile.config_key}.gradient_checkpointing_threshold when positive, "
+				"or lower gradient_checkpointing_budget (0 disables singleton merging), "
+				"or lower "
 				"extraction_batch_size, warmup_training_batch_size, "
 				"training_batch_size, or head_inference_batch_size. "
 				"extraction_batch_size also controls validation/submission extraction. "
 				"Keep max_length at least "
 				"as large as the longest required input; inputs are never truncated. "
-				"Gradient checkpointing is automatic for over-budget singletons, or for all "
-				"joint-training batches when the budget is 0. Use fp16/bf16 instead of fp32. "
+				"Gradient checkpointing is automatic above the threshold, or for all "
+				"joint-training batches when the threshold is 0. Singletons above the "
+				"checkpointing budget still run alone without truncation. "
+				"Use fp16/bf16 instead of fp32. "
 				"Increase gradient_accumulation_steps "
 				"to preserve the effective training batch when lowering the micro-batch."
 			) from error

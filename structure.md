@@ -137,7 +137,9 @@ and print summaries. Business logic belongs below the CLI layer.
       the merged optimizer-group layout shared by warmup, joint training, and
       step counts.
       Shuffle full packing groups before merging any short tail into the last
-      epoch update, supplying explicit row counts. Its `warmup_only` path
+      epoch update, then optionally best-fit pack checkpointed singletons within
+      each final update before collation, supplying explicit row counts.
+      Its `warmup_only` path
       prepares train-only tokens and references without joint batch plans.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
       optionally load a single-GPU NF4/double-quantized training base and prepare
@@ -146,7 +148,7 @@ and print summaries. Business logic belongs below the CLI layer.
       The `warmup_only` path loads a non-quantized frozen base without adapter
       injection. Own BF16 frozen embedding/norm restoration, feature dtype, and head
       autocast with FP32 logits. Select gradient checkpointing once per joint
-      A/B micro-batch from the padded token budget, retaining the state through
+      A/B micro-batch from the padded token threshold, retaining the state through
       backward and cleaning input-gradient hooks when disabled. Evaluation and
       no-gradient extraction disable checkpointing. Backbone weights are placed
       directly on their target GPUs during loading, including non-quantized
@@ -273,7 +275,7 @@ exports over importing private helpers across package boundaries.
 | `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
-| `data/processed/adapter_batches/` | Shared LoRA holdout/build batch-plan caches, also compatible with historical QLoRA plans, keyed by selected rows, lengths, budget, and update-group size |
+| `data/processed/adapter_batches/` | Shared LoRA holdout/build base batch-plan caches, keyed by selected rows, lengths, checkpointing threshold, and update-group size; second-pass checkpointing budgets are excluded |
 | `data/processed/qwen3_4b_lora_warmup/` | Completed non-quantized LoRA head warmup by actual training IDs, also written by standalone warmup |
 | `data/processed/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup caches; retained without active CLI access |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
@@ -396,15 +398,16 @@ logic depend on a particular timestamped run.
   update; exact multiples retain all full groups. Scheduling and progress use
   `max(1, training_rows // G)` updates per nonempty joint epoch across
   holdout/build modes and fixed/token-budget batching.
-  The default `gradient_checkpointing_budget: 0` retains fixed micro-batches and
-  the original seeded shuffle with gradient checkpointing on every joint-training
-  batch, while reusing cached tokens. A positive budget
+  The default `gradient_checkpointing_threshold: 0` retains initial fixed
+  micro-batches with gradient checkpointing on every joint-training batch, while
+  reusing cached tokens. With the separate `gradient_checkpointing_budget: 0`,
+  it also retains the original seeded shuffle. A positive threshold
   compares three stable global A/B length sorts for each selected training set,
   forms cached packing groups of up to `G` rows, and
   best-fit packs each group by independently padded A/B token cost. Plans minimize
   candidate micro-batch counts, then padded tokens, and are cached separately
   from tokens. Plan keys use sorted selected identities/orientations and A/B
-  lengths, budget, group size, and algorithm version. LoRA and historical QLoRA
+  lengths, threshold, group size, and algorithm version. LoRA and retained QLoRA
   plans share the same namespace; quantization does not affect planning. Labels, source row order,
   split names, token content beyond lengths, and unselected inputs are
   excluded. Stored sample identities are rebound to current indices on every
@@ -412,14 +415,26 @@ logic depend on a particular timestamped run.
   each zero-based joint epoch shuffles full groups with
   `random_state + joint_epoch` for both holdout runs and builds, then appends any
   short group's micro-batches to the last shuffled full group for one final
-  update. Micro-batches are shuffled within each resulting update group without
-  repacking, preserving token costs and existing cache compatibility. A lone
-  short group runs by itself. With a positive budget, micro-batches whose padded
-  A/B cost is at or below the budget disable gradient checkpointing. Over-budget
-  singletons retain all tokens and enable it for both branches through backward.
-  Warmup and inference always disable it. The old token-budget name and boolean
-  checkpointing configuration are rejected. Plan metadata retains its `budget`
-  key and existing versions, preserving cache reuse after the configuration rename.
+  update. A lone short group runs by itself. A positive
+  `gradient_checkpointing_budget` then best-fit packs only checkpointed singleton
+  micro-batches inside each final update, using the same descending-length and
+  identity ordering as initial packing. Combined padded A/B cost cannot exceed
+  that budget; an oversized singleton remains alone without truncation. Existing
+  multi-row batches and non-checkpointed singletons remain intact. Planned
+  micro-batches are shuffled after this optional pass. A zero threshold with a
+  positive budget shuffles rows by `random_state + joint_epoch` into initial
+  fixed-size batches and applies the same final-group packing in memory.
+  Final epoch batches are memoized so length queries agree with iteration without
+  advancing RNG state. The budget defaults to `0`, preserving initial batches
+  and their execution order, and need not exceed the threshold. With a positive
+  threshold, micro-batches whose padded A/B cost is at or below it disable
+  checkpointing; batches above it enable checkpointing for both branches through
+  backward, including merged multi-row batches. Warmup and inference always
+  disable it. The old token-budget name and boolean checkpointing configuration
+  are rejected. Plan schema `4` uses `threshold` metadata instead of `budget`;
+  obsolete checked-in plans are removed and older versions rebuild. Only initial
+  packing groups are persisted, so the second-pass budget is excluded from cache
+  keys and final epoch batches are never written to disk.
   Fixed and token-budget training use the same update-group row counts,
   clipping/update boundaries, and scheduler step counts; grouping, floating-point
   order, and dropout draws may differ.

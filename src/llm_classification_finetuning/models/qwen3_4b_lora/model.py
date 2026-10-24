@@ -63,8 +63,8 @@ class LoRAQwenClassifier(nn.Module):
 			raise ValueError("Standalone warmup requires a non-quantized backbone.")
 		self.warmup_only = warmup_only
 		self._gradient_checkpointing_allowed = not warmup_only and device_map is None
-		self._gradient_checkpointing_budget = (
-			config.gradient_checkpointing_budget if not warmup_only else 0
+		self._gradient_checkpointing_threshold = (
+			config.gradient_checkpointing_threshold if not warmup_only else 0
 		)
 		self.device = device
 		self.dtype = GPUEnvironment.PRECISION_DTYPES[gpu.precision]
@@ -169,11 +169,8 @@ class LoRAQwenClassifier(nn.Module):
 			self.training
 			and torch.is_grad_enabled()
 			and (
-				self._gradient_checkpointing_budget == 0
-				or (
-					batch.labels.shape[0] == 1
-					and padded_tokens > self._gradient_checkpointing_budget
-				)
+				self._gradient_checkpointing_threshold == 0
+				or padded_tokens > self._gradient_checkpointing_threshold
 			)
 		)
 		# Retain one policy for both branches and the caller's complete backward pass.

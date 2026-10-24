@@ -50,7 +50,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `warmup` | Shared warmup epochs, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, extraction, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_budget` for batch packing and automatic checkpointing, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_threshold` for initial batch packing and automatic checkpointing, optional `gradient_checkpointing_budget` for merging checkpointed singletons within each update, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -73,6 +73,7 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `warmup.A/B_swap` | `aug` |
+| `qwen3_4b_lora.gradient_checkpointing_threshold` | `0` |
 | `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
@@ -153,13 +154,24 @@ disabled. It counts individual A/B branches per backbone forward, matching the
 frozen model's `extraction_batch_size`; the standalone warmup section uses the
 same definition. Head inference uses its own batch size after extraction completes.
 
-`gradient_checkpointing_budget` is a nonnegative integer replacing
-`training_token_budget` and the `gradient_checkpointing` boolean; both old keys
-are rejected. A positive budget packs joint-training micro-batches by padded A/B
-token cost, disables checkpointing at or below the budget, and enables it only
-for over-budget singletons. Zero or omission keeps fixed micro-batches and
-enables checkpointing for every joint-training batch. Warmup and inference
-disable checkpointing. See [budget behavior](lora.md#optional-token-budget-training-batches).
+`gradient_checkpointing_threshold` is the new name for the previous
+`gradient_checkpointing_budget` setting; rename the old key while preserving its
+value. A positive threshold packs initial joint-training micro-batches by padded
+A/B token cost and enables checkpointing above that threshold. At or below it,
+checkpointing is disabled. Zero or omission keeps initial fixed micro-batches
+and enables checkpointing for every joint-training batch.
+
+`gradient_checkpointing_budget` now controls a second packing pass within each
+optimizer update, after any short final group is merged. Its default `0` disables
+this pass. A positive value combines only singletons that require checkpointing,
+using `rows * (longest_A + longest_B)` as the padded token cost. Existing
+multi-row micro-batches remain intact. Combined micro-batches cannot exceed the
+budget; an individual sample above it still runs alone without truncation.
+This also applies when the threshold is `0`. Both fields must be nonnegative
+integers, and the budget need not exceed the threshold. Warmup and inference
+disable checkpointing. The older `training_token_budget` key and
+`gradient_checkpointing` boolean remain rejected.
+See [packing behavior](lora.md#optional-token-budget-training-batches).
 
 `gradient_accumulation_steps` applies only to joint training. Warmup uses
 `warmup_training_batch_size` for forward batches and merges a short final batch

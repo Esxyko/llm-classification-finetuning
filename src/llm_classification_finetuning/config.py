@@ -106,6 +106,7 @@ class LoRAModelConfig(WarmupModelConfig):
 	lora_alpha: int
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
+	gradient_checkpointing_threshold: int = 0
 	gradient_checkpointing_budget: int = 0
 
 
@@ -402,6 +403,14 @@ def _load_lora_model_config(
 		{**section, **{name: getattr(warmup, name) for name in LORA_WARMUP_FIELDS}},
 		section_name,
 	)
+	checkpointing_threshold = _require_integer(
+		section.get("gradient_checkpointing_threshold", 0),
+		field("gradient_checkpointing_threshold"),
+	)
+	if checkpointing_threshold < 0:
+		raise ConfigurationError(
+			f"{field('gradient_checkpointing_threshold')} cannot be negative."
+		)
 	token_budget = _require_integer(
 		section.get("gradient_checkpointing_budget", 0),
 		field("gradient_checkpointing_budget"),
@@ -436,6 +445,7 @@ def _load_lora_model_config(
 		lora_alpha=positive_integer("lora_alpha"),
 		lora_dropout=fraction("lora_dropout"),
 		lora_target_modules=target_modules,
+		gradient_checkpointing_threshold=checkpointing_threshold,
 		gradient_checkpointing_budget=token_budget,
 	)
 

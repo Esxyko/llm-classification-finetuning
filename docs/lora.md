@@ -58,9 +58,11 @@ and checkpoint [forward/recomputation contexts](https://docs.pytorch.org/docs/st
 
 The root [`config.yaml`](../config.yaml) preset allows **each branch** up to
 13,514 tokens, dynamically pads A and B independently, and processes branches
-sequentially with KV caching disabled. Its `gradient_checkpointing_budget: 16384`
-packs micro-batches within that padded A/B token budget without checkpointing;
-over-budget pairs run alone with non-reentrant activation checkpointing.
+sequentially with KV caching disabled. Its `gradient_checkpointing_threshold: 11264`
+packs initial micro-batches within that padded A/B token threshold without
+checkpointing; longer pairs use non-reentrant activation checkpointing.
+`gradient_checkpointing_budget: 0` leaves those checkpointed singletons separate;
+a positive budget combines them within each optimizer update.
 `training_batch_size: 1` and `gradient_accumulation_steps: 1024` give a target
 effective batch of 1,024 augmented rows, with dynamically packed micro-batches.
 LoRA never truncates inputs: all canonical branches are tokenized and checked
@@ -274,15 +276,20 @@ validation rows, and both stages' epochs.
 
 ## Optional token-budget training batches
 
-`gradient_checkpointing_budget` is an optional nonnegative integer, defaulting
-to `0`. Zero or omission preserves fixed micro-batches and enables gradient
-checkpointing for every joint-training batch. A positive value enables dynamic
-micro-batches for joint training only; warmup and inference keep their configured
-batch sizes and disable checkpointing.
-For example, add this key to the existing `qwen3_4b_lora` section:
+`gradient_checkpointing_threshold` replaces the previous
+`gradient_checkpointing_budget` setting; rename that key while retaining its
+value. It is an optional nonnegative integer, defaulting to `0`. Zero or omission
+preserves initial fixed micro-batches and enables gradient checkpointing for
+every joint-training batch. A positive threshold enables initial dynamic
+micro-batches for joint training. The new `gradient_checkpointing_budget` is also
+an optional nonnegative integer, defaulting to `0`; a positive value enables a
+second packing pass for checkpointed singletons within each optimizer update.
+Warmup and inference keep their configured batch sizes and disable checkpointing.
+For example, these illustrative values enable both packing passes:
 
 ```yaml
-gradient_checkpointing_budget: 4096
+gradient_checkpointing_threshold: 4096
+gradient_checkpointing_budget: 8192
 ```
 
 The saved training partition is globally planned before joint training,
@@ -297,26 +304,41 @@ a new batch is opened when none fits. Batch cost is
 `rows * (longest_A + longest_B)`. The chosen candidate minimizes micro-batch
 count, then total padded tokens; this heuristic does not guarantee a global
 optimum. A full-data build applies the same planning to all original IDs from both partitions.
-The budget counts padded A/B input tokens, not GPU memory bytes. For a positive
-budget, micro-batches at or below the budget disable gradient checkpointing,
-including singletons and batches exactly equal to the budget. An over-budget
-pair runs alone and enables checkpointing for both A and B. The choice is made
-once before encoding either branch and retained through the complete backward
-pass. Checkpointing uses the existing non-reentrant implementation and fused
-SDPA recomputation context. Disabling it also removes input-gradient hooks so
-repeated switches do not accumulate hooks. Over-budget singletons retain all
-tokens; lowering the budget does not shorten them or guarantee memory fit.
+The first pass uses the threshold as its padded token limit. Both settings count
+padded A/B input tokens, not GPU memory bytes. For a positive threshold,
+micro-batches at or below it disable gradient checkpointing, including singletons
+and batches exactly equal to it. Batches above it enable checkpointing for both
+A and B, including multi-row batches produced by the second pass. The choice is
+made once before encoding either branch and retained through the complete
+backward pass. Checkpointing uses the existing non-reentrant implementation and
+fused SDPA recomputation context. Disabling it also removes input-gradient hooks
+so repeated switches do not accumulate hooks.
 
 Cached packing-group membership stays fixed across epochs. A zero-based joint
 epoch uses `random_state + joint_epoch` to shuffle the full groups first, then
 appends the short group's micro-batches to the last shuffled full group.
 The merged group is always the epoch's final update, and its full-group partner
 can change across epochs. If there is only one short group, it runs by itself.
-Micro-batches are shuffled within each resulting update group without repacking,
-so cached plans and token-budget constraints remain valid. These rules apply in
-both holdout and build modes. Dynamic micro-batches can contain more than
-`training_batch_size` rows, up to `G`; merging retains their original sizes.
-A single over-budget pair is processed alone without truncation. Losses are
+After finalizing each update's membership, a positive checkpointing budget
+collects only its singleton micro-batches whose A/B length exceeds the threshold
+(all singletons when the threshold is `0`). They are packed by total length
+descending, with the same identity tie-breaker and best-fit strategy as the first
+pass. Combined batches satisfy `rows * (longest_A + longest_B) <= budget`,
+including equality; padding can prevent a combination even when the unpadded
+length sum would fit. A single sample above the budget still runs alone without
+truncation. The budget need not exceed the threshold; a smaller budget may leave
+every checkpointed singleton separate. Existing multi-row batches and
+non-checkpointed singletons remain intact, and rows never cross update boundaries.
+This pass also combines eligible rows from the merged short tail and its full
+group partner.
+
+Micro-batches are then shuffled within each planned update group. With a zero
+threshold and positive budget, `random_state + joint_epoch` instead shuffles rows
+into initial fixed-size batches; the same final update sizes and singleton
+packing rules apply. A zero budget disables the second pass and preserves the
+original batch order for either threshold mode. These rules apply in both holdout
+and build modes. Dynamic micro-batches can contain more than
+`training_batch_size` rows, up to the actual row count of their update. Losses are
 divided by each update group's actual row count, including all rows in the
 merged final group. Gradient clipping and optimizer/scaler/scheduler handling
 occur once per resulting group. The planned joint schedule has
@@ -324,19 +346,20 @@ occur once per resulting group. The planned joint schedule has
 updates per nonempty epoch; FP16 overflow can still skip an update as before.
 
 Fixed and token-budget batching use the same update sizes and schedule length.
-Positive budgets group rows by global lengths instead of fixed-batch random
+Positive thresholds group rows by global lengths instead of fixed-batch random
 order. Floating-point accumulation order and dropout draws can
-differ. A zero budget retains the original fixed-batch seeded shuffle. The root
-preset uses a budget of `11264` for LoRA. The example budget
-of `4096` is a starting point to try, not a measured recommendation for a
-particular GPU. Padded batches
+differ. With both settings at zero, training retains the original fixed-batch
+seeded shuffle. The root preset uses a threshold of `11264` and a checkpointing
+budget of `0` for LoRA. The example values are illustrative, not measured
+recommendations for a particular GPU. Padded batches
 can change SDPA kernel selection, so dynamic batching is not guaranteed to be
 faster or use less peak memory. No throughput or peak-VRAM benchmark has been
 run on the target 32 GB virtual GPU.
 
 ## Memory tuning
 
-For smaller GPUs, lower an enabled token budget or the relevant
+For smaller GPUs, lower a positive checkpointing threshold, lower the
+checkpointing budget (`0` disables singleton merging), or lower the relevant
 `extraction_batch_size`, `warmup_training_batch_size`,
 `training_batch_size`, or `head_inference_batch_size`. The extraction setting
 controls backbone memory for warmup, joint validation, and submission; the head
@@ -344,7 +367,7 @@ setting controls only classifier batches over CPU features. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
 desired effective batch. Keep `max_length` at least as large as the longest
 required input. Larger GPUs can use larger batches. Memory fit for the
-`gradient_checkpointing_budget: 16384` preset on a 32 GB GPU has not been measured;
+`gradient_checkpointing_threshold: 11264` preset on a 32 GB GPU has not been measured;
 execution reports OOM without silently lowering context length.
 
 ## Checkpoints

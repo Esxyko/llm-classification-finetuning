@@ -71,7 +71,7 @@ class TrainingBatchPlan:
 		return sum(len(group) for group in self.groups)
 
 	def validate(
-		self, dataset: PairwiseTokenDataset, group_size: int, budget: int
+		self, dataset: PairwiseTokenDataset, group_size: int, threshold: int
 	) -> None:
 		"""Reject missing, repeated, out-of-range, oversized, or misgrouped rows."""
 		rows = len(dataset)
@@ -101,8 +101,8 @@ class TrainingBatchPlan:
 					a, b = dataset.branch_lengths(index)
 					max_a, max_b = max(max_a, a), max(max_b, b)
 				cost = len(batch) * (max_a + max_b)
-				if len(batch) > 1 and cost > budget:
-					raise ValueError("Adapter micro-batch exceeds the token budget.")
+				if len(batch) > 1 and cost > threshold:
+					raise ValueError("Adapter micro-batch exceeds the token threshold.")
 				group_rows += len(batch)
 				padded_tokens += cost
 			if group_rows != min(group_size, rows - group_index * group_size):
@@ -120,6 +120,45 @@ class TrainingBatchPlan:
 			)
 
 
+class _TokenBudgetPacker:
+	"""Best-fit pack rows by padded A/B cost, retaining oversized singletons."""
+
+	def __init__(
+		self,
+		lengths: list[tuple[int, int]],
+		identities: list[tuple[int, bool]],
+		budget: int,
+	) -> None:
+		self._lengths = lengths
+		self._identities = identities
+		self._budget = budget
+
+	def pack(self, indices: list[int]) -> tuple[tuple[int, ...], ...]:
+		batches: list[list[int]] = []
+		maxima: list[tuple[int, int]] = []
+		for index in sorted(
+			indices,
+			key=lambda value: (-sum(self._lengths[value]), *self._identities[value]),
+		):
+			a, b = self._lengths[index]
+			candidates = []
+			for batch_index, (batch, (max_a, max_b)) in enumerate(
+				zip(batches, maxima, strict=True)
+			):
+				cost = (len(batch) + 1) * (max(a, max_a) + max(b, max_b))
+				if cost <= self._budget:
+					candidates.append((self._budget - cost, batch_index))
+			if candidates:
+				_, batch_index = min(candidates)
+				batches[batch_index].append(index)
+				max_a, max_b = maxima[batch_index]
+				maxima[batch_index] = max(a, max_a), max(b, max_b)
+			else:
+				batches.append([index])
+				maxima.append((a, b))
+		return tuple(tuple(batch) for batch in batches)
+
+
 class _GlobalBatchPlanner:
 	"""Compare three stable global sorts using best-fit packing inside each group."""
 
@@ -130,7 +169,7 @@ class _GlobalBatchPlanner:
 		dataset: PairwiseTokenDataset,
 		reference: pd.DataFrame,
 		group_size: int,
-		budget: int,
+		threshold: int,
 	) -> None:
 		self._lengths = [dataset.branch_lengths(index) for index in range(len(dataset))]
 		self._identities = [
@@ -138,7 +177,7 @@ class _GlobalBatchPlanner:
 			for row in reference.itertuples(index=False)
 		]
 		self._group_size = group_size
-		self._budget = budget
+		self._packer = _TokenBudgetPacker(self._lengths, self._identities, threshold)
 
 	def build(self) -> TrainingBatchPlan:
 		best: TrainingBatchPlan | None = None
@@ -148,7 +187,7 @@ class _GlobalBatchPlanner:
 				key=lambda index: self._sort_key(index, order),
 			)
 			groups = tuple(
-				self._pack(indices[start : start + self._group_size])
+				self._packer.pack(indices[start : start + self._group_size])
 				for start in range(0, len(indices), self._group_size)
 			)
 			candidate = TrainingBatchPlan(
@@ -177,69 +216,119 @@ class _GlobalBatchPlanner:
 		length_key = (a, b) if order == 0 else (b, a) if order == 1 else (a + b, a, b)
 		return (*length_key, *self._identities[index])
 
-	def _pack(self, indices: list[int]) -> tuple[tuple[int, ...], ...]:
-		batches: list[list[int]] = []
-		maxima: list[tuple[int, int]] = []
-		for index in sorted(
-			indices,
-			key=lambda value: (-sum(self._lengths[value]), *self._identities[value]),
-		):
-			a, b = self._lengths[index]
-			candidates = []
-			for batch_index, (batch, (max_a, max_b)) in enumerate(
-				zip(batches, maxima, strict=True)
-			):
-				cost = (len(batch) + 1) * (max(a, max_a) + max(b, max_b))
-				if cost <= self._budget:
-					candidates.append((self._budget - cost, batch_index))
-			if candidates:
-				_, batch_index = min(candidates)
-				batches[batch_index].append(index)
-				max_a, max_b = maxima[batch_index]
-				maxima[batch_index] = max(a, max_a), max(b, max_b)
-			else:
-				batches.append([index])
-				maxima.append((a, b))
-		return tuple(tuple(batch) for batch in batches)
 
+class _TrainingBatchSampler(Sampler[list[int]]):
+	"""Form final optimizer groups before repacking checkpointed singletons."""
 
-class _PlannedBatchSampler(Sampler[list[int]]):
-	"""Shuffle full groups, then merge a short tail into the final epoch update."""
-
-	def __init__(self, plan: TrainingBatchPlan, seed: int) -> None:
+	def __init__(
+		self,
+		plan: TrainingBatchPlan | None,
+		dataset: PairwiseTokenDataset,
+		reference: pd.DataFrame,
+		config: LoRAModelConfig,
+	) -> None:
 		self._plan = plan
-		group_rows = tuple(sum(map(len, group)) for group in plan.groups)
-		self._layout = OptimizerGroupLayout(sum(group_rows), group_rows[0])
-		self._seed = seed
+		self._layout = OptimizerGroupLayout(
+			len(dataset),
+			config.training_batch_size * config.gradient_accumulation_steps,
+		)
+		self._batch_size = config.training_batch_size
+		self._threshold = config.gradient_checkpointing_threshold
+		self._lengths = (
+			[dataset.branch_lengths(index) for index in range(len(dataset))]
+			if config.gradient_checkpointing_budget > 0
+			else []
+		)
+		self._packer = (
+			_TokenBudgetPacker(
+				self._lengths,
+				[
+					(int(row.id), bool(row.is_swapped))
+					for row in reference.itertuples(index=False)
+				],
+				config.gradient_checkpointing_budget,
+			)
+			if config.gradient_checkpointing_budget > 0
+			else None
+		)
+		self._seed = config.random_state
 		self._epoch = 0
+		self._batches: tuple[tuple[int, ...], ...] | None = None
 
 	def set_epoch(self, epoch: int) -> None:
 		if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
 			raise ValueError("The joint-training epoch must be a nonnegative integer.")
 		self._epoch = epoch
-
-	def _group_order(self) -> tuple[list[int], torch.Generator]:
-		generator = torch.Generator().manual_seed(self._seed + self._epoch)
-		return torch.randperm(
-			self._layout.update_count, generator=generator
-		).tolist(), generator
+		self._batches = None
 
 	@property
 	def group_row_counts(self) -> tuple[int, ...]:
 		return self._layout.row_counts
 
-	def __iter__(self) -> Iterator[list[int]]:
-		order, generator = self._group_order()
+	def _groups(
+		self, generator: torch.Generator
+	) -> Iterator[tuple[tuple[int, ...], ...]]:
+		if self._plan is None:
+			indices = torch.randperm(self._layout.rows, generator=generator).tolist()
+			start = 0
+			for rows in self.group_row_counts:
+				group = indices[start : start + rows]
+				yield tuple(
+					tuple(group[offset : offset + self._batch_size])
+					for offset in range(0, rows, self._batch_size)
+				)
+				start += rows
+			return
+		order = torch.randperm(self._layout.update_count, generator=generator).tolist()
 		for position, index in enumerate(order):
 			group = self._plan.groups[index]
 			if position == len(order) - 1 and len(self._plan.groups) > len(order):
-				# Reuse packed batches without changing their token cost or cached groups.
+				# Finalize step membership before merging any checkpointed singletons.
 				group += self._plan.groups[-1]
-			for batch_index in torch.randperm(len(group), generator=generator).tolist():
-				yield list(group[batch_index])
+			yield group
+
+	def _repack_checkpointing(
+		self, group: tuple[tuple[int, ...], ...]
+	) -> tuple[tuple[int, ...], ...]:
+		if self._packer is None:
+			return group
+		singletons = [
+			batch[0]
+			for batch in group
+			if len(batch) == 1
+			and (self._threshold == 0 or sum(self._lengths[batch[0]]) > self._threshold)
+		]
+		if len(singletons) < 2:
+			return group
+		selected = set(singletons)
+		retained = tuple(
+			batch for batch in group if len(batch) != 1 or batch[0] not in selected
+		)
+		return retained + self._packer.pack(singletons)
+
+	def _epoch_batches(self) -> tuple[tuple[int, ...], ...]:
+		if self._batches is None:
+			generator = torch.Generator().manual_seed(self._seed + self._epoch)
+			batches: list[tuple[int, ...]] = []
+			for group in self._groups(generator):
+				group = self._repack_checkpointing(group)
+				if self._plan is not None:
+					group = tuple(
+						group[index]
+						for index in torch.randperm(
+							len(group), generator=generator
+						).tolist()
+					)
+				batches.extend(group)
+			self._batches = tuple(batches)
+		return self._batches
+
+	def __iter__(self) -> Iterator[list[int]]:
+		for batch in self._epoch_batches():
+			yield list(batch)
 
 	def __len__(self) -> int:
-		return self._plan.batch_count
+		return len(self._epoch_batches())
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,11 +339,11 @@ class PreparedTrainingSplit:
 	tokens: PairwiseTokenStore
 	loader: DataLoader[PairwiseBatch]
 	plan: TrainingBatchPlan | None
-	_sampler: _PlannedBatchSampler | None = field(repr=False)
+	_sampler: _TrainingBatchSampler | None = field(repr=False)
 	warmup_context: WarmupCacheContext | None = None
 
 	def set_epoch(self, epoch: int) -> None:
-		"""Use a zero-based joint epoch; fixed batching keeps its original RNG stream."""
+		"""Set the joint epoch; unmodified fixed batching keeps its original RNG stream."""
 		if self._sampler is not None:
 			self._sampler.set_epoch(epoch)
 
@@ -321,7 +410,7 @@ class _BatchCache:
 class LoRATrainingBatchRepository:
 	"""Prepare holdout/build loaders without model weights or CUDA setup."""
 
-	PLAN_SCHEMA_VERSION = 3
+	PLAN_SCHEMA_VERSION = 4
 
 	def __init__(
 		self,
@@ -476,7 +565,7 @@ class LoRATrainingBatchRepository:
 			"schema_version": self.PLAN_SCHEMA_VERSION,
 			"algorithm_version": _GlobalBatchPlanner.VERSION,
 			"rows_sha256": hashlib.sha256(memoryview(row_data)).hexdigest(),
-			"budget": config.gradient_checkpointing_budget,
+			"threshold": config.gradient_checkpointing_threshold,
 			"group_size": group_size,
 		}
 		key = self._cache.key(metadata)
@@ -496,14 +585,16 @@ class LoRATrainingBatchRepository:
 					),
 					payload["padded_tokens"],
 				)
-				plan.validate(dataset, group_size, config.gradient_checkpointing_budget)
+				plan.validate(
+					dataset, group_size, config.gradient_checkpointing_threshold
+				)
 			except KeyError, TypeError, ValueError, OverflowError:
 				plan = None
 		if plan is None:
 			plan = _GlobalBatchPlanner(
-				dataset, reference, group_size, config.gradient_checkpointing_budget
+				dataset, reference, group_size, config.gradient_checkpointing_threshold
 			).build()
-			plan.validate(dataset, group_size, config.gradient_checkpointing_budget)
+			plan.validate(dataset, group_size, config.gradient_checkpointing_threshold)
 			payload = {
 				"groups": tuple(
 					tuple(
@@ -521,7 +612,7 @@ class LoRATrainingBatchRepository:
 		updates = OptimizerGroupLayout(len(reference), group_size).update_count
 		print(
 			f"{status} {self._model_label} batch plan ({'build' if full_data else 'holdout'}): "
-			f"{len(reference):,} rows, {updates:,} updates, {plan.batch_count:,} micro-batches; "
+			f"{len(reference):,} rows, {updates:,} updates, {plan.batch_count:,} base micro-batches; "
 			f"{self._cache.path('plans', metadata)}",
 			flush=True,
 		)
@@ -582,9 +673,12 @@ class LoRATrainingBatchRepository:
 		}
 		plan = None
 		sampler = None
-		if not self._warmup_only and self._config.gradient_checkpointing_budget > 0:
-			plan = self._load_plan(reference, dataset, full_data=full_data)
-			sampler = _PlannedBatchSampler(plan, seed)
+		if not self._warmup_only:
+			if self._config.gradient_checkpointing_threshold > 0:
+				plan = self._load_plan(reference, dataset, full_data=full_data)
+			if plan is not None or self._config.gradient_checkpointing_budget > 0:
+				sampler = _TrainingBatchSampler(plan, dataset, reference, self._config)
+		if sampler is not None:
 			loader = DataLoader(dataset, batch_sampler=sampler, **options)
 		else:
 			loader = DataLoader(
