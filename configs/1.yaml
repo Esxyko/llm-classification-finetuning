@@ -19,6 +19,7 @@ gpu:
 
 warmup:
   A/B_swap: aug
+  use_abs_diff: true
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   hidden_size: 1024
@@ -48,6 +49,7 @@ qwen3_4b:
 
 qwen3_4b_lora:
   A/B_swap: aug
+  use_abs_diff: false
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   gradient_checkpointing_threshold: 10752

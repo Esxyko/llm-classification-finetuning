@@ -73,6 +73,7 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `warmup.A/B_swap` | `aug` |
+| `qwen3_4b_lora.use_abs_diff` / `warmup.use_abs_diff` | `true` |
 | `qwen3_4b_lora.gradient_checkpointing_threshold` | `0` |
 | `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
 
@@ -81,6 +82,20 @@ All other fields in a present section are required, including `gpu.device`,
 and learning rate. Unknown keys are rejected. Numeric values described as
 presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
+
+## Pairwise absolute difference
+
+Set `qwen3_4b_lora.use_abs_diff` to `true` (the default) to classify
+`[A, B, |A - B|]` with a `3H` input, or `false` to classify `[A, B]` with a `2H`
+input. The value must be a YAML boolean. It applies to LoRA head warmup, joint
+training, validation, and submission. Metrics record the actual combination.
+Changing this setting requires a checkpoint trained with the matching head;
+warmup caches distinguish the two architectures.
+
+Standalone `model warmup --build` uses `warmup.use_abs_diff`, also defaulting to
+`true`. Match it to the LoRA value when building a reusable warmup cache. LoRA
+uses its own switch during its built-in warmup. The frozen `qwen3_4b` profile
+continues to use `[A, B, |A - B|]`.
 
 ## Standalone warmup
 
@@ -104,11 +119,13 @@ uv run model warmup --build --config config.yaml
 Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
 `warmup_epochs`, `extraction_budget`, `warmup_training_batch_size`,
 `warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
-`dataloader_workers`, and `A/B_swap`. All except `A/B_swap` are required;
-`A/B_swap` defaults to `aug`. `warmup_epochs` must be nonnegative;
+`dataloader_workers`, `A/B_swap`, and `use_abs_diff`. All except `A/B_swap` and
+`use_abs_diff` are required; they default to `aug` and `true`, respectively.
+`warmup_epochs` must be nonnegative;
 `model warmup --build` requires it to be strictly positive. The other fields in
 this section configure standalone warmup; LoRA continues to use its own model,
-classifier, weight decay, clipping, seed, workers, and `A/B_swap` settings.
+classifier, `use_abs_diff`, weight decay, clipping, seed, workers, and `A/B_swap`
+settings.
 
 The root preset copies the LoRA warmup settings: Qwen3-4B, `max_length: 13514`,
 a 1024-unit head with dropout 0.1, one warmup epoch, extraction budget 524288,

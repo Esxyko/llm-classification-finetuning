@@ -58,7 +58,11 @@ class ModelResultPublisher:
 			"run_name": run_name,
 			"generated_at": generated_at.isoformat(timespec="seconds"),
 			"model_name": model_config.model_name,
-			"embedding_combination": PairwiseClassificationHead.EMBEDDING_COMBINATION,
+			"embedding_combination": PairwiseClassificationHead.embedding_combination(
+				model_config.use_abs_diff
+				if isinstance(model_config, LoRAModelConfig)
+				else True
+			),
 			"validation_strategy": "holdout",
 			"training_rows": result.training_rows,
 			"source_training_rows": result.source_training_rows,

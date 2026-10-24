@@ -27,8 +27,11 @@ class _LoRAClassificationHead(PairwiseClassificationHead):
 		dropout: float,
 		*,
 		compute_dtype: torch.dtype,
+		use_abs_diff: bool,
 	) -> None:
-		super().__init__(backbone_hidden_size, hidden_size, dropout)
+		super().__init__(
+			backbone_hidden_size, hidden_size, dropout, use_abs_diff=use_abs_diff
+		)
 		self._compute_dtype = compute_dtype
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -132,6 +135,7 @@ class LoRAQwenClassifier(nn.Module):
 			config.hidden_size,
 			config.dropout,
 			compute_dtype=self.feature_dtype,
+			use_abs_diff=config.use_abs_diff,
 		).to(device=device, dtype=torch.float32)
 
 	def train(self, mode: bool = True) -> LoRAQwenClassifier:

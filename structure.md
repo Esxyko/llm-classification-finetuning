@@ -85,9 +85,11 @@ and print summaries. Business logic belongs below the CLI layer.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
   loading, and raw/processed-data path resolution from the working directory.
   `WarmupModelConfig` owns shared head-warmup fields;
-  `LoRAModelConfig` extends it with joint-training and adapter settings. The YAML
-  loader resolves its three warmup optimization fields from the required top-level
-  `warmup` section and rejects those keys in `qwen3_4b_lora`. It also resolves
+  `LoRAModelConfig` extends it with joint-training and adapter settings. Both
+  accept an optional boolean `use_abs_diff` defaulting to `true`; LoRA uses its
+  own value during built-in warmup, while standalone warmup uses its own section.
+  The YAML loader resolves its three warmup optimization fields from the required
+  top-level `warmup` section and rejects those keys in `qwen3_4b_lora`. It also resolves
   internal `warmup_extraction_budget` from `warmup.extraction_budget`,
   retaining the LoRA section's own extraction budget for joint validation and
   submission. All extraction budgets are required positive padded-token limits;
@@ -235,7 +237,8 @@ and print summaries. Business logic belongs below the CLI layer.
       tokenizer content, and encoding options in shared SQLite shards; provide
       compact CPU text views, canonical pair views, and LoRA context validation.
     - `model.py`: Defines backbone pooling and the shared pairwise MLP head over
-      `[A, B, |A - B|]`, including the embedding-combination marker for metrics.
+      `[A, B, |A - B|]` or `[A, B]`, including the embedding-combination marker
+      for metrics.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed split rows.
     - `progress.py`: Counts weighted training update groups and validation batches,
@@ -324,10 +327,11 @@ logic depend on a particular timestamped run.
   `split`; A/B fields and labels `0`/`1` are reversed, while label `2` is unchanged.
 - Prediction CSVs use `id`, `winner_model_a`, `winner_model_b`, and `winner_tie`
   in that order, with finite probabilities that sum to one.
-- All active profiles use the shared pairwise head with concatenated pooled
-  features `[A, B, |A - B|]`, where the difference is elementwise. Its first
-  linear layer receives `3H` features for backbone hidden size `H`, including
-  head warmup, joint training, validation, and submission inference.
+- All active profiles default to the shared pairwise head with concatenated
+  pooled features `[A, B, |A - B|]` and `3H` inputs for backbone hidden size `H`.
+  LoRA's `use_abs_diff: false` selects `[A, B]` with `2H` inputs throughout head
+  warmup, joint training, validation, and submission. Standalone warmup uses its
+  own switch; frozen models retain the default `3H` head.
 - Frozen embeddings are shared across training/test and addressed by actual
   token IDs after truncation, independent of labels, splits, IDs, reference order,
   source files, serializers, and configured length caps when effective IDs match.
@@ -484,9 +488,10 @@ logic depend on a particular timestamped run.
   effective seed, weight decay, gradient clipping, and cache schema. Compute
   precision, attention/TF32, extraction token budget, all LoRA initialization
   settings, local model paths, and joint learning rates/epochs/batching/
-  accumulation/token budget are excluded. Schema v5 identifies the `3H`
-  absolute-difference head, retaining training-only ID identities and merged-tail
-  warmup; legacy v1/v2/v3/v4 warmup files are retained and no longer read. Token,
+  accumulation/token budget are excluded. Schema v5 preserves enabled `3H`
+  cache identities and includes `use_abs_diff: false` for separate `2H` caches,
+  retaining training-only ID identities and merged-tail warmup; legacy
+  v1/v2/v3/v4 warmup files are retained and no longer read. Token,
   embedding, and batch-plan cache identities are preserved.
   Current input/length validation still runs. Completed
   caches atomically persist FP32 heads and named head AdamW moments/steps,
@@ -555,8 +560,8 @@ logic depend on a particular timestamped run.
   schema/class count, pooling, truncation side, and bias are checked. Context
   and A/B training mode are recorded but not checked. Hub base revisions are
   retained; local base weights are neither stored nor content-fingerprinted.
-  Schema v2 identifies the `3H` absolute-difference head; schema v1 checkpoints
-  require rebuilding.
+  Schema v2 checks `use_abs_diff`, defaulting missing markers to `true` for
+  existing `3H` checkpoints. Schema v1 checkpoints require rebuilding.
 - Archived QLoRA support remains in shared LoRA modules with its quantization
   dependencies, but has no active model registration or configuration section.
   The retained implementation shares the training, batching, pooling, objective,
@@ -601,7 +606,8 @@ logic depend on a particular timestamped run.
   Frozen-model snapshots omit `warmup`. Other model sections are excluded.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
-  New runs record `embedding_combination: "concat_a_b_abs_diff"` in metrics only;
+  New runs record `embedding_combination` as `concat_a_b_abs_diff` or `concat_a_b`
+  in metrics only, matching the selected head. Config snapshots retain the flag;
   historical results retain their original contents.
   Result synthesis consumes only split=validation, keeps both orientations for
   A/B alignment, and rejects legacy five-fold results. Excel uses a split column.

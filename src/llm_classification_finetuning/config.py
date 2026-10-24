@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +90,7 @@ class WarmupModelConfig:
 	random_state: int
 	dataloader_workers: int
 	ab_swap: str
+	use_abs_diff: bool = field(default=True, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,6 +351,9 @@ def _load_warmup_fields(
 		),
 		max_length=positive_integer("max_length"),
 		hidden_size=positive_integer("hidden_size"),
+		use_abs_diff=_require_boolean(
+			section.get("use_abs_diff", True), field("use_abs_diff")
+		),
 		dropout=dropout,
 		weight_decay=weight_decay,
 		warmup_epochs=warmup_epochs,

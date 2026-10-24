@@ -20,9 +20,11 @@ Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual
 A/B-selected `training_rows`. No fold count or cross-fold average is recorded.
 
-New runs also record `embedding_combination: "concat_a_b_abs_diff"` in
-`metrics.json`, identifying the classifier input `[A, B, |A - B|]` with an
-elementwise absolute difference. This marker is kept in metrics only; the
+New runs record `embedding_combination` in `metrics.json`:
+`"concat_a_b_abs_diff"` identifies `[A, B, |A - B|]` with an elementwise absolute
+difference, while `"concat_a_b"` identifies `[A, B]` when LoRA sets
+`use_abs_diff: false`. Configuration snapshots include the effective boolean.
+This combination marker is kept in metrics only; the
 prediction CSVs, configuration snapshot, terminal summary, and generated reports
 retain their existing formats. Historical results are left unchanged.
 

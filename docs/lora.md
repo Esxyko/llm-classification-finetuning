@@ -12,9 +12,12 @@ uv run model qwen3-4b-lora --submit
 ```
 
 The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
-prompt+B separately. The shared pairwise MLP receives `[A, B, |A - B|]`, with an
+prompt+B separately. The shared pairwise MLP defaults to `[A, B, |A - B|]`, with an
 elementwise absolute difference and input width `3H` for backbone hidden size
 `H`, throughout warmup, joint training, validation, and submission.
+Set `qwen3_4b_lora.use_abs_diff: false` to use `[A, B]` with input width `2H`
+throughout those stages. The optional boolean defaults to `true`; standalone
+warmup has its own `warmup.use_abs_diff` setting, which must match for cache reuse.
 LoRA adapters and the pairwise MLP are trained together;
 original backbone parameters remain frozen. `A/B_swap: aug` (the default) trains
 on both processed orientations with per-row cross-entropy. Set
@@ -393,9 +396,9 @@ Builds atomically save adapters, the classifier, and compatibility metadata in
 `models/qwen3_4b_lora/adapter.pt`. `--checkpoint-tag TAG` selects
 `adapter_TAG.pt`. Base weights and optimizer state are not stored. The checkpoint
 records the resolved Hub base revision so inference reloads matching weights
-and tokenizer files. Model name, classifier size and dropout, serialization,
-and LoRA settings must match. `max_length` and `A/B_swap` remain recorded in
-checkpoint metadata. The `training_quantization` marker must also be `none`
+and tokenizer files. Model name, classifier size and dropout, `use_abs_diff`,
+serialization, and LoRA settings must match. `max_length` and `A/B_swap` remain
+recorded in checkpoint metadata. The `training_quantization` marker must also be `none`
 (including older checkpoints without the marker); historical quantized
 checkpoints are incompatible. `max_length` and `A/B_swap` are not checked when
 loading. CUDA index, GPU model, precision, attention implementation, TF32, batch
@@ -406,9 +409,10 @@ the checkpoint neither includes nor fingerprints local base weights.
 There are no persistent LoRA embedding caches.
 BF16 head computation preserves the classifier's state-dict keys and FP32
 checkpoint parameters, so compute-precision changes preserve compatibility for
-current-schema checkpoints. Schema v2 identifies the `[A, B, |A - B|]` head;
-schema v1 adapter/head checkpoints require a new `--build` because their head
-input has width `2H`.
+current-schema checkpoints. Schema v2 records `use_abs_diff`; earlier v2
+checkpoints without this field are treated as `true` and remain loadable with
+the enabled setting. Changing the switch requires a matching checkpoint;
+schema v1 adapter/head checkpoints still require a new `--build`.
 
 See [caching and Python APIs](caching.md) for shared token encodings and batch-plan
 reuse, [configuration](configuration.md) for batch experiments, and

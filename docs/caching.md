@@ -266,8 +266,8 @@ Changing training text or labels while retaining IDs thus reuses the old warmup;
 use `--refresh-cache` to retrain it. Input and token-length checks still run.
 
 Other keys identify the model and exact Hub revision or local weight/configuration
-content, backbone/head dimensions, tokenizer content, serialization version,
-quantization mode, head dropout, A/B objective, warmup epochs/training batch
+content, backbone/head dimensions, `use_abs_diff`, tokenizer content,
+serialization version, quantization mode, head dropout, A/B objective, warmup epochs/training batch
 size/learning rate, effective seed, weight decay, gradient clipping, and cache
 schema. Local model paths are excluded when weight/configuration contents
 match. Compute precision, attention implementation, TF32, warmup extraction
@@ -292,10 +292,13 @@ fresh warmup under the new settings. Rank/target-module changes can affect
 classification-head initialization through random-number consumption on a
 cache miss; cached heads and named optimizer states remain reusable.
 
-Schema v5 identifies the `[A, B, |A - B|]` classifier with a `3H` input. It retains
-training-ID identities without a validation-set binding and merges a short final
-batch into the preceding full optimizer update. Legacy v1/v2/v3/v4 warmup files
-are retained and no longer read; warmup is rebuilt for the new head architecture.
+Schema v5 supports the default `[A, B, |A - B|]` classifier with a `3H` input and
+the optional `[A, B]` classifier with a `2H` input. Disabled heads include
+`use_abs_diff: false` in their cache identity; enabled heads retain their existing
+v5 cache paths. Standalone warmup and LoRA must select the same switch for reuse.
+The schema retains training-ID identities without a validation-set binding and
+merges a short final batch into the preceding full optimizer update. Legacy
+v1/v2/v3/v4 warmup files are retained and no longer read.
 Shared token encodings, frozen embeddings, and LoRA batch plans retain their
 existing cache identities.
 

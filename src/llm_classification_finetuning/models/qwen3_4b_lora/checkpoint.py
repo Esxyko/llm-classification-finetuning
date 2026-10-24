@@ -32,6 +32,7 @@ class LoRACheckpointCompatibility:
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
 	ab_swap: str
+	use_abs_diff: bool = True
 	schema_version: int = 2
 	class_count: int = 3
 	pooling: str = "last-nonpadding-token"
@@ -58,6 +59,7 @@ class LoRACheckpointCompatibility:
 			lora_dropout=config.lora_dropout,
 			lora_target_modules=tuple(sorted(config.lora_target_modules)),
 			ab_swap=config.ab_swap,
+			use_abs_diff=config.use_abs_diff,
 			training_quantization="bnb-nf4-double" if quantize_training else "none",
 		)
 
@@ -146,7 +148,11 @@ class LoRACheckpointStore:
 			):
 				raise TypeError("checkpoint and metadata must be mappings")
 			# Checkpoints predating QLoRA were trained with a non-quantized base.
-			metadata = {"training_quantization": "none", **checkpoint["metadata"]}
+			metadata = {
+				"training_quantization": "none",
+				"use_abs_diff": True,
+				**checkpoint["metadata"],
+			}
 			mismatches = [
 				name
 				for name, value in asdict(expected).items()

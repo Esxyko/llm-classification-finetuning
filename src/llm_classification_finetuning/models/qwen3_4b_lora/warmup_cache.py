@@ -98,6 +98,9 @@ class HeadWarmupCache:
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
+		# Preserve enabled schema-v5 cache paths; disabled heads have a separate key.
+		if not config.use_abs_diff:
+			metadata["use_abs_diff"] = False
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))
 		if refresh:
 			return entry
@@ -222,6 +225,7 @@ class HeadWarmupCache:
 				metadata["backbone_hidden_size"],
 				self._config.hidden_size,
 				self._config.dropout,
+				use_abs_diff=self._config.use_abs_diff,
 			).state_dict()
 		head = payload["head_state_dict"]
 		moments = payload["optimizer_state"]

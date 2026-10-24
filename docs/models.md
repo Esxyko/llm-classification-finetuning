@@ -8,10 +8,12 @@ adapters. See [LoRA training](lora.md) for its objectives and settings.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 
-Both profiles use the same pairwise MLP head. It concatenates the pooled branch
-embeddings as `[A, B, |A - B|]`, where the absolute difference is elementwise.
-The head input has width `3H` for backbone hidden size `H`; this also applies to
-head warmup, validation, and submission inference.
+Both profiles use the same pairwise MLP head. By default, it concatenates the
+pooled branch embeddings as `[A, B, |A - B|]`, where the absolute difference is
+elementwise and the head input has width `3H` for backbone hidden size `H`.
+LoRA can set `qwen3_4b_lora.use_abs_diff: false` to use `[A, B]` with a `2H` input
+throughout warmup, training, validation, and submission. Standalone warmup uses
+`warmup.use_abs_diff`; the frozen profile keeps the `3H` input.
 
 ## Frozen-model holdout validation
 
