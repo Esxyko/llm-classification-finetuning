@@ -38,7 +38,7 @@ class ModelPipeline:
 	"""Run holdout validation, build, or submission inference for one model profile."""
 
 	CACHE_SCHEMA_VERSION = 2
-	CHECKPOINT_SCHEMA_VERSION = 2
+	CHECKPOINT_SCHEMA_VERSION = 3
 
 	def __init__(
 		self,

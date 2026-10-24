@@ -287,12 +287,12 @@ fresh warmup under the new settings. Rank/target-module changes can affect
 classification-head initialization through random-number consumption on a
 cache miss; cached heads and named optimizer states remain reusable.
 
-Schema v4 retains training-ID identities without a validation-set binding and
-identifies warmup with a short final batch merged into the preceding full
-optimizer update. Legacy v1/v2/v3 warmup files are no longer read; v3 states used
-separate short-tail updates. Old warmup states must be rebuilt under the new
-update rule. Shared token encodings, frozen embeddings, and LoRA batch plans
-retain their existing cache identities.
+Schema v5 identifies the `[A, B, |A - B|]` classifier with a `3H` input. It retains
+training-ID identities without a validation-set binding and merges a short final
+batch into the preceding full optimizer update. Legacy v1/v2/v3/v4 warmup files
+are retained and no longer read; warmup is rebuilt for the new head architecture.
+Shared token encodings, frozen embeddings, and LoRA batch plans retain their
+existing cache identities.
 
 Reads use CPU tensor loading and validate metadata, exact head/moment shapes,
 FP32 dtypes, finite weights/moments, and restorable scaler/random states before

@@ -18,6 +18,7 @@ from ...errors import ModelExecutionError
 from ...timing import format_duration
 from ..profile import ModelProfile
 from .hardware import GPUMemoryPeak
+from .model import PairwiseClassificationHead
 from .trainer import ValidationTrainingResult
 
 
@@ -57,6 +58,7 @@ class ModelResultPublisher:
 			"run_name": run_name,
 			"generated_at": generated_at.isoformat(timespec="seconds"),
 			"model_name": model_config.model_name,
+			"embedding_combination": PairwiseClassificationHead.EMBEDDING_COMBINATION,
 			"validation_strategy": "holdout",
 			"training_rows": result.training_rows,
 			"source_training_rows": result.source_training_rows,
