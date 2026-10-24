@@ -8,6 +8,11 @@ adapters. See [LoRA training](lora.md) for its objectives and settings.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 
+Both profiles use the same pairwise MLP head. It concatenates the pooled branch
+embeddings as `[A, B, |A - B|]`, where the absolute difference is elementwise.
+The head input has width `3H` for backbone hidden size `H`; this also applies to
+head warmup, validation, and submission inference.
+
 ## Frozen-model holdout validation
 
 Prepare the [training data](data-preparation.md) first, then run holdout validation:
@@ -104,6 +109,10 @@ backbone hidden size. `max_length`, `gpu.precision`,
 in checkpoint metadata but are not checked when loading. Batch sizes and GPU
 indices can also change.
 An incompatible configuration requires rebuilding the head with that config.
+
+Frozen head schema v3 identifies the `[A, B, |A - B|]` architecture. Earlier
+checkpoints with a `2H` head input require a new `--build`; existing per-branch
+embedding caches remain reusable.
 
 The head checkpoint does not store a pinned backbone revision or local weight
 fingerprint. Frozen extraction resolves the currently available backbone and

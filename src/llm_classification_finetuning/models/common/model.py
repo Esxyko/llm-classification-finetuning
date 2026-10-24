@@ -10,14 +10,16 @@ from ...model_storage import load_pretrained
 
 
 class PairwiseClassificationHead(nn.Module):
-	"""Classify the concatenated pooled states of two response branches."""
+	"""Classify pooled A/B states concatenated with their absolute difference."""
+
+	EMBEDDING_COMBINATION = "concat_a_b_abs_diff"
 
 	def __init__(
 		self, backbone_hidden_size: int, hidden_size: int, dropout: float
 	) -> None:
 		super().__init__()
 		self.network = nn.Sequential(
-			nn.Linear(backbone_hidden_size * 2, hidden_size),
+			nn.Linear(backbone_hidden_size * 3, hidden_size),
 			nn.GELU(),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_size, 3),
@@ -27,7 +29,7 @@ class PairwiseClassificationHead(nn.Module):
 		"""Return A-win, B-win, and tie logits for paired pooled states."""
 		if h_a.shape != h_b.shape or h_a.ndim != 2:
 			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
-		features = torch.cat((h_a, h_b), dim=-1)
+		features = torch.cat((h_a, h_b, torch.abs(h_a - h_b)), dim=-1)
 		return self.network(features)
 
 
