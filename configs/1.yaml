@@ -60,7 +60,7 @@ qwen3_4b_lora:
   epochs: 2
   extraction_budget: 524288
   learning_rate: 0.0001
-  head_learning_rate: 0.00005
+  head_learning_rate: 0.0001
   hidden_size: 1024
   weight_decay: 0.01
   dropout: 0.1
