@@ -5,8 +5,13 @@
 Run [holdout validation](models.md) first; builds and submissions do not produce
 validation reports. The selected configuration supplies the processed reference.
 Each of the three models writes the final epoch's holdout probabilities to
-`validation.csv` alongside `metrics.json` in one timestamped run directory.
-The two files are staged and published together after training succeeds.
+`validation.csv` alongside `metrics.json` and `config.yaml` in one timestamped run
+directory. The three files are staged and published together after training
+succeeds. `config.yaml` records the effective `data`, `validation`, `gpu`, and
+current model sections, including default values and resolved data paths. Other
+model sections and the independent `warmup` section are omitted. It uses the
+same YAML field names as the input configuration and can be passed to `--config`.
+`metrics.json` does not contain a `config` field.
 Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual
 A/B-selected `training_rows`. No fold count or cross-fold average is recorded.

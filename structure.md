@@ -228,6 +228,9 @@ and print summaries. Business logic belongs below the CLI layer.
     - `checkpoint.py`: Saves and validates the production head and compatibility
       metadata.
     - `predictor.py`: Runs no-gradient inference from a saved head.
+    - `publishers.py`: Atomically publishes validation predictions, metrics, and
+      a YAML snapshot of the effective shared/current-model configuration;
+      records complete-run timing/GPU peaks and publishes submission CSVs.
 - `result/`
   - `synthesizer.py`: Discovers and validates validation.csv, reverses swapped-row
     orientation, and reduces each pair to one source record.
@@ -269,6 +272,7 @@ exports over importing private helpers across package boundaries.
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
 | `models/qwen3_4b_qlora/` | QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
+| `results/MODEL-YYYYMMDD-HHMMSS/config.yaml` | Effective `data`, `validation`, `gpu`, and current model sections, using input YAML field names, resolved data paths, and loaded defaults |
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
 `data/`, `models/`, and `results/` are runtime artifacts rather than source
@@ -523,7 +527,10 @@ logic depend on a particular timestamped run.
   holdout validation publishes the final epoch's predictions, with validation
   after every executed epoch (including uncached LoRA head warmup).
 - Each holdout trainer returns one completed result after its final epoch.
-  The publisher atomically exposes validation.csv and metrics.json together.
+  The publisher atomically exposes validation.csv, metrics.json, and config.yaml
+  together. Metrics do not contain a `config` field; the adjacent YAML includes
+  only `data`, `validation`, `gpu`, and the current model section, excluding
+  other models and the independent standalone `warmup` section.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
   Result synthesis consumes only split=validation, keeps both orientations for

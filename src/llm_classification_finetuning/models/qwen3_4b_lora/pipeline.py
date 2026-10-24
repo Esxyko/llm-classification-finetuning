@@ -127,7 +127,8 @@ class LoRAModelPipeline:
 			validation_result = trainer.validate(batches)
 			output_dir, validation_loss, predictions = self._result_publisher.publish(
 				validation_result,
-				self._model_config.model_name,
+				self._config,
+				self._profile,
 				prediction_aggregation="ab_swap_average",
 			)
 			return ModelRunResult(output_dir, predictions, validation_loss)

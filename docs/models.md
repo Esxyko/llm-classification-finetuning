@@ -20,7 +20,8 @@ uv run model qwen3-4b
 
 The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
-`validation.csv` plus `metrics.json` to a timestamped model-named results directory.
+`validation.csv`, `metrics.json`, and a `config.yaml` containing the shared and
+current model sections to a timestamped model-named results directory.
 All three profiles consume the same saved 80/20 split and initialize one model
 per default profile run. See [validation reports and timing metrics](reports.md)
 for their interpretation.

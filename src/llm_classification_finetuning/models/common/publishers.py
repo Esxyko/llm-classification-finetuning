@@ -11,9 +11,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
+from ...config import AppConfig
 from ...errors import ModelExecutionError
 from ...timing import format_duration
+from ..profile import ModelProfile
 from .hardware import GPUMemoryPeak
 from .trainer import ValidationTrainingResult
 
@@ -30,11 +33,13 @@ class ModelResultPublisher:
 	def publish(
 		self,
 		result: ValidationTrainingResult,
-		model_name: str,
+		config: AppConfig,
+		profile: ModelProfile,
 		*,
 		prediction_aggregation: str | None = None,
 	) -> tuple[Path, float, int]:
-		"""Publish final validation probabilities and single-run metrics together."""
+		"""Publish validation probabilities, metrics, and the used config together."""
+		model_config = profile.resolve_config(config)
 		generated_at = datetime.now(UTC).astimezone()
 		run_name = generated_at.strftime(f"{self._result_prefix}-%Y%m%d-%H%M%S")
 		output_dir = self._results_root / run_name
@@ -51,7 +56,7 @@ class ModelResultPublisher:
 		metrics = {
 			"run_name": run_name,
 			"generated_at": generated_at.isoformat(timespec="seconds"),
-			"model_name": model_name,
+			"model_name": model_config.model_name,
 			"validation_strategy": "holdout",
 			"training_rows": result.training_rows,
 			"source_training_rows": result.source_training_rows,
@@ -98,6 +103,14 @@ class ModelResultPublisher:
 					json.dumps(metrics, indent=2, sort_keys=True) + "\n",
 					encoding="utf-8",
 				)
+				(staging_dir / "config.yaml").write_text(
+					yaml.safe_dump(
+						self._configuration_snapshot(config, profile),
+						sort_keys=False,
+						allow_unicode=True,
+					),
+					encoding="utf-8",
+				)
 				os.replace(staging_dir, output_dir)
 		except ModelExecutionError:
 			raise
@@ -111,7 +124,6 @@ class ModelResultPublisher:
 	@staticmethod
 	def record_model_time(
 		output_dir: Path,
-		config_path: Path,
 		elapsed_seconds: float,
 		*,
 		gpu_memory: GPUMemoryPeak | None = None,
@@ -121,7 +133,7 @@ class ModelResultPublisher:
 		try:
 			metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
 			metrics["total_time"] = format_duration(elapsed_seconds)
-			metrics["config"] = str(config_path)
+			metrics.pop("config", None)
 			metrics.pop("config_total_time", None)
 			metrics["config_total_time"] = format_duration(elapsed_seconds)
 			if gpu_memory is not None:
@@ -138,6 +150,31 @@ class ModelResultPublisher:
 			raise ModelExecutionError(
 				f"Could not record model runtime metrics in {metrics_path}: {error}"
 			) from error
+
+	@staticmethod
+	def _configuration_snapshot(
+		config: AppConfig, profile: ModelProfile
+	) -> dict[str, dict[str, object]]:
+		"""Serialize effective shared settings and only the current model section."""
+		sections = {
+			"data": asdict(config.data),
+			"validation": asdict(config.validation),
+			"gpu": asdict(config.gpu),
+			profile.config_key: asdict(profile.resolve_config(config)),
+		}
+		return {
+			section_name: {
+				"A/B_swap" if key == "ab_swap" else key: (
+					str(value)
+					if isinstance(value, Path)
+					else list(value)
+					if isinstance(value, tuple)
+					else value
+				)
+				for key, value in section.items()
+			}
+			for section_name, section in sections.items()
+		}
 
 	def _validate_probabilities(self, predictions: pd.DataFrame) -> None:
 		values = predictions.loc[:, list(self.PROBABILITY_COLUMNS)].to_numpy(

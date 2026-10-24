@@ -113,7 +113,8 @@ class ModelPipeline:
 		validation_result = trainer.train(data.reference, embeddings)
 		output_dir, validation_loss, prediction_count = self._result_publisher.publish(
 			validation_result,
-			self._model_config.model_name,
+			self._config,
+			self._profile,
 			prediction_aggregation="ab_swap_average",
 		)
 		return ModelRunResult(

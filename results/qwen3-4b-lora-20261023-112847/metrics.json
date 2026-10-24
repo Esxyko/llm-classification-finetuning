@@ -23,7 +23,6 @@
   "validation_rows": 11495,
   "validation_strategy": "holdout",
   "validation_time": "00:15:36",
-  "config": "configs/1.yaml",
   "config_total_time": "02:46:13",
   "gpu_memory": {
     "device": "cuda:0",

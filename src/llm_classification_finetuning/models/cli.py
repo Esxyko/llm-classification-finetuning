@@ -110,7 +110,6 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		if parsed_arguments.model == ALL_MODELS:
 			return _run_all_models(
 				config=config,
-				config_path=parsed_arguments.config,
 				project_root=project_root,
 				mode=mode,
 				refresh_cache=parsed_arguments.refresh_cache,
@@ -121,7 +120,6 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		result = _run_registered_model(
 			registration=registration,
 			config=config,
-			config_path=parsed_arguments.config,
 			project_root=project_root,
 			mode=mode,
 			refresh_cache=parsed_arguments.refresh_cache,
@@ -138,7 +136,6 @@ def _run_registered_model(
 	*,
 	registration: ModelRegistration,
 	config: AppConfig,
-	config_path: Path,
 	project_root: Path,
 	mode: ModelMode,
 	refresh_cache: bool,
@@ -172,7 +169,7 @@ def _run_registered_model(
 		_print_gpu_memory(registration.profile.selector, gpu_memory)
 	if isinstance(result, ModelRunResult):
 		ModelResultPublisher.record_model_time(
-			result.output_dir, config_path, elapsed_seconds, gpu_memory=gpu_memory
+			result.output_dir, elapsed_seconds, gpu_memory=gpu_memory
 		)
 	print(
 		f"Model total time ({registration.profile.selector}): "
@@ -199,7 +196,6 @@ def _print_gpu_memory(
 def _run_all_models(
 	*,
 	config: AppConfig,
-	config_path: Path,
 	project_root: Path,
 	mode: ModelMode,
 	refresh_cache: bool,
@@ -222,7 +218,6 @@ def _run_all_models(
 			result = _run_registered_model(
 				registration=registration,
 				config=config,
-				config_path=config_path,
 				project_root=project_root,
 				mode=mode,
 				refresh_cache=refresh_cache,

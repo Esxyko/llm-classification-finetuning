@@ -248,8 +248,10 @@ independent: the build script does not run or require holdout validation.
 They locate `configs/` relative to the script's project root and run each model
 from that root, regardless of the directory from which the script was invoked.
 
-Each model's validation run publishes its own `metrics.json`; `config_total_time`
-covers only that model's holdout validation run under the selected config.
+Each model's validation run publishes its own `metrics.json` and an adjacent
+`config.yaml` containing the effective shared and current model sections;
+`metrics.json` does not store the source config path. `config_total_time` covers
+only that model's holdout validation run under the selected config.
 The full-data build does not produce `metrics.json`. By default, it writes
 `models/qwen3_4b_lora/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
 also writes `models/qwen3_4b/head_CONFIG_STEM.pt`; selecting `qwen3-4b-qlora` writes
