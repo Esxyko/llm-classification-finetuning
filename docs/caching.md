@@ -218,17 +218,19 @@ different plans.
 
 Cached packing groups keep their existing format and membership, including any
 short final group. Each epoch shuffles the full groups, then appends the short
-group's micro-batches to the last shuffled full group for a single final update.
+group's micro-batches to the last shuffled full group for a single merged update.
 An epoch containing only a short group runs it alone. The optional
 `gradient_checkpointing_budget` pass then combines checkpointed singletons
 inside each final update group, before shuffling its micro-batches. That pass
 uses the configured budget and current epoch's merged membership, and is never
 written into the base plan. Changing only this budget therefore reuses the same
-base cache. A budget of `0` leaves the original micro-batches and their order
-unchanged. With a zero threshold and positive budget, fixed-size initial batches
-are shuffled by `random_state + joint_epoch` and repacked in memory without a
-global plan cache. The reported plan micro-batch count describes the base plan;
-the update count reflects the merged optimizer groups.
+base cache. The merged joint-training update runs first after packing and
+shuffling; cached group membership and warmup ordering remain unchanged.
+A budget of `0` leaves the original micro-batches and their order within each
+update unchanged. With a zero threshold and positive budget, fixed-size initial
+batches are shuffled by `random_state + joint_epoch` and repacked in memory
+without a global plan cache. The reported plan micro-batch count describes the
+base plan; the update count reflects the merged optimizer groups.
 LoRA shares the text-token cache across stages when tokenizer content and
 encoding options match.
 

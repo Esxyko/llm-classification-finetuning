@@ -183,8 +183,10 @@ one update per full batch. This also applies to standalone warmup.
 Joint updates target `G = training_batch_size * gradient_accumulation_steps`
 rows. An incomplete final group is merged into the preceding full group, using
 the combined row count to normalize loss and performing one parameter update.
+The merged joint-training group runs first; warmup keeps its merged update last.
 An epoch smaller than `G` still performs one update. Token-budget training first
-shuffles full groups, then merges the short group into the last shuffled group.
+shuffles full groups, then merges the short group into the last shuffled group
+and moves the combined update to the front.
 LoRA uses `max(1, training_rows // G)` joint updates per nonempty
 epoch for scheduling and progress. See [LoRA training](lora.md).
 

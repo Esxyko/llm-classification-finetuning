@@ -137,8 +137,9 @@ and print summaries. Business logic belongs below the CLI layer.
       the merged optimizer-group layout shared by warmup, joint training, and
       step counts.
       Shuffle full packing groups before merging any short tail into the last
-      epoch update, then optionally best-fit pack checkpointed singletons within
-      each final update before collation, supplying explicit row counts.
+      full group, then optionally best-fit pack checkpointed singletons within
+      each final update before collation. Move the merged joint update first,
+      supplying matching explicit row counts, while warmup retains its last update.
       Its `warmup_only` path
       prepares train-only tokens and references without joint batch plans.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
@@ -394,7 +395,8 @@ logic depend on a particular timestamped run.
   validation/submission extraction.
   Joint updates target `G = training_batch_size * gradient_accumulation_steps`
   rows. A short final group merges into the preceding full update, with loss
-  normalized by their combined row count. An epoch smaller than `G` retains one
+  normalized by their combined row count, and the combined joint update runs
+  first. Warmup keeps its merged update last. An epoch smaller than `G` retains one
   update; exact multiples retain all full groups. Scheduling and progress use
   `max(1, training_rows // G)` updates per nonempty joint epoch across
   holdout/build modes and fixed/token-budget batching.
@@ -414,19 +416,23 @@ logic depend on a particular timestamped run.
   read, and current labels are used. Cached packing-group membership stays fixed;
   each zero-based joint epoch shuffles full groups with
   `random_state + joint_epoch` for both holdout runs and builds, then appends any
-  short group's micro-batches to the last shuffled full group for one final
+  short group's micro-batches to the last shuffled full group for one merged
   update. A lone short group runs by itself. A positive
   `gradient_checkpointing_budget` then best-fit packs only checkpointed singleton
   micro-batches inside each final update, using the same descending-length and
   identity ordering as initial packing. Combined padded A/B cost cannot exceed
   that budget; an oversized singleton remains alone without truncation. Existing
   multi-row batches and non-checkpointed singletons remain intact. Planned
-  micro-batches are shuffled after this optional pass. A zero threshold with a
-  positive budget shuffles rows by `random_state + joint_epoch` into initial
-  fixed-size batches and applies the same final-group packing in memory.
+  micro-batches are shuffled after this optional pass. The merged joint update
+  then moves first without changing its membership or internal batch order.
+  A zero threshold with a positive budget shuffles rows by
+  `random_state + joint_epoch` into initial fixed-size batches and applies the
+  same final-group packing in memory.
   Final epoch batches are memoized so length queries agree with iteration without
   advancing RNG state. The budget defaults to `0`, preserving initial batches
-  and their execution order, and need not exceed the threshold. With a positive
+  and their order within each update, and need not exceed the threshold.
+  Fixed batching with both settings at zero retains the original seeded batches
+  and also moves the merged joint update first. With a positive
   threshold, micro-batches whose padded A/B cost is at or below it disable
   checkpointing; batches above it enable checkpointing for both branches through
   backward, including merged multi-row batches. Warmup and inference always
@@ -443,7 +449,7 @@ logic depend on a particular timestamped run.
   test inference uses the same text cache with its checkpoint's tokenizer revision.
   Uncached total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize loss by actual row counts per update, including
-  merged final groups in warmup and joint training. Clipping and optimizer/scaler
+  merged groups in warmup and joint training. Clipping and optimizer/scaler
   handling occur once per resulting group. Validation and
   test average both orientations' probabilities.
 - LoRA head-warmup caches and the retained QLoRA cache implementation identify
