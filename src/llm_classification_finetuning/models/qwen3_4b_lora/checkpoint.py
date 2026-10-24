@@ -32,7 +32,7 @@ class LoRACheckpointCompatibility:
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
 	ab_swap: str
-	schema_version: int = 2
+	schema_version: int = 1
 	class_count: int = 3
 	pooling: str = "last-nonpadding-token"
 	truncation_side: str = "right"
@@ -154,9 +154,7 @@ class LoRACheckpointStore:
 			]
 			if mismatches:
 				raise ValueError(
-					f"incompatible configuration ({', '.join(mismatches)}). "
-					f"Run '{self._build_command}' with the matching --config "
-					"to rebuild the checkpoint."
+					f"incompatible configuration ({', '.join(mismatches)})"
 				)
 			hidden_size = metadata.get("backbone_hidden_size")
 			if (

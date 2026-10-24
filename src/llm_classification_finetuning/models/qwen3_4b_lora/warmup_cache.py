@@ -45,7 +45,7 @@ class WarmupCacheEntry:
 class HeadWarmupCache:
 	"""Atomically store FP32 heads, named AdamW moments, scaling and RNG state."""
 
-	SCHEMA_VERSION = 5
+	SCHEMA_VERSION = 4
 
 	def __init__(
 		self,

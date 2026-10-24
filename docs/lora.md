@@ -12,10 +12,7 @@ uv run model qwen3-4b-lora --submit
 ```
 
 The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
-prompt+B separately. The shared pairwise MLP receives `[A, B, |A - B|]`, with an
-elementwise absolute difference and input width `3H` for backbone hidden size
-`H`, throughout warmup, joint training, validation, and submission.
-LoRA adapters and the pairwise MLP are trained together;
+prompt+B separately. LoRA adapters and the pairwise MLP are trained together;
 original backbone parameters remain frozen. `A/B_swap: aug` (the default) trains
 on both processed orientations with per-row cross-entropy. Set
 `qwen3_4b_lora.A/B_swap` to `inf` to train once per original ID using the negative
@@ -390,10 +387,7 @@ can also change between build and inference. Inputs must still fit the current
 the checkpoint neither includes nor fingerprints local base weights.
 There are no persistent LoRA embedding caches.
 BF16 head computation preserves the classifier's state-dict keys and FP32
-checkpoint parameters, so compute-precision changes preserve compatibility for
-current-schema checkpoints. Schema v2 identifies the `[A, B, |A - B|]` head;
-schema v1 adapter/head checkpoints require a new `--build` because their head
-input has width `2H`.
+checkpoint parameters, so existing adapter/head checkpoints remain loadable.
 
 See [caching and Python APIs](caching.md) for shared token encodings and batch-plan
 reuse, [configuration](configuration.md) for batch experiments, and

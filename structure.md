@@ -224,8 +224,7 @@ and print summaries. Business logic belongs below the CLI layer.
     - `token_cache.py`: Independently cache individual text encodings by text,
       tokenizer content, and encoding options in shared SQLite shards; provide
       compact CPU text views, canonical pair views, and LoRA context validation.
-    - `model.py`: Defines backbone pooling and the shared pairwise MLP head over
-      `[A, B, |A - B|]`, including the embedding-combination marker for metrics.
+    - `model.py`: Defines backbone pooling and the pairwise MLP head.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed split rows.
     - `progress.py`: Counts weighted training update groups and validation batches,
@@ -314,10 +313,6 @@ logic depend on a particular timestamped run.
   `split`; A/B fields and labels `0`/`1` are reversed, while label `2` is unchanged.
 - Prediction CSVs use `id`, `winner_model_a`, `winner_model_b`, and `winner_tie`
   in that order, with finite probabilities that sum to one.
-- All active profiles use the shared pairwise head with concatenated pooled
-  features `[A, B, |A - B|]`, where the difference is elementwise. Its first
-  linear layer receives `3H` features for backbone hidden size `H`, including
-  head warmup, joint training, validation, and submission inference.
 - Frozen embeddings are shared across training/test and addressed by actual
   token IDs after truncation, independent of labels, splits, IDs, reference order,
   source files, serializers, and configured length caps when effective IDs match.
@@ -463,10 +458,9 @@ logic depend on a particular timestamped run.
   effective seed, weight decay, gradient clipping, and cache schema. Compute
   precision, attention/TF32, extraction batch size, all LoRA initialization
   settings, local model paths, and joint learning rates/epochs/batching/
-  accumulation/token budget are excluded. Schema v5 identifies the `3H`
-  absolute-difference head, retaining training-only ID identities and merged-tail
-  warmup; legacy v1/v2/v3/v4 warmup files are retained and no longer read. Token,
-  embedding, and batch-plan cache identities are preserved.
+  accumulation/token budget are excluded. Schema v4 retains training-only ID
+  identities and identifies merged-tail warmup; legacy v1/v2/v3 warmup files are
+  no longer read. Token, embedding, and batch-plan cache identities are preserved.
   Current input/length validation still runs. Completed
   caches atomically persist FP32 heads and named head AdamW moments/steps,
   scaler/source precision, and Python/NumPy/Torch CPU/selected-CUDA random states
@@ -534,8 +528,6 @@ logic depend on a particular timestamped run.
   schema/class count, pooling, truncation side, and bias are checked. Context
   and A/B training mode are recorded but not checked. Hub base revisions are
   retained; local base weights are neither stored nor content-fingerprinted.
-  Schema v2 identifies the `3H` absolute-difference head; schema v1 checkpoints
-  require rebuilding.
 - Archived QLoRA support remains in shared LoRA modules with its quantization
   dependencies, but has no active model registration or configuration section.
   The retained implementation shares the training, batching, pooling, objective,
@@ -560,8 +552,7 @@ logic depend on a particular timestamped run.
   implementation, TF32, and A/B training mode are recorded but not checked.
   It does not pin the backbone revision or local weight contents; embedding
   cache identity is stricter in those respects. Inference additionally checks
-  backbone hidden size. Schema v3 identifies the `3H` absolute-difference head;
-  earlier checkpoints require rebuilding without invalidating branch embeddings.
+  backbone hidden size.
 - Model sections are optional. `model ALL` runs only configured profiles in
   registry order and rejects configurations with no model sections.
 - Frozen full-data builds save only the classifier head; LoRA builds save
@@ -579,8 +570,6 @@ logic depend on a particular timestamped run.
   sections are excluded.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
-  New runs record `embedding_combination: "concat_a_b_abs_diff"` in metrics only;
-  historical results retain their original contents.
   Result synthesis consumes only split=validation, keeps both orientations for
   A/B alignment, and rejects legacy five-fold results. Excel uses a split column.
   Complete runtime and GPU peaks are recorded after the model run succeeds.
