@@ -527,9 +527,7 @@ class LoRATrainer:
 		group_rows = 0
 		group_processed = 0
 		layout = OptimizerGroupLayout(total_rows, effective_batch_size)
-		expected_groups = (
-			layout.row_counts if head_only else layout.merged_first_row_counts
-		)
+		expected_groups = layout.row_counts
 		if optimizer_group_rows is None:
 			optimizer_group_rows = expected_groups
 		elif optimizer_group_rows != expected_groups:

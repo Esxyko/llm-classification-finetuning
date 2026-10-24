@@ -227,7 +227,7 @@ An epoch containing only a short group runs it alone. The optional
 inside each final update group, before shuffling its micro-batches. That pass
 uses the configured budget and current epoch's merged membership, and is never
 written into the base plan. Changing only this budget therefore reuses the same
-base cache. The merged joint-training update runs first after packing and
+base cache. The merged joint-training update runs last after packing and
 shuffling; cached group membership and warmup ordering remain unchanged.
 A budget of `0` leaves the original micro-batches and their order within each
 update unchanged. With a zero threshold and positive budget, fixed-size initial

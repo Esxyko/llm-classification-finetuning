@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import BatchSampler, DataLoader, RandomSampler, Sampler
+from torch.utils.data import DataLoader, Sampler
 from transformers import AutoConfig
 
 from ...config import AppConfig, LoRAModelConfig, WarmupModelConfig
@@ -57,45 +57,6 @@ class OptimizerGroupLayout:
 		return (self.group_size,) * full_groups + (
 			self.rows - full_groups * self.group_size,
 		)
-
-	@property
-	def merged_first_row_counts(self) -> tuple[int, ...]:
-		"""Run the merged joint-training update first, leaving warmup order intact."""
-		counts = self.row_counts
-		return counts[-1:] + counts[:-1]
-
-
-class _FixedTrainingBatchSampler(BatchSampler):
-	"""Move the merged update first while retaining fixed batches and seeded rows."""
-
-	def __init__(
-		self,
-		dataset: PairwiseTokenDataset,
-		config: LoRAModelConfig,
-		generator: torch.Generator,
-	) -> None:
-		super().__init__(
-			RandomSampler(dataset, generator=generator),
-			config.training_batch_size,
-			drop_last=False,
-		)
-		layout = OptimizerGroupLayout(
-			len(dataset),
-			config.training_batch_size * config.gradient_accumulation_steps,
-		)
-		self._merged_start = (
-			(layout.update_count - 1) * config.gradient_accumulation_steps
-			if layout.rows % layout.group_size
-			else 0
-		)
-
-	def __iter__(self) -> Iterator[list[int]]:
-		if not self._merged_start:
-			yield from super().__iter__()
-			return
-		batches = list(super().__iter__())
-		yield from batches[self._merged_start :]
-		yield from batches[: self._merged_start]
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,7 +263,7 @@ class _TrainingBatchSampler(Sampler[list[int]]):
 
 	@property
 	def group_row_counts(self) -> tuple[int, ...]:
-		return self._layout.merged_first_row_counts
+		return self._layout.row_counts
 
 	def _groups(
 		self, generator: torch.Generator
@@ -359,8 +320,6 @@ class _TrainingBatchSampler(Sampler[list[int]]):
 						).tolist()
 					)
 				groups.append(group)
-			if self._layout.rows % self._layout.group_size:
-				groups = groups[-1:] + groups[:-1]
 			self._batches = tuple(batch for group in groups for batch in group)
 		return self._batches
 
@@ -390,7 +349,7 @@ class PreparedTrainingSplit:
 
 	@property
 	def optimizer_group_rows(self) -> tuple[int, ...] | None:
-		"""Report effective update sizes, with any merged group first."""
+		"""Report effective update sizes, with any merged group last."""
 		return None if self._sampler is None else self._sampler.group_row_counts
 
 
@@ -731,9 +690,8 @@ class LoRATrainingBatchRepository:
 		else:
 			loader = DataLoader(
 				dataset,
-				batch_sampler=_FixedTrainingBatchSampler(
-					dataset, self._config, options["generator"]
-				),
+				batch_size=self._config.training_batch_size,
+				shuffle=True,
 				**options,
 			)
 		return PreparedTrainingSplit(

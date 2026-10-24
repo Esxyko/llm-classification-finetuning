@@ -145,8 +145,8 @@ and print summaries. Business logic belongs below the CLI layer.
       step counts.
       Shuffle full packing groups before merging any short tail into the last
       full group, then optionally best-fit pack checkpointed singletons within
-      each final update before collation. Move the merged joint update first,
-      supplying matching explicit row counts, while warmup retains its last update.
+      each final update before collation. Keep the merged joint update last,
+      supplying matching explicit row counts, as in warmup.
       Its `warmup_only` path
       prepares train-only tokens and references without joint batch plans.
     - `model.py`: Encode both branches through one differentiable LoRA backbone,
@@ -420,7 +420,7 @@ logic depend on a particular timestamped run.
   Joint updates target `G = training_batch_size * gradient_accumulation_steps`
   rows. A short final group merges into the preceding full update, with loss
   normalized by their combined row count, and the combined joint update runs
-  first. Warmup keeps its merged update last. An epoch smaller than `G` retains one
+  last, as in warmup. An epoch smaller than `G` retains one
   update; exact multiples retain all full groups. Scheduling and progress use
   `max(1, training_rows // G)` updates per nonempty joint epoch across
   holdout/build modes and fixed/token-budget batching.
@@ -448,7 +448,7 @@ logic depend on a particular timestamped run.
   that budget; an oversized singleton remains alone without truncation. Existing
   multi-row batches and non-checkpointed singletons remain intact. Planned
   micro-batches are shuffled after this optional pass. The merged joint update
-  then moves first without changing its membership or internal batch order.
+  remains last with its finalized membership and internal batch order.
   A zero threshold with a positive budget shuffles rows by
   `random_state + joint_epoch` into initial fixed-size batches and applies the
   same final-group packing in memory.
@@ -456,7 +456,7 @@ logic depend on a particular timestamped run.
   advancing RNG state. The budget defaults to `0`, preserving initial batches
   and their order within each update, and need not exceed the threshold.
   Fixed batching with both settings at zero retains the original seeded batches
-  and also moves the merged joint update first. With a positive
+  and keeps the merged joint update last. With a positive
   threshold, micro-batches whose padded A/B cost is at or below it disable
   checkpointing; batches above it enable checkpointing for both branches through
   backward, including merged multi-row batches. Warmup and inference always

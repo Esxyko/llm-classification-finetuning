@@ -201,12 +201,12 @@ merged groups in warmup and joint training. Gradient clipping and
 optimizer/scaler handling occur once per resulting group.
 Joint updates target `G = training_batch_size * gradient_accumulation_steps`
 rows. If the final group has fewer than `G` rows, it is merged into the preceding
-full group and the combined group runs first, before the remaining full updates.
-Warmup retains its merged update at the end. Completeness is based on row count,
+full group and the combined group runs last, after the remaining full updates.
+Warmup also retains its merged update at the end. Completeness is based on row count,
 even if the final group contains the configured number of micro-batches.
 An epoch with fewer than `G` rows still performs one update; exact multiples
 keep their full groups. For example, 15 rows with `G = 8` form one 15-row update,
-and 27 rows form updates of 11, 8, and 8 rows. This applies to LoRA
+and 27 rows form updates of 8, 8, and 11 rows. This applies to LoRA
 holdout runs and builds, with fixed or token-budget micro-batches.
 `warmup.warmup_learning_rate` is a required finite positive number, even when warmup is
 disabled. During warmup, only the classifier runs in training mode; validation
@@ -333,7 +333,7 @@ so repeated switches do not accumulate hooks.
 Cached packing-group membership stays fixed across epochs. A zero-based joint
 epoch uses `random_state + joint_epoch` to shuffle the full groups first, then
 appends the short group's micro-batches to the last shuffled full group.
-The merged group runs as the epoch's first update, and its full-group partner
+The merged group runs as the epoch's last update, and its full-group partner
 can change across epochs. If there is only one short group, it runs by itself.
 After finalizing each update's membership, a positive checkpointing budget
 collects only its singleton micro-batches whose A/B length exceeds the threshold
@@ -353,13 +353,13 @@ threshold and positive budget, `random_state + joint_epoch` instead shuffles row
 into initial fixed-size batches; the same update sizes and singleton
 packing rules apply. A zero budget disables the second pass and preserves the
 original batch order within each update for either threshold mode. The merged
-update moves to the front after packing and shuffling, preserving its membership
-and internal batch order. Fixed batching with both settings at zero also moves
-the merged update first while retaining its original seeded batches.
+update remains last after packing and shuffling, preserving its membership
+and internal batch order. Fixed batching with both settings at zero also keeps
+the merged update last while retaining its original seeded batches.
 These rules apply in both holdout and build modes. Dynamic micro-batches can contain more than
 `training_batch_size` rows, up to the actual row count of their update. Losses are
 divided by each update group's actual row count, including all rows in the
-merged first group. Gradient clipping and optimizer/scaler handling
+merged last group. Gradient clipping and optimizer/scaler handling
 occur once per resulting group. Joint training has
 `max(1, training_rows // (training_batch_size * gradient_accumulation_steps))`
 updates per nonempty epoch; FP16 overflow can still skip an update as before.
