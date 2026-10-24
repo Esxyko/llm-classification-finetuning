@@ -53,7 +53,7 @@ qwen3_4b_lora:
   gradient_checkpointing_budget: 11264
   training_batch_size: 1
   head_inference_batch_size: 4096
-  gradient_accumulation_steps: 2048
+  gradient_accumulation_steps: 1024
   epochs: 2
   warmup_epochs: 1
   extraction_batch_size: 64
@@ -66,8 +66,8 @@ qwen3_4b_lora:
   dropout: 0.1
   max_grad_norm: 1.0
   lora_dropout: 0.05
-  lora_rank: 32
-  lora_alpha: 64
+  lora_rank: 16
+  lora_alpha: 32
   lora_target_modules:
     - q_proj
     - k_proj
