@@ -1,0 +1,41 @@
+{
+  "embedding_combination": "concat_a_b",
+  "epochs": [
+    {
+      "epoch": 2,
+      "total_time": "02:24:05",
+      "training_loss": 0.986453730034294,
+      "training_time": "02:15:27",
+      "validation_loss": 0.9580147788440626,
+      "validation_time": "00:08:38"
+    },
+    {
+      "epoch": 3,
+      "total_time": "02:23:59",
+      "training_loss": 0.7931574726543537,
+      "training_time": "02:15:21",
+      "validation_loss": 1.1142948318222596,
+      "validation_time": "00:08:38"
+    }
+  ],
+  "generated_at": "2026-10-25T04:35:08+08:00",
+  "model_name": "Qwen/Qwen3-4B",
+  "prediction_aggregation": "ab_swap_average",
+  "predictions": 11495,
+  "run_name": "qwen3-4b-lora-20261025-043508",
+  "source_training_rows": 45982,
+  "total_time": "04:48:20",
+  "training_rows": 91964,
+  "training_time": "04:30:48",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 1.1142948318222596,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:17:16",
+  "config_total_time": "04:48:20",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 88345264640,
+    "peak_reserved_bytes": 101135155200
+  }
+}
