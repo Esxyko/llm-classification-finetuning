@@ -54,7 +54,7 @@ qwen3_4b_lora:
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 1024
-  epochs: 2
+  epochs: 1
   warmup_epochs: 1
   extraction_batch_size: 64
   warmup_training_batch_size: 1024
