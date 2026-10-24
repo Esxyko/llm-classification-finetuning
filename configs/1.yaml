@@ -56,7 +56,7 @@ qwen3_4b_lora:
   gradient_accumulation_steps: 1024
   epochs: 1
   warmup_epochs: 1
-  extraction_batch_size: 128
+  extraction_batch_size: 64
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   learning_rate: 0.0001
