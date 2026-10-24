@@ -46,7 +46,7 @@
 - **Frozen head training or inference runs out of memory:** Reduce
   `qwen3_4b.training_batch_size`; the frozen profile uses it for head training,
   validation, and submission inference.
-- **LoRA or QLoRA runs out of memory:** Lower the selected model section's `extraction_batch_size`,
+- **LoRA runs out of memory:** Lower the selected model section's `extraction_batch_size`,
   `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
   for the affected stage, or lower a positive `gradient_checkpointing_budget`.
   `extraction_batch_size` also controls validation/submission backbone
@@ -58,17 +58,13 @@
   budget disable it. Use FP16/BF16 instead of FP32 where supported. Budgets do
   not shorten an over-budget singleton, and checkpointing applies only to joint
   training. See [memory tuning](lora.md#memory-tuning).
-- **LoRA or QLoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
+- **LoRA input exceeds `max_length`:** Use the reported ID, branch, and actual
   token count to raise the limit before rerunning. Inputs are never silently
   truncated; lowering batch sizes or the token budget preserves their content.
-- **QLoRA quantized loading fails:** Run `uv sync` to install the locked
-  bitsandbytes dependency and check that its CUDA backend supports your runtime
-  and GPU. QLoRA trains on a 4-bit base but submits on a non-quantized base,
-  so submission memory requirements and predictions can differ from validation.
 - **A checkpoint is incompatible:** Match the model, serialization, and
   classifier architecture used for its build or rebuild with the current config.
-  LoRA/QLoRA checkpoints also check classifier dropout, adapter settings, and
-  training quantization; files from those profiles are not interchangeable. All
+  LoRA checkpoints also check classifier dropout, adapter settings, and
+  training quantization; historical quantized checkpoints are incompatible. All
   checkpoint types allow changes to precision, attention implementation, TF32,
   `max_length`, and `A/B_swap`.
 - **Report rows or aggregation do not match:** Use the processed Parquet and

@@ -112,7 +112,6 @@ class AppConfig:
 	gpu: GPUConfig
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora: LoRAModelConfig | None = None
-	qwen3_4b_qlora: LoRAModelConfig | None = None
 	warmup: WarmupModelConfig | None = None
 
 	@classmethod
@@ -154,7 +153,6 @@ class AppConfig:
 				"gpu",
 				"qwen3_4b",
 				"qwen3_4b_lora",
-				"qwen3_4b_qlora",
 				"warmup",
 			},
 			"configuration root",
@@ -193,11 +191,6 @@ class AppConfig:
 		qwen3_4b = _load_model_config(root, "qwen3_4b") if "qwen3_4b" in root else None
 		qwen3_4b_lora = (
 			_load_lora_model_config(root) if "qwen3_4b_lora" in root else None
-		)
-		qwen3_4b_qlora = (
-			_load_lora_model_config(root, "qwen3_4b_qlora")
-			if "qwen3_4b_qlora" in root
-			else None
 		)
 		warmup = _load_warmup_model_config(root) if "warmup" in root else None
 
@@ -299,7 +292,6 @@ class AppConfig:
 			),
 			qwen3_4b=qwen3_4b,
 			qwen3_4b_lora=qwen3_4b_lora,
-			qwen3_4b_qlora=qwen3_4b_qlora,
 			warmup=warmup,
 		)
 

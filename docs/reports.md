@@ -4,7 +4,7 @@
 
 Run [holdout validation](models.md) first; builds and submissions do not produce
 validation reports. The selected configuration supplies the processed reference.
-Each of the three models writes the final epoch's holdout probabilities to
+Each active model writes the final epoch's holdout probabilities to
 `validation.csv` alongside `metrics.json` and `config.yaml` in one timestamped run
 directory. The three files are staged and published together after training
 succeeds. `config.yaml` records the effective `data`, `validation`, `gpu`, and
@@ -69,7 +69,7 @@ Aggregation is selected by `metrics.json`, rather than the model's name:
   one confusion-matrix count, and the log loss of its averaged distribution.
   Original and A/B-restored swapped probabilities must already match within
   `1e-6`; the report command validates them and does not average distinct votes.
-  All three models publish this marker.
+  Both active models publish this marker.
 - Missing or null `prediction_aggregation` in a valid holdout `metrics.json`:
   Each ID contributes two orientation votes to the confusion matrix.
   `actual_labels` contains both labels, `incorrects` ranges from 0 to 2, and
@@ -106,7 +106,7 @@ The command also prints each model's duration at completion.
 Holdout validation automatically monitors the configured `gpu.device` for each
 model's complete run. Monitoring begins before pipeline initialization and covers
 model loading, embedding preparation, all executed epochs (including LoRA head
-warmup), training, validation, cleanup, and result publication. All three models,
+warmup), training, validation, cleanup, and result publication. Both active models,
 `model ALL`, and `scripts/validate_all_configs.py` use the same monitoring path.
 Builds and submissions do not enable this monitoring.
 

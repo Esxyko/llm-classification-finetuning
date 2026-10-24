@@ -9,8 +9,6 @@
 - A Kaggle account with the competition rules accepted
 - One CUDA GPU for training and two CUDA GPUs for submission inference (data
   preparation and report generation do not require a GPU)
-- QLoRA training requires the installed bitsandbytes CUDA backend to support
-  the selected GPU and CUDA runtime; see [QLoRA training](qlora.md).
 
 ## Quick start
 
@@ -114,11 +112,11 @@ For two T4 GPUs, use `gpu.precision: fp16`,
 `gpu.attention_implementation: sdpa`, and
 `gpu.submit_devices: [cuda:0, cuda:1]` in the selected YAML. Start with the selected
 model section's `extraction_batch_size: 1` and preserve its `max_length`.
-`head_inference_batch_size` for LoRA/QLoRA controls only the head over extracted
+`head_inference_batch_size` for LoRA controls only the head over extracted
 CPU features. All present model sections still need their usual configuration
 fields; see [configuration](configuration.md).
 
-All three model profiles apply submission SDPA compatibility in the process that
+Both active model profiles apply submission SDPA compatibility in the process that
 executes `--submit`, before loading backbone weights. Transformers expands K/V
 heads with `repeat_kv`, memory-efficient attention is enabled, and math fallback
 is disabled. Flash and cuDNN attention remain eligible where supported. The GQA

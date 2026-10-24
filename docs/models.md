@@ -3,10 +3,8 @@
 [Documentation index](../README.md)
 
 All profiles use a shared Qwen3-4B backbone to compare two response branches.
-The frozen profile trains only a pairwise classifier; LoRA and QLoRA also
-train adapters. See [LoRA training](lora.md) for their shared objectives and
-settings, and [QLoRA training](qlora.md) for quantized training and
-non-quantized submissions.
+The frozen profile trains only a pairwise classifier; LoRA also trains
+adapters. See [LoRA training](lora.md) for its objectives and settings.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 
@@ -22,7 +20,7 @@ The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
 `validation.csv`, `metrics.json`, and a `config.yaml` containing the shared and
 current model sections to a timestamped model-named results directory.
-All three profiles consume the same saved 80/20 split and initialize one model
+Both active profiles consume the same saved 80/20 split and initialize one model
 per default profile run. See [validation reports and timing metrics](reports.md)
 for their interpretation.
 
@@ -115,9 +113,15 @@ base revision used during training.
 
 ## Retired profiles
 
-The previous `qwen3-1.7b` and `qwen3-1.7b-mono-input` implementations and their
-configuration sections may be retained locally in the Git-ignored
-`src/llm_classification_finetuning/models/archive/` directory. These models are
-no longer CLI choices, and that archive is not included in a fresh clone.
+The retired `qwen3-1.7b`, `qwen3-1.7b-mono-input`, and `qwen3-4b-qlora`
+implementations and configuration sections are retained locally in the
+Git-ignored `src/llm_classification_finetuning/models/archive/` directory.
+QLoRA lives in its `qwen3_4b_qlora/` subdirectory, with historical documentation
+in `README.md`; its settings are in the archive-level `config.yaml`. These
+models are no longer CLI choices or members of `ALL`. The QLoRA configuration
+key is no longer accepted. The shared LoRA quantization branches and
+`bitsandbytes` dependency remain available in the source. Historical results,
+checkpoints, and caches are retained. The archive is not included in a fresh
+clone.
 Source-module ownership is covered by
 [structure.md](../structure.md#package-map).

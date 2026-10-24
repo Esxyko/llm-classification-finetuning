@@ -8,7 +8,7 @@ to rebuild from local raw files. All commands accept `--config PATH`.
 
 ## One shared train/validation split
 
-All three models use the same saved split. Preparation starts from the complete
+Both active models use the same saved split. Preparation starts from the complete
 raw training table, derives labels and canonical prompt hashes, and assigns
 whole prompt groups to training or validation. The default validation fraction
 is 20%, using random seed 42. It does not select a fold from the previous data.
@@ -75,7 +75,7 @@ Every model serializes aligned conversation branches as chronological
 `prompt\nresponse` turns joined by blank lines, without a chat template.
 Prompt and response values must be JSON arrays with the same nonzero turn count.
 Prompts must be strings; a response may be a string or `null`, which becomes an
-empty response. LoRA/QLoRA reject over-limit inputs rather than truncating them.
+empty response. LoRA rejects over-limit inputs rather than truncating them.
 
 ## Token statistics
 

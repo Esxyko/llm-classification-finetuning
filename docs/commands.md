@@ -12,7 +12,6 @@ All commands accept [`--config PATH`](configuration.md#configuration-files-and-p
 | `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_validation.parquet` |
 | `uv run model qwen3-4b` | Runs Qwen3-4B holdout validation | `results/qwen3-4b-*/` |
 | `uv run model qwen3-4b-lora` | Runs Qwen3-4B LoRA holdout validation | `results/qwen3-4b-lora-*/` |
-| `uv run model qwen3-4b-qlora` | Runs Qwen3-4B QLoRA holdout validation | `results/qwen3-4b-qlora-*/` |
 | `uv run model warmup --build` | Builds non-quantized head warmup on the saved train partition | `data/processed/qwen3_4b_lora_warmup/<key>.pt` |
 | `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the classifier and any adapters on all training and validation IDs | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
@@ -25,10 +24,10 @@ see [processed data](data-preparation.md#processed-data).
 
 ## Model selection and execution modes
 
-Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, `qwen3-4b-qlora`, `warmup`, or exact uppercase `ALL`.
+Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, `warmup`, or exact uppercase `ALL`.
 `--build` and `--submit` are mutually exclusive; without either flag, registered
 profiles run holdout validation. `ALL` runs only profiles with a model section in the
-selected YAML, in the order `qwen3-4b`, `qwen3-4b-lora`, `qwen3-4b-qlora`, and accepts the same
+selected YAML, in the order `qwen3-4b` then `qwen3-4b-lora`, and accepts the same
 `--build`, `--submit`, and `--refresh-cache` options. If one model fails, the
 remaining models still run; the command exits with status `1` if any failed.
 YAML validation happens before this loop; an invalid field in any present
@@ -47,24 +46,23 @@ loading and reports zero executed epochs. See [cache reuse](caching.md#standalon
 ## Cache refresh
 
 Add `--refresh-cache` to rebuild requested shared token encodings and
-model-specific frozen embeddings or LoRA/QLoRA batch plans and head-warmup
+model-specific frozen embeddings or LoRA batch plans and head-warmup
 states. For adapter holdout validation/builds, this forces warmup even when a
 compatible completed state exists. Token encodings are shared
 by all models and by training, validation, and test inference. See
 [caching](caching.md) for reuse and compatibility rules.
 
 For `warmup --build`, refresh rebuilds train-partition LoRA warmup and its
-requested tokens. For QLoRA it skips both LoRA and QLoRA warmup candidates and
-rebuilds the QLoRA cache using the quantized backbone.
+requested tokens.
 
 ## Checkpoint selection
 
 For builds and submission inference, `--checkpoint-tag TAG` selects
 `models/MODEL_SLUG/head_TAG.pt` for the frozen model or `adapter_TAG.pt` for
-LoRA/QLoRA; without it, the checkpoint is `head.pt` or `adapter.pt`, respectively.
+LoRA; without it, the checkpoint is `head.pt` or `adapter.pt`, respectively.
 Tags must begin with an ASCII letter or digit and then contain only ASCII
 letters, digits, underscores, or hyphens. `--checkpoint-tag` is rejected during
 holdout validation.
 
-See [model workflows](models.md), [LoRA training](lora.md), [QLoRA training](qlora.md), and
+See [model workflows](models.md), [LoRA training](lora.md), and
 [validation reports](reports.md) for detailed behavior.

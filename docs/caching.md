@@ -7,7 +7,7 @@ Training caches sit beside the processed Parquet selected by
 Relative processed paths resolve from the working directory independently of
 `MODEL_PATH`, so generated training caches stay there too.
 Frozen embeddings, shared text encodings, adapter batch plans, and head-warmup
-states have separate compatibility rules. LoRA/QLoRA warmup, joint-validation,
+states have separate compatibility rules. LoRA warmup, joint-validation,
 and submission features stay in temporary CPU memory (BF16 in BF16 mode,
 otherwise FP32) and are not persisted. Uncached warmup reuses its feature
 pool; each joint-validation or submission call extracts fresh features with the
@@ -197,7 +197,7 @@ IDs for negative values; newly encoded IDs are checked before caching.
 
 ## LoRA batch plans
 
-LoRA and QLoRA share `adapter_batches/plans/*.pt` beside the processed Parquet.
+LoRA uses shared `adapter_batches/plans/*.pt` beside the processed Parquet.
 Plans identify the sorted selected `(id, is_swapped, A_length, B_length)` rows,
 budget, update group
 size, and planning algorithm version. Labels, split names, reference order,
@@ -211,8 +211,8 @@ created, and all fixed joint-training batches use gradient checkpointing.
 Renaming the configuration field preserves the stored `budget` metadata and
 plan versions, so existing plans with the same values remain reusable.
 Legacy per-model batch directories and per-model `tokens/*.pt` files are no
-longer read. Identical plan keys can be reused across LoRA and QLoRA; quantization
-does not affect planning. Different budgets or selected rows still select
+longer read. Identical plan keys remain reusable across configurations and
+training modes. Different budgets or selected rows still select
 different plans.
 
 Cached packing groups keep their existing format and membership, including any
@@ -222,19 +222,19 @@ An epoch containing only a short group runs it alone. Micro-batches are not
 repacked, so token costs and existing plan keys remain valid. The reported
 update count reflects the merged groups rather than the cached packing-group
 count.
-Both adapter profiles share the text-token cache when tokenizer content and
-encoding options match; quantization does not change token identity.
+LoRA shares the text-token cache across stages when tokenizer content and
+encoding options match.
 
 `--refresh-cache` replaces requested token entries and model-specific caches,
 including head warmup. Shared training encodings remain reusable across stages
 in that run. Warmup
 features and live LoRA encodings are never persisted in these token caches.
 
-## LoRA/QLoRA head warmup
+## LoRA head warmup
 
 Holdout validation and builds automatically save completed head warmup under
-`qwen3_4b_lora_warmup/<key>.pt` or `qwen3_4b_qlora_warmup/<key>.pt` beside the
-processed Parquet. The standalone `model warmup --build` command also writes
+`qwen3_4b_lora_warmup/<key>.pt` beside the processed Parquet. The standalone
+`model warmup --build` command also writes
 the LoRA directory using only the saved train partition. Identity follows the
 actual training data, rather than the holdout/build mode. Checkpoint tags do not
 affect this cache. Submission inference
@@ -262,12 +262,9 @@ match. Compute precision, attention implementation, TF32, warmup extraction
 batch size, and all LoRA rank/alpha/dropout/target-module settings are excluded,
 as are joint-training learning rates, epoch count, batch size, accumulation,
 and token budget. Context limits do not enter the key because adapter inputs are never
-truncated and their lengths are checked independently. The two source
-quantization identities and directories remain distinct. QLoRA first checks
-for a compatible non-quantized LoRA warmup, then its own quantized warmup;
-if neither is valid, it performs its existing quantized warmup. The LoRA lookup
-uses the expected `training_quantization: none` identity while strictly
-checking all other compatibility fields. LoRA does not read QLoRA warmup.
+truncated and their lengths are checked independently. LoRA lookup requires
+the `training_quantization: none` identity while strictly checking all other
+compatibility fields. Historical quantized warmup caches are not reused by LoRA.
 
 After the last warmup validation (or the last warmup training epoch for builds),
 the cache atomically stores FP32 classifier weights, named head AdamW moments
@@ -316,14 +313,13 @@ payload after the final training epoch. It performs no validation, creates no
 joint batch plan, and publishes no production checkpoint or report. Because
 there are no adapter-initialization RNG draws, a new standalone warmup may
 differ from a fresh inline LoRA warmup; compatible cached results remain usable
-by both adapter profiles under the existing key rules.
+by LoRA under the existing key rules.
 
 `--refresh-cache` forces standalone warmup to replace its requested LoRA cache
-and refresh train tokens. For normal QLoRA runs, refresh bypasses both cache
-sources and rebuilds QLoRA's own quantized warmup. Reuse logs include the actual
-source path and quantization. A train-partition cache does not match a normal
+and refresh train tokens. Reuse logs include the actual source path and
+quantization. A train-partition cache does not match a normal
 full-data build; `warmup_epochs: 0` in an adapter section still disables all
-warmup cache I/O, including cross-profile lookup.
+warmup cache I/O.
 
 ## Python APIs
 
@@ -360,15 +356,6 @@ training = batches.get_training()  # Saved training partition only.
 # batches.get_training(full_data=True) selects all IDs for a build.
 training.set_epoch(0)  # Zero-based joint epoch; fixed batching keeps its RNG stream.
 loader = training.loader  # Yields PairwiseBatch; training.tokens is shared.
-```
-
-To prepare QLoRA batches, pass its profile explicitly; omitting `profile`
-continues to select LoRA:
-
-```python
-from llm_classification_finetuning.models.qwen3_4b_qlora import PROFILE
-
-batches = LoRATrainingBatchRepository.from_config(config, profile=PROFILE)
 ```
 
 See [LoRA training](lora.md#optional-token-budget-training-batches) for planning

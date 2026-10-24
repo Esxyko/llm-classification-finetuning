@@ -32,9 +32,6 @@ train_validation.parquet
   -> model qwen3-4b-lora --build -> models/qwen3_4b_lora/adapter.pt
   -> model qwen3-4b-lora --build --checkpoint-tag TAG
      -> models/qwen3_4b_lora/adapter_TAG.pt
-  -> model qwen3-4b-qlora --build -> models/qwen3_4b_qlora/adapter.pt
-  -> model qwen3-4b-qlora --build --checkpoint-tag TAG
-     -> models/qwen3_4b_qlora/adapter_TAG.pt
 
 head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
   -> model MODEL --submit -> results/submit/MODEL-.../submission.csv
@@ -123,9 +120,11 @@ and print summaries. Business logic belongs below the CLI layer.
     cache builds from the independent `warmup` section, reusing adapter batching
     and training without adapters, joint plans, validation, or checkpoints.
   - `qwen3_4b/`: Active lightweight model profile definition.
-  - `qwen3_4b_lora/`: Shared LoRA/QLoRA adapter implementation with single-GPU
-    training and dual-GPU submission. The selected profile controls training
-    quantization, configuration keys, logs, and artifact namespaces.
+  - `qwen3_4b_lora/`: LoRA adapter implementation with single-GPU training and
+    dual-GPU submission. Shared quantization branches for the archived QLoRA
+    profile remain here, along with their dependencies. Only the non-quantized
+    LoRA profile is actively registered; profiles still control configuration
+    keys, logs, and artifact namespaces.
     - `data.py`: Orient shared canonical token/feature views, flatten canonical
       A/B branches for extraction, and independently right-pad branch batches
       without padding masks, with CPU pooling positions.
@@ -160,7 +159,8 @@ and print summaries. Business logic belongs below the CLI layer.
       validation/test, and one weighted progress counter
       shared across all executed training/validation stages. Standalone warmup
       returns valid cache hits before loading weights and stops after head
-      warmup on a miss. QLoRA checks LoRA warmup before its own cache.
+      warmup on a miss. The retained QLoRA branch checks LoRA warmup before
+      its own cache.
     - `warmup_cache.py`: Identify completed head warmup by selected original
       training ID sets and warmup optimization settings, retain actual source
       paths across profiles, atomically store FP32 head
@@ -170,13 +170,14 @@ and print summaries. Business logic belongs below the CLI layer.
       architecture/input compatibility; retain the exact Hub base revision.
     - `pipeline.py`: Orchestrate holdout validation, builds, and dual-GPU submissions
       without persistent embedding caches; explicitly disable quantization for
-      submissions, including QLoRA.
-  - `qwen3_4b_qlora/`: Register the independent QLoRA profile, selecting the
-    shared adapter pipeline with fixed 4-bit NF4/double-quantized training and
-    validation, and non-quantized submission at the checkpoint's base revision.
-  - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B model
-    implementations and their configuration sections. Nothing imports these
-    models from the active package.
+      submissions, including the retained QLoRA path.
+  - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B and QLoRA
+    profiles and their configuration sections. `qwen3_4b_qlora/` retains its
+    entry module and historical guide in `README.md`; archive-level
+    `config.yaml` retains its settings. Nothing imports archived profiles from
+    the active package. They are excluded from CLI choices and `ALL`; the
+    active config loader rejects `qwen3_4b_qlora` as an unknown root key. Local
+    archives are not included in a fresh clone.
   - `common/pipeline.py`: Selects holdout validation, build, or submission behavior for
     frozen pairwise models.
   - `common/`
@@ -247,7 +248,7 @@ exports over importing private helpers across package boundaries.
 
 | Path | Role |
 | --- | --- |
-| `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, three optional model sections, and an independent optional `warmup` section |
+| `config.yaml` | Data paths, validation settings, training `gpu.device`, two `gpu.submit_devices`, two optional model sections, and an independent optional `warmup` section |
 | `.env.example` | Template for the local Kaggle token and optional `MODEL_PATH` in `.env` |
 | `pyproject.toml` / `uv.lock` | Package metadata, commands, and locked dependencies |
 | `requirements-submit.txt` | Submission-only installation pins for PyTorch 2.11.0+cu128 and Transformers 5.16.1; retains the normal training lock |
@@ -259,18 +260,18 @@ exports over importing private helpers across package boundaries.
 | `scripts/count_split_tokens.py` | Count actual unpadded, untruncated A/B tokens in the saved split using training serialization; publish per-ID CSV, split CSV, and tokenizer/source metadata |
 | `scripts/migrate_hf_models.py` | Copy or move existing native HF repositories directly into `MODEL_PATH`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
 | `<MODEL_PATH>/models--*/` | Persistent native Hub repositories, including weights, configurations, tokenizers, refs, and snapshots |
-| `configs/` | Complete YAML configurations with all three models and shared training/submission GPU settings |
+| `configs/` | Complete YAML configurations with both active models and shared training/submission GPU settings |
 | `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
 | `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
-| `data/processed/adapter_batches/` | Shared LoRA/QLoRA holdout/build batch-plan caches, keyed by selected rows, lengths, budget, and update-group size |
-| `data/processed/qwen3_4b_lora_warmup/` | Completed non-quantized LoRA head warmup by actual training IDs, also written by standalone warmup and preferred by QLoRA |
-| `data/processed/qwen3_4b_qlora_warmup/` | Completed quantized QLoRA head-warmup caches, checked after LoRA warmup |
+| `data/processed/adapter_batches/` | Shared LoRA holdout/build batch-plan caches, also compatible with historical QLoRA plans, keyed by selected rows, lengths, budget, and update-group size |
+| `data/processed/qwen3_4b_lora_warmup/` | Completed non-quantized LoRA head warmup by actual training IDs, also written by standalone warmup |
+| `data/processed/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup caches; retained without active CLI access |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
-| `models/qwen3_4b_qlora/` | QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file |
+| `models/qwen3_4b_qlora/` | Historical QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file; retained |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
 | `results/MODEL-YYYYMMDD-HHMMSS/config.yaml` | Effective `data`, `validation`, `gpu`, and current model sections, using input YAML field names, resolved data paths, and loaded defaults |
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
@@ -284,7 +285,7 @@ logic depend on a particular timestamped run.
 
 ## Invariants to preserve
 
-- All three models use the same saved 80/20 holdout with seed 42. Prompt groups
+- Both active models use the same saved 80/20 holdout with seed 42. Prompt groups
   remain whole. Original-class quotas use largest remainders and the nearest
   total validation row count; multirow groups are selected first, then singleton
   groups fill quotas. Infeasible quotas fail without publishing a dataset.
@@ -380,8 +381,8 @@ logic depend on a particular timestamped run.
   rows. A short final group merges into the preceding full update, with loss
   normalized by their combined row count. An epoch smaller than `G` retains one
   update; exact multiples retain all full groups. Scheduling and progress use
-  `max(1, training_rows // G)` updates per nonempty joint epoch in both profiles,
-  holdout/build modes, and fixed/token-budget batching. Warmup is unchanged.
+  `max(1, training_rows // G)` updates per nonempty joint epoch across
+  holdout/build modes and fixed/token-budget batching. Warmup is unchanged.
   The default `gradient_checkpointing_budget: 0` retains fixed micro-batches and
   the original seeded shuffle with gradient checkpointing on every joint-training
   batch, while reusing cached tokens. A positive budget
@@ -390,8 +391,8 @@ logic depend on a particular timestamped run.
   best-fit packs each group by independently padded A/B token cost. Plans minimize
   candidate micro-batch counts, then padded tokens, and are cached separately
   from tokens. Plan keys use sorted selected identities/orientations and A/B
-  lengths, budget, group size, and algorithm version. LoRA and QLoRA share the
-  same plan namespace; quantization does not affect planning. Labels, source row order,
+  lengths, budget, group size, and algorithm version. LoRA and historical QLoRA
+  plans share the same namespace; quantization does not affect planning. Labels, source row order,
   split names, token content beyond lengths, and unselected inputs are
   excluded. Stored sample identities are rebound to current indices on every
   read, and current labels are used. Cached packing-group membership stays fixed;
@@ -416,8 +417,8 @@ logic depend on a particular timestamped run.
   optimizer state and normalize loss by actual row counts per update, including
   short warmup batches and merged final joint accumulation groups. Validation and
   test average both orientations' probabilities.
-- LoRA/QLoRA head-warmup caches identify only the sorted original training ID
-  set; builds use the full original ID set. Validation IDs and holdout/build mode
+- LoRA head-warmup caches and the retained QLoRA cache implementation identify
+  only the sorted original training ID set; builds use the full original ID set. Validation IDs and holdout/build mode
   do not affect identity, because validation does not update the head or select
   a stopping checkpoint. Split names, paths, row order, source-file bytes, text,
   and labels do not affect this data identity.
@@ -438,8 +439,8 @@ logic depend on a particular timestamped run.
   warmup extraction/training/validation and restores no adapter weights. Joint
   training retains current learning rates and schedule; only FP16-to-FP16 loads
   the saved scaler. Source quantization identities and directories remain
-  distinct: QLoRA first validates a non-quantized LoRA cache against all other
-  current compatibility fields, then checks its own quantized cache, then runs
+  distinct: the retained QLoRA branch first validates a non-quantized LoRA cache
+  against all other current compatibility fields, then checks its own quantized cache, then runs
   quantized warmup on a miss. LoRA does not read QLoRA caches. Refresh bypasses
   both QLoRA candidates and rebuilds its native cache. Identical training
   sets/settings can reuse warmup across holdout/build calls. Standalone warmup
@@ -449,7 +450,7 @@ logic depend on a particular timestamped run.
   disable cache I/O, and manual splits without context stay uncached. Histories,
   build epoch counts, timings, and progress include only actual executed work;
   joint epoch numbers retain the configured warmup offset. See
-  [warmup caches](docs/caching.md#loraqlora-head-warmup).
+  [warmup caches](docs/caching.md#lora-head-warmup).
 - Holdout validation, builds, and standalone warmup use one shared `gpu.device`.
   Single-GPU frozen and adapter backbones load with `device_map={"": str(device)}`
   rather than moving the complete backbone after loading. Explicit submission
@@ -471,7 +472,7 @@ logic depend on a particular timestamped run.
   pooling uses CPU-computed last-real-token positions. With SDPA and standard
   Qwen3-4B, this enables native GQA without explicit K/V head repetition during
   training and validation.
-- All three profiles' SDPA submissions temporarily disable Transformers' native
+- Both active profiles' SDPA submissions temporarily disable Transformers' native
   GQA predicate before model loading so K/V heads are explicitly repeated. This
   permits memory-efficient SDPA on T4 with PyTorch 2.11.0+cu128 and Transformers
   5.16.1. Flash, memory-efficient, and cuDNN backends are enabled, with math
@@ -484,7 +485,8 @@ logic depend on a particular timestamped run.
   math fallback is disabled for warmup, joint training, validation, submission,
   and gradient-checkpoint recomputation. Unsupported inputs fail, and scoped
   backend flags are restored without changing the frozen profile's policy.
-- LoRA/QLoRA BF16 mode keeps residual states, activation-checkpoint layer inputs,
+- LoRA BF16 mode (also retained in the QLoRA path) keeps residual states,
+  activation-checkpoint layer inputs,
   pooled features, and CPU feature storage in BF16. The LoRA-specific head
   inherits the shared MLP without changing state-dict keys, uses BF16 autocast
   for all training/inference calls, and returns FP32 logits for losses and
@@ -496,9 +498,12 @@ logic depend on a particular timestamped run.
   schema/class count, pooling, truncation side, and bias are checked. Context
   and A/B training mode are recorded but not checked. Hub base revisions are
   retained; local base weights are neither stored nor content-fingerprinted.
-- QLoRA shares the LoRA training, batching, pooling, objective, attention,
-  progress, and publication invariants above. Its base uses bitsandbytes NF4
-  with double quantization for uncached warmup, joint training, and validation; compute
+- Archived QLoRA support remains in shared LoRA modules with its quantization
+  dependencies, but has no active model registration or configuration section.
+  The retained implementation shares the training, batching, pooling, objective,
+  attention, progress, and publication invariants above. Its base uses
+  bitsandbytes NF4 with double quantization for uncached warmup, joint training,
+  and validation; compute
   dtype follows `gpu.precision`, while adapter/head parameters remain FP32 and
   the base stays frozen. In BF16 mode, frozen embeddings and all Qwen3 RMSNorm
   weights are restored to BF16 after k-bit preparation, before adapter injection;
@@ -509,9 +514,9 @@ logic depend on a particular timestamped run.
   at the saved revision using the existing two-GPU map, then restores adapters
   and head without merging or dequantizing a saved base. Checkpoints store a
   checked `training_quantization` marker (`bnb-nf4-double` versus LoRA's `none`);
-  a missing marker means legacy LoRA. Model sections stay independent, while
-  batch plans and token encodings are shared. Neither profile persists
-  live embeddings. The batch scripts retain their LoRA-only defaults.
+  a missing marker means legacy LoRA. The archived configuration was independent
+  of LoRA; batch plans and token encodings remain shared, and live embeddings
+  are never persisted. The batch scripts retain their LoRA-only defaults.
 - Frozen head compatibility includes model name, serializer, classifier hidden
   size, and schema/class count. Context, compute precision, attention
   implementation, TF32, and A/B training mode are recorded but not checked.

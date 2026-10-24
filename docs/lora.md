@@ -2,11 +2,6 @@
 
 [Documentation index](../README.md)
 
-The [QLoRA profile](qlora.md) reuses this training workflow with a 4-bit NF4
-training/validation base and a non-quantized submission base. Unless stated
-otherwise, the objectives, batching, input limits, and schedules below also
-apply to its independent `qwen3_4b_qlora` configuration section.
-
 Prepare the [training data](data-preparation.md), then use the LoRA section in
 the shared [`config.yaml`](../config.yaml):
 
@@ -132,14 +127,13 @@ rates linearly decaying to zero. All these settings are configurable in
 
 `warmup_epochs` is a required nonnegative integer; `0` skips head warmup and
 does not read or write its cache. Otherwise a compatible completed
-[head-warmup cache](caching.md#loraqlora-head-warmup) restores weights, head
+[head-warmup cache](caching.md#lora-head-warmup) restores weights, head
 AdamW moments, and random states, skipping warmup extraction, training, and
 validation. It matches the current original training ID set (all original IDs
 for builds), warmup optimization settings, and core model/input
 identities. Compute precision, attention/TF32, extraction batch size, LoRA
 settings, local model paths with identical contents, and joint-training
-learning rates, epochs, or batching may change. QLoRA prefers compatible LoRA
-warmup before checking its own quantized warmup. Changing only validation IDs
+learning rates, epochs, or batching may change. Changing only validation IDs
 preserves warmup reuse; changing training IDs selects a new cache. Holdout/build mode does not independently
 restrict reuse, and builds use the full original ID set.
 `--refresh-cache` forces a fresh warmup. Across precision changes, the original
@@ -157,9 +151,8 @@ preserve the original pair alignment. Joint-training batches still count
 selected sample pairs. Before the first
 warmup epoch, each unique ID needed by training or validation is encoded once
 in its canonical orientation with the backbone in evaluation mode and adapter
-forward computation disabled. The adapter state is restored after extraction;
-QLoRA retains its quantized base during this step. Extraction completes before
-epoch timing starts, so warmup training and total epoch times exclude it;
+forward computation disabled. The adapter state is restored after extraction.
+Extraction completes before epoch timing starts, so warmup training and total epoch times exclude it;
 complete-run timing still includes it. Its paired
 features remain in CPU memory, using BF16 for `gpu.precision: bf16` and FP32
 otherwise; training rows select the appropriate A/B
@@ -187,7 +180,7 @@ full group before a single parameter update. Completeness is based on row count,
 even if the final group contains the configured number of micro-batches.
 An epoch with fewer than `G` rows still performs one update; exact multiples
 keep their full groups. For example, 15 rows with `G = 8` form one 15-row update,
-and 27 rows form updates of 8, 8, and 11 rows. This applies to both LoRA and QLoRA,
+and 27 rows form updates of 8, 8, and 11 rows. This applies to LoRA
 holdout runs and builds, with fixed or token-budget micro-batches. The
 joint-training decay schedule uses only joint optimizer updates.
 `warmup_learning_rate` is a required finite positive number, even when warmup is
@@ -324,7 +317,7 @@ Fixed and token-budget batching use the same update sizes and schedule length.
 Positive budgets group rows by global lengths instead of fixed-batch random
 order. Floating-point accumulation order and dropout draws can
 differ. A zero budget retains the original fixed-batch seeded shuffle. The root
-preset uses budgets of `16384` for LoRA and `32768` for QLoRA. The example budget
+preset uses a budget of `11264` for LoRA. The example budget
 of `4096` is a starting point to try, not a measured recommendation for a
 particular GPU. Padded batches
 can change SDPA kernel selection, so dynamic batching is not guaranteed to be
@@ -352,10 +345,11 @@ Builds atomically save adapters, the classifier, and compatibility metadata in
 records the resolved Hub base revision so inference reloads matching weights
 and tokenizer files. Model name, classifier size and dropout, serialization,
 and LoRA settings must match. `max_length` and `A/B_swap` remain recorded in
-checkpoint metadata. The `training_quantization` marker must also match: `none`
-for LoRA (including older checkpoints without the marker), or `bnb-nf4-double`
-for QLoRA. `max_length` and `A/B_swap` are not checked when loading. CUDA index,
-GPU model, precision, attention implementation, TF32, batch sizes, and accumulation settings
+checkpoint metadata. The `training_quantization` marker must also be `none`
+(including older checkpoints without the marker); historical quantized
+checkpoints are incompatible. `max_length` and `A/B_swap` are not checked when
+loading. CUDA index, GPU model, precision, attention implementation, TF32, batch
+sizes, and accumulation settings
 can also change between build and inference. Inputs must still fit the current
 `max_length`. Hub revision pinning does not verify local directory contents;
 the checkpoint neither includes nor fingerprints local base weights.
