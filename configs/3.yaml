@@ -36,7 +36,7 @@ qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 16384
-  extraction_batch_size: 8
+  extraction_batch_size: 128
   training_batch_size: 1024
   hidden_size: 512
   dropout: 0.1

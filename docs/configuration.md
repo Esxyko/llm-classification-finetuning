@@ -161,8 +161,13 @@ for over-budget singletons. Zero or omission keeps fixed micro-batches and
 enables checkpointing for every joint-training batch. Warmup and inference
 disable checkpointing. See [budget behavior](lora.md#optional-token-budget-training-batches).
 
-`gradient_accumulation_steps` applies only to joint training; warmup performs one
-optimizer update per `warmup_training_batch_size` batch.
+`gradient_accumulation_steps` applies only to joint training. Warmup uses
+`warmup_training_batch_size` for forward batches and merges a short final batch
+with the preceding full batch through gradient accumulation for one optimizer
+update. Loss is normalized by the combined row count. Each nonempty warmup
+epoch performs `max(1, training_rows // warmup_training_batch_size)` updates;
+an epoch smaller than one batch still updates once, and exact multiples retain
+one update per full batch. This also applies to standalone warmup.
 Joint updates target `G = training_batch_size * gradient_accumulation_steps`
 rows. An incomplete final group is merged into the preceding full group, using
 the combined row count to normalize loss and performing one parameter update.

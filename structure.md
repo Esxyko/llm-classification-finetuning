@@ -134,7 +134,8 @@ and print summaries. Business logic belongs below the CLI layer.
     - `batching.py`: Prepare training loaders from config without model weights
       or CUDA setup, consume the common token cache, persist holdout/build
       global batch plans, supply optional warmup identity contexts, and own
-      the merged optimizer-group layout shared with training and step counts.
+      the merged optimizer-group layout shared by warmup, joint training, and
+      step counts.
       Shuffle full packing groups before merging any short tail into the last
       epoch update, supplying explicit row counts. Its `warmup_only` path
       prepares train-only tokens and references without joint batch plans.
@@ -157,7 +158,8 @@ and print summaries. Business logic belongs below the CLI layer.
       stage-specific logs and no persistent caches.
     - `trainer.py`: Run fixed-rate head-only warmup, then jointly train fresh
       adapters/head for one holdout run or all-data build with linear decay, mixed
-      precision, row-normalized update groups, frozen-feature warmup validation,
+      precision, row-normalized merged update groups in both stages,
+      frozen-feature warmup validation,
       fresh-feature extraction followed by averaged head inference for joint
       validation/test, and one weighted progress counter
       shared across all executed training/validation stages. Standalone warmup
@@ -367,9 +369,15 @@ logic depend on a particular timestamped run.
   extraction counts individual A/B branches per forward, matching frozen-model
   extraction, and reconstructs pairs even across odd-sized batches. Warmup
   extraction completes before epoch timing starts; complete-run timing includes
-  it. Adapter state is restored after warmup extraction. Each warmup batch
-  performs one optimizer update without `gradient_accumulation_steps`, which
-  applies only to joint training. Warmup validation reuses the frozen CPU features
+  it. Adapter state is restored after warmup extraction. Warmup forward batches
+  retain their configured size; a short final batch accumulates gradients with
+  the preceding full batch for one update, normalized by their combined row count.
+  Standalone warmup uses the same rule. Nonempty warmup epochs perform
+  `max(1, training_rows // warmup_training_batch_size)` updates; a lone short
+  batch updates once and exact multiples retain one update per full batch.
+  Warmup uses its fixed learning rate independently of
+  `gradient_accumulation_steps`, which applies only to joint training.
+  Warmup validation reuses the frozen CPU features
   in `head_inference_batch_size` batches. Both feature
   views are released at the start of joint training; `warmup_epochs: 0` skips
   warmup feature extraction. Each joint-validation pass and test submission
@@ -387,7 +395,7 @@ logic depend on a particular timestamped run.
   normalized by their combined row count. An epoch smaller than `G` retains one
   update; exact multiples retain all full groups. Scheduling and progress use
   `max(1, training_rows // G)` updates per nonempty joint epoch across
-  holdout/build modes and fixed/token-budget batching. Warmup is unchanged.
+  holdout/build modes and fixed/token-budget batching.
   The default `gradient_checkpointing_budget: 0` retains fixed micro-batches and
   the original seeded shuffle with gradient checkpointing on every joint-training
   batch, while reusing cached tokens. A positive budget
@@ -420,7 +428,8 @@ logic depend on a particular timestamped run.
   test inference uses the same text cache with its checkpoint's tokenizer revision.
   Uncached total epochs equal `warmup_epochs + epochs`; both phases retain the head's
   optimizer state and normalize loss by actual row counts per update, including
-  short warmup batches and merged final joint accumulation groups. Validation and
+  merged final groups in warmup and joint training. Clipping and optimizer/scaler
+  handling occur once per resulting group. Validation and
   test average both orientations' probabilities.
 - LoRA head-warmup caches and the retained QLoRA cache implementation identify
   only the sorted original training ID set; builds use the full original ID set. Validation IDs and holdout/build mode
@@ -434,8 +443,9 @@ logic depend on a particular timestamped run.
   effective seed, weight decay, gradient clipping, and cache schema. Compute
   precision, attention/TF32, extraction batch size, all LoRA initialization
   settings, local model paths, and joint learning rates/epochs/batching/
-  accumulation/token budget are excluded. Schema v3 uses training-only ID
-  identities; legacy v1/v2 warmup files are no longer read.
+  accumulation/token budget are excluded. Schema v4 retains training-only ID
+  identities and identifies merged-tail warmup; legacy v1/v2/v3 warmup files are
+  no longer read. Token, embedding, and batch-plan cache identities are preserved.
   Current input/length validation still runs. Completed
   caches atomically persist FP32 heads and named head AdamW moments/steps,
   scaler/source precision, and Python/NumPy/Torch CPU/selected-CUDA random states
@@ -550,11 +560,13 @@ logic depend on a particular timestamped run.
   Complete runtime and GPU peaks are recorded after the model run succeeds.
 - Training progress uses one counter across all executed stages and epochs of a
   model run, including validation batches after every epoch. Totals use
-  A/B-selected training rows and original validation IDs, counting merged joint
-  updates and rounding batch counts separately. Training groups (including FP16-skipped updates) and
-  validation batches count as one unit, except LoRA warmup training/validation
-  batches count as half a unit each. Extraction, preparation, caches, and publication are
-  excluded, and reused warmup contributes no work. Dynamic micro-batches
+  A/B-selected training rows and original validation IDs, counting merged warmup
+  and joint updates and rounding batch counts separately. Training groups
+  (including FP16-skipped updates) and validation batches count as one unit,
+  except warmup training groups and warmup validation batches count as half a
+  unit each, including standalone warmup. Extraction, preparation, caches, and
+  publication are excluded, and reused warmup contributes no work. Dynamic
+  micro-batches
   preserve update-group boundaries. See
   [training progress](docs/models.md#training-progress).
 - Holdout validation monitors PyTorch allocated and reserved memory peaks on

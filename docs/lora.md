@@ -169,13 +169,21 @@ excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
 `warmup.warmup_training_batch_size` is a required positive integer controlling only the
-head-warmup batch size over extracted features (root preset: `1024`). Each warmup
-batch performs one optimizer update without gradient accumulation, independently
-of `gradient_accumulation_steps`. Joint training uses `training_batch_size`,
+head-warmup forward batch size over extracted features (root preset: `1024`). A
+short final batch accumulates gradients with the preceding full batch for one
+optimizer update, retaining both forward batch sizes. An epoch smaller than one
+batch still performs one update; exact multiples keep one update per full batch.
+This applies to standalone warmup and LoRA holdout/build warmup, independently
+of `gradient_accumulation_steps`. Each nonempty warmup epoch performs
+`max(1, training_rows // warmup_training_batch_size)` updates at the fixed warmup
+learning rate. For example, 27 rows with a warmup batch size of 8 form updates
+of 8, 8, and 11 rows, using forward batches of 8, 8, 8, and 3 rows.
+Joint training uses `training_batch_size`,
 `gradient_accumulation_steps`, and the
 [optional token budget](#optional-token-budget-training-batches).
 Both stages normalize loss by the actual row count of each update, including
-short final warmup batches and merged final joint accumulation groups.
+merged final groups in warmup and joint training. Gradient clipping and
+optimizer/scaler handling occur once per resulting group.
 Joint updates target `G = training_batch_size * gradient_accumulation_steps`
 rows. If the final group has fewer than `G` rows, it is merged into the preceding
 full group before a single parameter update. Completeness is based on row count,
@@ -232,13 +240,13 @@ joint validation, or submission separately.
 Head warmup, joint training, and the validation batches after every epoch share
 one progress counter across all executed epochs. Progress is printed at
 approximately 5% intervals, with the current stage identified in each line.
-Each warmup training batch and warmup validation batch counts as **0.5**
+Each warmup training update group and warmup validation batch counts as **0.5**
 work units; each joint-training update group and joint validation batch counts as
 **1**. With `warmup_epochs: 0` or reused warmup, the total contains only joint
 training and its validation for that holdout/build.
 
 For a holdout run, let `W` be
-`ceil(training_rows / warmup_training_batch_size)`,
+`max(1, training_rows // warmup_training_batch_size)`,
 `J` be `max(1, training_rows // (training_batch_size * gradient_accumulation_steps))`
 for nonempty training data,
 and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
@@ -248,9 +256,8 @@ The count covers one fixed split; a build uses all selected training rows
 with `V = 0`. Training counts respect `A/B_swap`,
 including original IDs only for `inf`.
 
-Training advances the counter after each warmup batch or complete joint
-accumulation group, including short warmup batches, merged final groups,
-single short epochs, and skipped FP16 updates.
+Training advances the counter after each complete warmup or joint update group,
+including merged final groups, single short epochs, and skipped FP16 updates.
 Evaluation advances it once per head-validation batch, using the corresponding
 stage's weight.
 Dynamic token batches retain the same group counts regardless of how many

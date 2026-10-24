@@ -465,7 +465,9 @@ class LoRATrainer:
 		warmup_required: bool = True,
 	) -> TrainingProgress:
 		"""Count one run's training and validation, weighting warmup work by half."""
-		warmup_batch_size = self._config.warmup_training_batch_size
+		warmup_training_steps = OptimizerGroupLayout(
+			training_rows, self._config.warmup_training_batch_size
+		).update_count
 		if self._warmup_only:
 			return TrainingProgress(
 				model=self._model_key,
@@ -473,7 +475,7 @@ class LoRATrainer:
 				total_steps=(
 					self.WARMUP_PROGRESS_WEIGHT
 					* self._config.warmup_epochs
-					* math.ceil(training_rows / warmup_batch_size)
+					* warmup_training_steps
 					if warmup_required
 					else 0
 				),
@@ -484,7 +486,7 @@ class LoRATrainer:
 		validation_steps = math.ceil(
 			validation_rows / self._config.head_inference_batch_size
 		)
-		warmup_steps = math.ceil(training_rows / warmup_batch_size) + validation_steps
+		warmup_steps = warmup_training_steps + validation_steps
 		joint_steps = OptimizerGroupLayout(training_rows, joint_batch_size).update_count
 		return TrainingProgress(
 			model=self._model_key,
@@ -540,29 +542,23 @@ class LoRATrainer:
 		rows_total = 0
 		group_rows = 0
 		group_processed = 0
-		if not head_only:
-			expected_groups = OptimizerGroupLayout(
-				total_rows, effective_batch_size
-			).row_counts
-			if optimizer_group_rows is None:
-				optimizer_group_rows = expected_groups
-			elif optimizer_group_rows != expected_groups:
-				raise RuntimeError(
-					f"A {self._model_label} batch plan has invalid optimizer-group sizes."
-				)
-		planned_groups = (
-			None if optimizer_group_rows is None else iter(optimizer_group_rows)
-		)
+		expected_groups = OptimizerGroupLayout(
+			total_rows, effective_batch_size
+		).row_counts
+		if optimizer_group_rows is None:
+			optimizer_group_rows = expected_groups
+		elif optimizer_group_rows != expected_groups:
+			raise RuntimeError(
+				f"A {self._model_label} batch plan has invalid optimizer-group sizes."
+			)
+		planned_groups = iter(optimizer_group_rows)
 		for batch in loader:
 			if group_processed == 0:
-				if planned_groups is None:
-					group_rows = min(effective_batch_size, total_rows - rows_total)
-				else:
-					group_rows = next(planned_groups, 0)
-					if not 0 < group_rows <= total_rows - rows_total:
-						raise RuntimeError(
-							f"A {self._model_label} batch plan has an invalid optimizer group."
-						)
+				group_rows = next(planned_groups, 0)
+				if not 0 < group_rows <= total_rows - rows_total:
+					raise RuntimeError(
+						f"A {self._model_label} batch plan has an invalid optimizer group."
+					)
 			if head_only:
 				features, labels = batch
 				features = features.to(self._device, non_blocking=True)
@@ -615,7 +611,7 @@ class LoRATrainer:
 		if (
 			group_processed
 			or rows_total != total_rows
-			or (planned_groups is not None and next(planned_groups, None) is not None)
+			or next(planned_groups, None) is not None
 		):
 			raise RuntimeError(
 				f"{self._model_label} training did not consume the complete optimizer-group plan."
