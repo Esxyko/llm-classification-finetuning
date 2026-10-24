@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from ...errors import ModelExecutionError
+from ..common import ExtractionBatchSampler
 from .data import BranchBatch, PairwiseFeatureStore
 from .model import LoRAQwenClassifier
 
@@ -25,23 +26,25 @@ class LoRAEmbeddingExtractor:
 		*,
 		stage: str,
 	) -> PairwiseFeatureStore:
+		sampler = loader.batch_sampler
+		if not isinstance(sampler, ExtractionBatchSampler):
+			raise TypeError(
+				"Feature extraction requires a fixed ExtractionBatchSampler."
+			)
 		model.eval()
 		features = torch.empty(
 			(len(loader.dataset), model.backbone_hidden_size),
 			dtype=model.feature_dtype,
 			device="cpu",
 		)
-		start = 0
-		for index, batch in enumerate(loader):
-			pooled = model.encode_branch(batch)
-			stop = start + batch.input_ids.shape[0]
-			features[start:stop].copy_(pooled)
-			del pooled
-			if not torch.isfinite(features[start:stop]).all():
+		for index, (indices, batch) in enumerate(zip(sampler, loader, strict=True)):
+			pooled = model.encode_branch(batch).to(device="cpu", dtype=features.dtype)
+			if not torch.isfinite(pooled).all():
 				raise ModelExecutionError(
 					f"{self._model_label} {stage} extraction produced non-finite features."
 				)
-			start = stop
+			features[indices] = pooled
+			del pooled
 			if index == 0 or (index + 1) % 100 == 0:
 				print(
 					f"{self._model_label} {stage} extraction branch batch {index + 1:,}/{len(loader):,}.",

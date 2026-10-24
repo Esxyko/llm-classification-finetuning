@@ -109,6 +109,11 @@ class BranchTokenDataset(Dataset[np.ndarray]):
 		start, stop = self._offsets[position : position + 2]
 		return self._tokens[start:stop]
 
+	def branch_length(self, index: int) -> int:
+		"""Read a canonical branch length without materializing its token view."""
+		position = 2 * int(self._indices[index // 2]) + index % 2
+		return int(self._offsets[position + 1] - self._offsets[position])
+
 
 class BranchCollator:
 	"""Right-pad any A/B branch mix and compute CPU pooling positions."""

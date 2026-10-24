@@ -94,7 +94,12 @@ IDs must be unique finite integers and match in the same order across the two
 files; the loader does not reorder either file. Submission rows preserve that
 order. Frozen head training, validation, and submission inference all use
 `qwen3_4b.training_batch_size`; backbone extraction uses
-`qwen3_4b.extraction_batch_size`.
+`qwen3_4b.extraction_budget`, a required positive padded-token budget (root and
+active presets: `524288`). It replaces the old `extraction_batch_size` branch
+count. Missing branches are packed by descending length and best fit, with cost
+`branch_count * longest_branch_length <= extraction_budget`; an oversized branch
+runs alone. Extracted features return to their original positions. See
+[extraction budgets](configuration.md#extraction-token-budgets).
 
 For tagged checkpoints, multi-model execution, and cache refresh options, see
 the [command reference](commands.md). To run every configuration, see

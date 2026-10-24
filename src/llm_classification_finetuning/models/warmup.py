@@ -47,7 +47,7 @@ class WarmupModelPipeline:
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				"CUDA ran out of memory during warmup. Lower "
-				"warmup.extraction_batch_size or warmup.warmup_training_batch_size, "
+				"warmup.extraction_budget or warmup.warmup_training_batch_size, "
 				"or use fp16/bf16 instead of fp32."
 			) from error
 		except ModelExecutionError:

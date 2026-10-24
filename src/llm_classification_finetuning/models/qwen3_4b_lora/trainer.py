@@ -22,6 +22,7 @@ from ...errors import ModelExecutionError
 from ..common import (
 	ABSwapAverager,
 	EpochMetrics,
+	ExtractionBatchSampler,
 	PairwiseText,
 	PairwiseTokenStore,
 	TokenizationCache,
@@ -617,6 +618,11 @@ class LoRATrainer:
 				model,
 				ids,
 				records,
+				extraction_budget=(
+					self._config.extraction_budget
+					if self._warmup_only
+					else self._config.warmup_extraction_budget
+				),
 				seed=seed,
 				stage="warmup",
 			)
@@ -640,6 +646,7 @@ class LoRATrainer:
 		row_ids: pd.Series,
 		records: tuple[PairwiseText, ...],
 		*,
+		extraction_budget: int,
 		seed: int,
 		stage: str,
 	) -> PairwiseFeatureStore:
@@ -649,7 +656,7 @@ class LoRATrainer:
 			canonical_ids,
 			records,
 			seed=seed,
-			batch_size=self._config.extraction_batch_size,
+			extraction_budget=extraction_budget,
 		)
 		return LoRAEmbeddingExtractor(self._model_label).extract(
 			model,
@@ -700,6 +707,7 @@ class LoRATrainer:
 				model,
 				reference["id"],
 				records,
+				extraction_budget=self._config.extraction_budget,
 				seed=self._config.random_state,
 				stage=progress_stage,
 			)
@@ -769,11 +777,15 @@ class LoRATrainer:
 		records: tuple[PairwiseText, ...],
 		*,
 		seed: int,
-		batch_size: int,
+		extraction_budget: int,
 	) -> DataLoader[BranchBatch]:
 		"""Batch individual A/B branches with the frozen model's extraction semantics."""
 		tokens = self._tokens_for(records)
 		dataset = BranchTokenDataset(row_ids, tokens)
+		sampler = ExtractionBatchSampler(
+			[dataset.branch_length(index) for index in range(len(dataset))],
+			extraction_budget,
+		)
 		workers = self._config.dataloader_workers
 		generator = torch.Generator().manual_seed(seed)
 		options = {
@@ -785,7 +797,6 @@ class LoRATrainer:
 		}
 		return DataLoader(
 			dataset,
-			batch_size=batch_size,
-			shuffle=False,
+			batch_sampler=sampler,
 			**options,
 		)

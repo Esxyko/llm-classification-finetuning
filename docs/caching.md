@@ -145,7 +145,8 @@ The frozen model shares content-addressed embeddings between training and test
 under `embedding_cache/` beside the processed Parquet. Each SQLite shard
 identifies the model and exact Hub revision (or local checkpoint/configuration
 content), backbone hidden size, precision, pooling, storage format, and
-extraction version. Attention implementation and TF32 do not affect cache reuse.
+extraction version. Attention implementation, TF32, and `extraction_budget` do
+not affect cache reuse.
 Individual entries identify the effective token IDs of one branch, after any
 requested truncation. Different compute identities coexist without overwriting
 one another.
@@ -160,8 +161,10 @@ Cache rows are mapped back to the current canonical IDs and order. When all
 inputs hit, the backbone weights are not loaded. Local checkpoint identities
 require reading the selected weight files to hash their content.
 
-Missing branches are right-padded and encoded independently; changing batch
-composition, attention implementation, or TF32 can change floating-point
+Missing branches are sorted by descending length and best-fit packed within
+`extraction_budget` padded tokens per micro-batch, then independently right-padded.
+Extracted vectors are scattered back to the original branch positions. Changing
+batch composition, attention implementation, or TF32 can change floating-point
 rounding. Precision remains part of the cache identity. Reads validate blob
 length and checksum without scanning vectors for NaN/Inf; newly extracted
 vectors are checked for finite values before caching. Entries with invalid
@@ -268,7 +271,7 @@ quantization mode, head dropout, A/B objective, warmup epochs/training batch
 size/learning rate, effective seed, weight decay, gradient clipping, and cache
 schema. Local model paths are excluded when weight/configuration contents
 match. Compute precision, attention implementation, TF32, warmup extraction
-batch size, and all LoRA rank/alpha/dropout/target-module settings are excluded,
+token budget, and all LoRA rank/alpha/dropout/target-module settings are excluded,
 as are joint-training learning rates, epoch count, batch size, accumulation,
 and token budget. Context limits do not enter the key because adapter inputs are never
 truncated and their lengths are checked independently. LoRA lookup requires

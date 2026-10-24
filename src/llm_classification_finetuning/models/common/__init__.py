@@ -20,6 +20,7 @@ from .data import (
 	ModelTestDataRepository,
 	PairwiseText,
 )
+from .extraction_batching import ExtractionBatchSampler
 from .hardware import GPUEnvironment, GPUMemoryMonitor, GPUMemoryPeak
 from .inputs import TestInputLoader, TrainingInputLoader
 from .model import PairwiseClassificationHead, PairwiseQwenClassifier
@@ -37,6 +38,7 @@ __all__ = (
 	"CacheStorage",
 	"ConversationSerializer",
 	"EpochMetrics",
+	"ExtractionBatchSampler",
 	"GPUEnvironment",
 	"GPUMemoryMonitor",
 	"GPUMemoryPeak",

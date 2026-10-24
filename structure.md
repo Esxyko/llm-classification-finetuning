@@ -87,8 +87,13 @@ and print summaries. Business logic belongs below the CLI layer.
   `WarmupModelConfig` owns shared head-warmup fields;
   `LoRAModelConfig` extends it with joint-training and adapter settings. The YAML
   loader resolves its three warmup optimization fields from the required top-level
-  `warmup` section and rejects those keys in `qwen3_4b_lora`; zero warmup epochs
-  disable LoRA warmup, while the standalone command requires positive epochs.
+  `warmup` section and rejects those keys in `qwen3_4b_lora`. It also resolves
+  internal `warmup_extraction_budget` from `warmup.extraction_budget`,
+  retaining the LoRA section's own extraction budget for joint validation and
+  submission. All extraction budgets are required positive padded-token limits;
+  the previous batch-size keys and the internal field are rejected in YAML.
+  Zero warmup epochs disable LoRA warmup, while the standalone command requires
+  positive epochs.
 - `model_storage.py`: Routes config/tokenizer/backbone loads through the shared
   `load_pretrained` wrapper to a persistent native Hub cache at optional
   `MODEL_PATH`, preserving default caching and explicit local model paths.
@@ -214,6 +219,10 @@ and print summaries. Business logic belongs below the CLI layer.
       per-run allocator monitoring without clearing caches.
     - `extractor.py`: Resolve pinned backbone/token identities on CPU, hash local
       weights when needed, and lazily encode only missing frozen branches on GPU.
+    - `extraction_batching.py`: Own the shared deterministic, in-memory
+      `ExtractionBatchSampler` for frozen and adapter extraction, sorting branches
+      by descending length and original index and best-fit packing by padded
+      token cost. Length queries and repeated iteration use the same fixed plan.
     - `cache_storage.py`: Own the shared disk-backed cache and processed-Parquet
       file sessions, Windows/Linux process locks, atomic publication, and
       checksummed multipart storage at 100 MiB,
@@ -372,10 +381,16 @@ logic depend on a particular timestamped run.
   configured context limit.
   No LoRA input is truncated: empty or over-limit branches fail before training/encoding with
   the offending ID and branch. Warmup extracts each training/validation ID once
-  in canonical orientation using `extraction_batch_size`, then selects
+  in canonical orientation using `warmup.extraction_budget`, then selects
   oriented feature views with `warmup_training_batch_size`. All no-gradient
-  extraction counts individual A/B branches per forward, matching frozen-model
-  extraction, and reconstructs pairs even across odd-sized batches. Warmup
+  extraction uses the shared sampler over individual A/B branches, matching
+  frozen-model extraction. Branches are sorted by length descending and original
+  branch index, then best-fit packed with cost `branches * longest_length` at or
+  below the positive `extraction_budget`. Oversized branches run alone; existing
+  truncation/context validation still applies. Each extractor writes features
+  back by original branch index, preserving canonical ID and pair alignment even
+  across reordered or odd-sized batches. Plans are fixed in memory and excluded
+  from persistent cache/checkpoint identities. Warmup
   extraction completes before epoch timing starts; complete-run timing includes
   it. Adapter state is restored after warmup extraction. Warmup forward batches
   retain their configured size; a short final batch accumulates gradients with
@@ -390,7 +405,7 @@ logic depend on a particular timestamped run.
   views are released at the start of joint training; `warmup_epochs: 0` skips
   warmup feature extraction. Each joint-validation pass and test submission
   extracts fresh canonical features from the current model in eval/no-gradient
-  mode using the same `extraction_batch_size`, then runs the head in
+  mode using `qwen3_4b_lora.extraction_budget`, then runs the head in
   `head_inference_batch_size` batches. Temporary CPU inference features use BF16
   in BF16 mode and FP32 otherwise; they are released on return, never persisted
   or reused across joint epochs/runs.
@@ -467,7 +482,7 @@ logic depend on a particular timestamped run.
   serialization identities, backbone/head dimensions, head dropout,
   quantization, A/B objective, warmup epochs/training batch size/learning rate,
   effective seed, weight decay, gradient clipping, and cache schema. Compute
-  precision, attention/TF32, extraction batch size, all LoRA initialization
+  precision, attention/TF32, extraction token budget, all LoRA initialization
   settings, local model paths, and joint learning rates/epochs/batching/
   accumulation/token budget are excluded. Schema v5 identifies the `3H`
   absolute-difference head, retaining training-only ID identities and merged-tail
@@ -581,8 +596,9 @@ logic depend on a particular timestamped run.
   together. Metrics do not contain a `config` field; the adjacent YAML includes
   `data`, `validation`, `gpu`, and the current model section. LoRA snapshots also
   include the required `warmup` section and omit the three warmup optimization
-  fields from `qwen3_4b_lora`; frozen-model snapshots omit `warmup`. Other model
-  sections are excluded.
+  fields and internal `warmup_extraction_budget` from `qwen3_4b_lora`;
+  both sections retain their own `extraction_budget`.
+  Frozen-model snapshots omit `warmup`. Other model sections are excluded.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
   New runs record `embedding_combination: "concat_a_b_abs_diff"` in metrics only;

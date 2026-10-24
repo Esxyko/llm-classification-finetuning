@@ -48,9 +48,9 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `data` | Competition name and raw/processed paths |
 | `validation` | Holdout fraction, random seed, tokenizer identity, and maximum validation token deviation |
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
-| `warmup` | Shared warmup epochs, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, extraction, and optimizer |
+| `warmup` | Shared warmup epochs, extraction token budget, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, shared `extraction_batch_size` for no-gradient extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_threshold` for initial batch packing and automatic checkpointing, optional `gradient_checkpointing_budget` for merging checkpointed singletons within each update, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, `extraction_budget` for joint-validation/submission backbone extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_threshold` for initial batch packing and automatic checkpointing, optional `gradient_checkpointing_budget` for merging checkpointed singletons within each update, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -77,8 +77,9 @@ Only these YAML fields have parser defaults when omitted:
 | `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
-`warmup.warmup_epochs`, and the warmup batch sizes and learning rate. Unknown keys
-are rejected. Numeric values described as presets in these guides refer to the
+`warmup.warmup_epochs`, extraction budgets, and the warmup training batch size
+and learning rate. Unknown keys are rejected. Numeric values described as
+presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
 
 ## Standalone warmup
@@ -87,6 +88,10 @@ The `warmup` section is required when `qwen3_4b_lora` is present. LoRA reads
 `warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
 this section; these three keys are rejected inside `qwen3_4b_lora`. Move their
 existing values into `warmup` when migrating an older configuration.
+LoRA warmup also uses `warmup.extraction_budget`, while
+`qwen3_4b_lora.extraction_budget` controls joint-validation and submission
+extraction. The resolved `warmup_extraction_budget` field is internal and is
+rejected in YAML; it is omitted from configuration snapshots.
 Set `warmup.warmup_epochs: 0` to disable LoRA head warmup and its cache.
 
 The section can also be used without any model sections. A config containing
@@ -97,25 +102,26 @@ uv run model warmup --build --config config.yaml
 ```
 
 Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
-`warmup_epochs`, `extraction_batch_size`, `warmup_training_batch_size`,
+`warmup_epochs`, `extraction_budget`, `warmup_training_batch_size`,
 `warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
 `dataloader_workers`, and `A/B_swap`. All except `A/B_swap` are required;
 `A/B_swap` defaults to `aug`. `warmup_epochs` must be nonnegative;
 `model warmup --build` requires it to be strictly positive. The other fields in
 this section configure standalone warmup; LoRA continues to use its own model,
-classifier, extraction, weight decay, clipping, seed, workers, and `A/B_swap` settings.
+classifier, weight decay, clipping, seed, workers, and `A/B_swap` settings.
 
 The root preset copies the LoRA warmup settings: Qwen3-4B, `max_length: 13514`,
-a 512-unit head with dropout 0.1, one warmup epoch, extraction batch size 16,
-training batch size 1024, learning rate 0.001, weight decay 0.01, clipping 1.0,
+a 1024-unit head with dropout 0.1, one warmup epoch, extraction budget 524288,
+training batch size 2048, learning rate 0.001, weight decay 0.01, clipping 1.0,
 seed 42, zero workers, and `A/B_swap: aug`. These are explicit preset values,
 not parser defaults. Shared GPU settings control its single training device
 and precision.
 
 To reuse the result in LoRA, its warmup compatibility fields and actual
-training IDs must match. The three shared warmup optimization fields apply to
-both commands; the remaining settings must be aligned separately. Full-data
-builds use a different training ID set and do not reuse this train-partition cache. See
+training IDs must match. Warmup extraction and the three shared optimization
+fields apply to both commands; the remaining settings must be aligned separately.
+Full-data builds use a different training ID set and do not reuse this
+train-partition cache. See
 [warmup compatibility](caching.md#lora-head-warmup).
 
 ## Holdout token balance
@@ -146,13 +152,35 @@ Missing tokenizer files may be downloaded on preparation. If equal-class group
 swaps cannot reach the target within 1,000 exchanges, preparation fails before
 replacing the processed dataset. See [data preparation](data-preparation.md).
 
+## Extraction token budgets
+
+`extraction_budget` replaces `extraction_batch_size` in `warmup`, `qwen3_4b`,
+and `qwen3_4b_lora`. It is a required positive integer measured in padded tokens;
+the old key is rejected. The root configuration and all active presets use
+`524288`. Old branch counts such as `32` or `64` are not equivalent token budgets.
+
+`qwen3_4b_lora.extraction_budget` controls backbone extraction
+for every joint-validation pass and submissions, including when warmup is
+disabled. `warmup.extraction_budget` controls warmup extraction for both LoRA
+and standalone warmup. `qwen3_4b.extraction_budget` controls extraction of missing
+frozen-model branches.
+
+All three use the same deterministic best-fit decreasing packing: sort individual
+A/B branches by length descending, breaking ties by original branch index, and
+place each into the fitting micro-batch with the least remaining budget. Cost is
+`branch_count * longest_branch_length`, including padding. Equality is allowed;
+a branch longer than the budget runs alone. Branch lengths follow the existing
+input rules: frozen inputs may be truncated to `max_length`, while LoRA rejects
+empty or over-limit inputs. Features are written back to their original positions
+to preserve ID order and A/B alignment even across odd-sized micro-batches.
+Plans stay in memory, and the budget does not affect cache or checkpoint identity.
+Head inference uses its own batch size after extraction completes.
+
 For LoRA, `head_inference_batch_size` is a required positive integer replacing
 `inference_batch_size`; rename the old key while preserving its value. The old
-key is rejected. `extraction_batch_size` controls backbone extraction for
-warmup, every joint-validation pass, and submissions, including when warmup is
-disabled. It counts individual A/B branches per backbone forward, matching the
-frozen model's `extraction_batch_size`; the standalone warmup section uses the
-same definition. Head inference uses its own batch size after extraction completes.
+key is rejected.
+
+## Joint-training packing
 
 `gradient_checkpointing_threshold` is the new name for the previous
 `gradient_checkpointing_budget` setting; rename the old key while preserving its

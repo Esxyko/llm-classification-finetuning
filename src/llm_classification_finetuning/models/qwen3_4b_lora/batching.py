@@ -724,7 +724,7 @@ class LoRATrainingBatchRepository:
 		elif self._warmup_only:
 			loader = DataLoader(
 				dataset,
-				batch_size=self._config.extraction_batch_size,
+				batch_size=self._config.warmup_training_batch_size,
 				shuffle=True,
 				**options,
 			)

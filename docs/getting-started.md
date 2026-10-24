@@ -110,8 +110,11 @@ submission environment; `uv run` would synchronize the training lock again.
 
 For two T4 GPUs, use `gpu.precision: fp16`,
 `gpu.attention_implementation: sdpa`, and
-`gpu.submit_devices: [cuda:0, cuda:1]` in the selected YAML. Start with the selected
-model section's `extraction_batch_size: 1` and preserve its `max_length`.
+`gpu.submit_devices: [cuda:0, cuda:1]` in the selected YAML. The selected model
+section's `extraction_budget` controls padded tokens per backbone micro-batch;
+the root and active presets use `524288`. Lower it if extraction runs out of
+memory, preserving `max_length`. See
+[extraction budgets](configuration.md#extraction-token-budgets).
 `head_inference_batch_size` for LoRA controls only the head over extracted
 CPU features. All present model sections still need their usual configuration
 fields; see [configuration](configuration.md).

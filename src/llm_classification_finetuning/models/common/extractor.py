@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import math
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from ...errors import ModelExecutionError
 from ...model_storage import load_pretrained
 from .backbone import LocalBackboneFingerprint
 from .data import PairwiseText
+from .extraction_batching import ExtractionBatchSampler
 from .hardware import GPUEnvironment
 from .model import PairwiseQwenClassifier
 from .token_cache import TokenizationCache, TokenizedTexts
@@ -133,14 +133,15 @@ class QwenEmbeddingExtractor:
 		"""Fill one representative position per missing input, retaining CPU half storage."""
 		if not indices:
 			return
-		batch_size = self._config.extraction_batch_size
-		total_batches = math.ceil(len(indices) / batch_size)
 		try:
+			batches = ExtractionBatchSampler(
+				np.diff(tokens.offsets).tolist(),
+				self._config.extraction_budget,
+				indices=indices,
+			)
+			total_batches = len(batches)
 			model = self._load_model()
-			for batch_number, start in enumerate(
-				range(0, len(indices), batch_size), start=1
-			):
-				batch = list(indices[start : start + batch_size])
+			for batch_number, batch in enumerate(batches, start=1):
 				input_ids, attention_mask = self._pad_batch(tokens, batch)
 				pooled = model.encode_branch(input_ids, attention_mask).to(
 					device="cpu", dtype=torch.float16
@@ -158,7 +159,7 @@ class QwenEmbeddingExtractor:
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				"CUDA ran out of memory during embedding extraction. Lower the selected model's "
-				"extraction_batch_size or max_length, or select a lower-precision gpu.precision."
+				"extraction_budget or max_length, or select a lower-precision gpu.precision."
 			) from error
 		except ModelExecutionError:
 			raise

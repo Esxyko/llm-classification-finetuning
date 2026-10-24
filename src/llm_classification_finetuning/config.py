@@ -61,7 +61,7 @@ class ModelConfig:
 
 	model_name: str
 	max_length: int
-	extraction_batch_size: int
+	extraction_budget: int
 	training_batch_size: int
 	hidden_size: int
 	dropout: float
@@ -83,7 +83,7 @@ class WarmupModelConfig:
 	dropout: float
 	weight_decay: float
 	warmup_epochs: int
-	extraction_batch_size: int
+	extraction_budget: int
 	warmup_training_batch_size: int
 	warmup_learning_rate: float
 	max_grad_norm: float
@@ -94,8 +94,9 @@ class WarmupModelConfig:
 
 @dataclass(frozen=True, slots=True)
 class LoRAModelConfig(WarmupModelConfig):
-	"""Effective adapter settings, with warmup optimization resolved from warmup."""
+	"""Effective adapter settings, with warmup optimization and extraction resolved."""
 
+	warmup_extraction_budget: int
 	training_batch_size: int
 	head_inference_batch_size: int
 	gradient_accumulation_steps: int
@@ -352,7 +353,7 @@ def _load_warmup_fields(
 		dropout=dropout,
 		weight_decay=weight_decay,
 		warmup_epochs=warmup_epochs,
-		extraction_batch_size=positive_integer("extraction_batch_size"),
+		extraction_budget=positive_integer("extraction_budget"),
 		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
 		warmup_learning_rate=positive_float("warmup_learning_rate"),
 		max_grad_norm=positive_float("max_grad_norm"),
@@ -372,7 +373,11 @@ def _load_lora_model_config(
 	section_name: str = "qwen3_4b_lora",
 ) -> LoRAModelConfig:
 	section = _require_mapping(root.get(section_name), section_name)
-	keys = set(LoRAModelConfig.__dataclass_fields__) - {"ab_swap", *LORA_WARMUP_FIELDS}
+	keys = set(LoRAModelConfig.__dataclass_fields__) - {
+		"ab_swap",
+		"warmup_extraction_budget",
+		*LORA_WARMUP_FIELDS,
+	}
 	_reject_unknown_keys(section, keys | {"A/B_swap"}, section_name)
 	if warmup is None:
 		raise ConfigurationError(
@@ -435,6 +440,7 @@ def _load_lora_model_config(
 
 	return LoRAModelConfig(
 		**asdict(shared),
+		warmup_extraction_budget=warmup.extraction_budget,
 		training_batch_size=positive_integer("training_batch_size"),
 		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),
@@ -455,7 +461,7 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
 	allowed_keys = {
 		"model_name",
 		"max_length",
-		"extraction_batch_size",
+		"extraction_budget",
 		"training_batch_size",
 		"hidden_size",
 		"dropout",
@@ -493,8 +499,8 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
 		max_length=_require_positive_integer(
 			section.get("max_length"), field("max_length")
 		),
-		extraction_batch_size=_require_positive_integer(
-			section.get("extraction_batch_size"), field("extraction_batch_size")
+		extraction_budget=_require_positive_integer(
+			section.get("extraction_budget"), field("extraction_budget")
 		),
 		training_batch_size=_require_positive_integer(
 			section.get("training_batch_size"), field("training_batch_size")

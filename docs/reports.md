@@ -10,9 +10,11 @@ directory. The three files are staged and published together after training
 succeeds. `config.yaml` records the effective `data`, `validation`, `gpu`, and
 current model sections, including default values and resolved data paths. LoRA
 snapshots also include the required `warmup` section, with the three warmup
-optimization fields omitted from `qwen3_4b_lora`. Other model sections are omitted;
-frozen-model snapshots also omit `warmup`. It uses the
-same YAML field names as the input configuration and can be passed to `--config`.
+optimization fields and internal `warmup_extraction_budget` omitted from
+`qwen3_4b_lora`. Each section retains its own `extraction_budget`.
+Other model sections are omitted; frozen-model snapshots also omit `warmup`.
+The snapshot uses the same YAML field names as the input configuration and can
+be passed to `--config`.
 `metrics.json` does not contain a `config` field.
 Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual

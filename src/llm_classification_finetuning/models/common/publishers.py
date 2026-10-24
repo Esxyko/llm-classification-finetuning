@@ -169,7 +169,7 @@ class ModelResultPublisher:
 			if config.warmup is None:
 				raise ModelExecutionError("LoRA results require a 'warmup' section.")
 			sections["warmup"] = asdict(config.warmup)
-			for key in LORA_WARMUP_FIELDS:
+			for key in (*LORA_WARMUP_FIELDS, "warmup_extraction_budget"):
 				model_section.pop(key)
 		sections[profile.config_key] = model_section
 		return {

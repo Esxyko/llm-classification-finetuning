@@ -131,6 +131,7 @@ rates. Joint-training settings are configured in `qwen3_4b_lora`.
 Warmup epochs, head-training batch size, and learning rate are
 configured in the required top-level `warmup` section, shared with standalone
 warmup; their former keys inside `qwen3_4b_lora` are rejected.
+Warmup extraction also uses `warmup.extraction_budget` for both commands.
 
 `warmup.warmup_epochs` is a required nonnegative integer; `0` skips head warmup and
 does not read or write its cache. Otherwise a compatible completed
@@ -138,7 +139,7 @@ does not read or write its cache. Otherwise a compatible completed
 AdamW moments, and random states, skipping warmup extraction, training, and
 validation. It matches the current original training ID set (all original IDs
 for builds), warmup optimization settings, and core model/input
-identities. Compute precision, attention/TF32, extraction batch size, LoRA
+identities. Compute precision, attention/TF32, extraction token budget, LoRA
 settings, local model paths with identical contents, and joint-training
 learning rates, epochs, or batching may change. Changing only validation IDs
 preserves warmup reuse; changing training IDs selects a new cache. Holdout/build mode does not independently
@@ -148,14 +149,20 @@ warmup result is reused; only FP16-to-FP16 restores the gradient scaler.
 
 On a cache miss, warmup uses the extraction and training settings below.
 
-`extraction_batch_size` is a required positive integer controlling the
-no-gradient backbone extraction batch size for warmup, joint validation, and
-submissions (root preset: `1`). Like the frozen model's `extraction_batch_size`,
-it counts individual branches, with canonical inputs flattened as A0, B0, A1,
-B1, and so on. A batch size of `1` encodes one branch per forward; `2` can
-encode one ID's A/B branches together. Short final batches and odd batch sizes
-preserve the original pair alignment. Joint-training batches still count
-selected sample pairs. Before the first
+`warmup.extraction_budget` is a required positive integer controlling
+no-gradient backbone extraction for warmup. The separate required positive
+`qwen3_4b_lora.extraction_budget` controls joint validation and submissions.
+Both replace `extraction_batch_size`, whose old branch-count values must be
+changed to token budgets; the old key is rejected. The root configuration and
+active presets use `524288` padded tokens for both stages and frozen extraction.
+Canonical inputs are flattened as A0, B0, A1, B1, and so on, then sorted by
+length descending with original branch index as the tie-breaker. Shared best-fit
+packing limits `branch_count * longest_branch_length` to the budget, including
+equality. A branch longer than the budget runs alone without additional
+truncation. Features are scattered back to their original positions, preserving
+ID order and A/B alignment across reordered and odd-sized micro-batches. The
+in-memory plan is fixed across length queries and iteration, including loader
+workers. Joint-training batches still count selected sample pairs. Before the first
 warmup epoch, each unique ID needed by training or validation is encoded once
 in its canonical orientation with the backbone in evaluation mode and adapter
 forward computation disabled. The adapter state is restored after extraction.
@@ -214,7 +221,8 @@ evaluates the same saved validation set after every executed warmup and joint ep
 publishes the final epoch's predictions. Full-data builds have no validation set and do
 not run validation. Replace the removed `warmup_ratio` key with
 `warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, and
-`warmup.warmup_learning_rate`, and configure `qwen3_4b_lora.extraction_batch_size`;
+`warmup.warmup_learning_rate`, and configure `warmup.extraction_budget` and
+`qwen3_4b_lora.extraction_budget` for their respective stages;
 old keys are rejected as unknown configuration options.
 
 ## Two-stage validation and submission
@@ -226,8 +234,9 @@ This setting does not control backbone extraction or checkpoint compatibility.
 
 After every joint-training epoch, validation first extracts each needed ID once
 in canonical A/B orientation using the current adapters. Submission extracts test
-features after restoring the checkpoint. Both use `extraction_batch_size`,
-evaluation mode, and no gradients, even with `warmup_epochs: 0`. Extraction
+features after restoring the checkpoint. Both use
+`qwen3_4b_lora.extraction_budget`, evaluation mode, and no gradients, even
+with `warmup_epochs: 0`. Extraction
 finishes before head inference starts. Paired features stay in temporary CPU
 memory in BF16 for `gpu.precision: bf16` and FP32 otherwise; the head selects
 reference-ordered feature views, averages original and
@@ -287,7 +296,8 @@ every joint-training batch. A positive threshold enables initial dynamic
 micro-batches for joint training. The new `gradient_checkpointing_budget` is also
 an optional nonnegative integer, defaulting to `0`; a positive value enables a
 second packing pass for checkpointed singletons within each optimizer update.
-Warmup and inference keep their configured batch sizes and disable checkpointing.
+Warmup and inference disable checkpointing. Backbone extraction uses its stage's
+`extraction_budget`; head training and inference retain their own batch sizes.
 For example, these illustrative values enable both packing passes:
 
 ```yaml
@@ -365,11 +375,12 @@ run on the target 32 GB virtual GPU.
 ## Memory tuning
 
 For smaller GPUs, lower a positive checkpointing threshold, lower the
-checkpointing budget (`0` disables singleton merging), or lower the relevant
-`extraction_batch_size`, `warmup_training_batch_size`,
-`training_batch_size`, or `head_inference_batch_size`. The extraction setting
-controls backbone memory for warmup, joint validation, and submission; the head
-setting controls only classifier batches over CPU features. Increase
+checkpointing budget (`0` disables singleton merging), or lower
+`warmup.extraction_budget` for warmup backbone extraction,
+`warmup.warmup_training_batch_size` for warmup head training, or
+`qwen3_4b_lora.extraction_budget` for joint-validation/submission backbone
+extraction. Lower `training_batch_size` for joint training or
+`head_inference_batch_size` for classifier inference over CPU features. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
 desired effective batch. Keep `max_length` at least as large as the longest
 required input. Larger GPUs can use larger batches. Memory fit for the

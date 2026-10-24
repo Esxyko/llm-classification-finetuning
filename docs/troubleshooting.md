@@ -39,19 +39,23 @@
   affect a separate Python process. Math fallback remains disabled, so
   unsupported fused-kernel inputs still fail explicitly.
 - **Embedding extraction runs out of memory:** Reduce
-  `qwen3_4b.extraction_batch_size`. Lowering `qwen3_4b.max_length` also reduces
+  `qwen3_4b.extraction_budget`, the padded-token limit per extraction micro-batch
+  (active presets: `524288`). A branch above the budget still runs alone.
+  Lowering `qwen3_4b.max_length` also reduces
   input length by truncating longer branches; a saved frozen head requires the
   same length and compute settings used at build time. Rebuild it if those
   compatibility fields change.
 - **Frozen head training or inference runs out of memory:** Reduce
   `qwen3_4b.training_batch_size`; the frozen profile uses it for head training,
   validation, and submission inference.
-- **LoRA runs out of memory:** Lower the selected model section's `extraction_batch_size`,
-  `warmup_training_batch_size`, `training_batch_size`, or `head_inference_batch_size`
-  for the affected stage, lower a positive `gradient_checkpointing_threshold`,
+- **LoRA runs out of memory:** Lower `warmup.extraction_budget` for warmup
+  backbone extraction or `warmup.warmup_training_batch_size` for warmup head
+  training. Lower the selected model section's `extraction_budget`,
+  `training_batch_size`, or `head_inference_batch_size` for joint-validation/submission
+  extraction, joint training, or head inference respectively. Alternatively, lower
+  a positive `gradient_checkpointing_threshold`,
   or lower `gradient_checkpointing_budget` (`0` disables singleton merging).
-  `extraction_batch_size` also controls validation/submission backbone
-  extraction; `head_inference_batch_size` controls only head inference over the
+  `head_inference_batch_size` controls only head inference over the
   extracted CPU features. Keep
   `max_length` at least as large as the longest required branch. Gradient
   checkpointing is automatic for batches above the threshold; at threshold `0`,

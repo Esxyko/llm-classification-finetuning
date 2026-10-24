@@ -24,7 +24,7 @@ warmup:
   hidden_size: 1024
   dropout: 0.1
   warmup_epochs: 1
-  extraction_batch_size: 64
+  extraction_budget: 524288
   warmup_training_batch_size: 2048
   warmup_learning_rate: 0.001
   weight_decay: 0.01
@@ -36,7 +36,7 @@ qwen3_4b:
   A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 16384
-  extraction_batch_size: 64
+  extraction_budget: 524288
   training_batch_size: 1024
   hidden_size: 1024
   dropout: 0.1
@@ -56,7 +56,7 @@ qwen3_4b_lora:
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 2048
   epochs: 2
-  extraction_batch_size: 64
+  extraction_budget: 524288
   learning_rate: 0.0001
   head_learning_rate: 0.00005
   hidden_size: 1024
