@@ -122,6 +122,7 @@ class AppConfig:
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora: LoRAModelConfig | None = None
 	warmup: WarmupModelConfig | None = None
+	qwen3_4b_lora_EXPT: LoRAModelConfig | None = None
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
@@ -162,6 +163,7 @@ class AppConfig:
 				"gpu",
 				"qwen3_4b",
 				"qwen3_4b_lora",
+				"qwen3_4b_lora_EXPT",
 				"warmup",
 			},
 			"configuration root",
@@ -201,6 +203,17 @@ class AppConfig:
 		warmup = _load_warmup_model_config(root) if "warmup" in root else None
 		qwen3_4b_lora = (
 			_load_lora_model_config(root, warmup) if "qwen3_4b_lora" in root else None
+		)
+		qwen3_4b_lora_EXPT = (
+			_load_lora_model_config(
+				root,
+				warmup,
+				"qwen3_4b_lora_EXPT",
+				fixed_ab_swap="none",
+				require_abs_diff=True,
+			)
+			if "qwen3_4b_lora_EXPT" in root
+			else None
 		)
 
 		competition = _require_non_empty_string(
@@ -302,6 +315,7 @@ class AppConfig:
 			qwen3_4b=qwen3_4b,
 			qwen3_4b_lora=qwen3_4b_lora,
 			warmup=warmup,
+			qwen3_4b_lora_EXPT=qwen3_4b_lora_EXPT,
 		)
 
 
@@ -313,7 +327,10 @@ def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
 
 
 def _load_warmup_fields(
-	section: Mapping[str, Any], section_name: str
+	section: Mapping[str, Any],
+	section_name: str,
+	*,
+	fixed_ab_swap: str | None = None,
 ) -> WarmupModelConfig:
 	"""Validate the same head-warmup fields for standalone and adapter training."""
 
@@ -365,7 +382,9 @@ def _load_warmup_fields(
 			section.get("random_state"), field("random_state")
 		),
 		dataloader_workers=workers,
-		ab_swap=_require_choice(
+		ab_swap=fixed_ab_swap
+		if fixed_ab_swap is not None
+		else _require_choice(
 			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
 		),
 	)
@@ -375,6 +394,9 @@ def _load_lora_model_config(
 	root: Mapping[str, Any],
 	warmup: WarmupModelConfig | None,
 	section_name: str = "qwen3_4b_lora",
+	*,
+	fixed_ab_swap: str | None = None,
+	require_abs_diff: bool = False,
 ) -> LoRAModelConfig:
 	section = _require_mapping(root.get(section_name), section_name)
 	keys = set(LoRAModelConfig.__dataclass_fields__) - {
@@ -382,7 +404,11 @@ def _load_lora_model_config(
 		"warmup_extraction_budget",
 		*LORA_WARMUP_FIELDS,
 	}
-	_reject_unknown_keys(section, keys | {"A/B_swap"}, section_name)
+	_reject_unknown_keys(
+		section,
+		keys | ({"A/B_swap"} if fixed_ab_swap is None else set()),
+		section_name,
+	)
 	if warmup is None:
 		raise ConfigurationError(
 			f"{section_name} requires a 'warmup' section. Move "
@@ -411,7 +437,12 @@ def _load_lora_model_config(
 	shared = _load_warmup_fields(
 		{**section, **{name: getattr(warmup, name) for name in LORA_WARMUP_FIELDS}},
 		section_name,
+		fixed_ab_swap=fixed_ab_swap,
 	)
+	if require_abs_diff and not shared.use_abs_diff:
+		raise ConfigurationError(
+			f"{field('use_abs_diff')} must be true for this model's classification head."
+		)
 	checkpointing_threshold = _require_integer(
 		section.get("gradient_checkpointing_threshold", 0),
 		field("gradient_checkpointing_threshold"),

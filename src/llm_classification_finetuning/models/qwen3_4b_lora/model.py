@@ -1,4 +1,4 @@
-"""Shared Qwen backbone with trainable LoRA adapters and a pairwise MLP."""
+"""Shared Qwen backbone with trainable LoRA adapters and a comparison head."""
 
 from __future__ import annotations
 
@@ -7,42 +7,16 @@ from contextlib import AbstractContextManager
 import torch
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 from torch import Tensor, nn
+from torch.nn import functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AutoModel, BitsAndBytesConfig
 from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...model_storage import load_pretrained
-from ..common import ABSwapAverager, GPUEnvironment, PairwiseClassificationHead
+from ..common import ABSwapAverager, GPUEnvironment
 from .data import BranchBatch, PairwiseBatch
-
-
-class _LoRAClassificationHead(PairwiseClassificationHead):
-	"""Use BF16 head computation with FP32 parameters and returned logits."""
-
-	def __init__(
-		self,
-		backbone_hidden_size: int,
-		hidden_size: int,
-		dropout: float,
-		*,
-		compute_dtype: torch.dtype,
-		use_abs_diff: bool,
-	) -> None:
-		super().__init__(
-			backbone_hidden_size, hidden_size, dropout, use_abs_diff=use_abs_diff
-		)
-		self._compute_dtype = compute_dtype
-
-	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
-		"""Keep losses and orientation averaging outside reduced-precision compute."""
-		with torch.autocast(
-			device_type=h_a.device.type,
-			dtype=torch.bfloat16,
-			enabled=self._compute_dtype == torch.bfloat16,
-		):
-			logits = super().forward(h_a, h_b)
-		return logits.float()
+from .heads import EXPT, PAIRWISE_MLP, create_classification_head
 
 
 class LoRAQwenClassifier(nn.Module):
@@ -58,6 +32,7 @@ class LoRAQwenClassifier(nn.Module):
 		device_map: dict[str, str] | None = None,
 		quantize_backbone: bool = False,
 		warmup_only: bool = False,
+		head_architecture: str = PAIRWISE_MLP,
 	) -> None:
 		super().__init__()
 		if not warmup_only and not isinstance(config, LoRAModelConfig):
@@ -65,6 +40,7 @@ class LoRAQwenClassifier(nn.Module):
 		if warmup_only and quantize_backbone:
 			raise ValueError("Standalone warmup requires a non-quantized backbone.")
 		self.warmup_only = warmup_only
+		self.head_architecture = head_architecture
 		self._gradient_checkpointing_allowed = not warmup_only and device_map is None
 		self._gradient_checkpointing_threshold = (
 			config.gradient_checkpointing_threshold if not warmup_only else 0
@@ -130,12 +106,13 @@ class LoRAQwenClassifier(nn.Module):
 			)
 		self._gradient_checkpointing_enabled = self.backbone.is_gradient_checkpointing
 		self._set_gradient_checkpointing(False)
-		self.classifier = _LoRAClassificationHead(
+		self.classifier = create_classification_head(
 			self.backbone_hidden_size,
 			config.hidden_size,
 			config.dropout,
 			compute_dtype=self.feature_dtype,
 			use_abs_diff=config.use_abs_diff,
+			head_architecture=head_architecture,
 		).to(device=device, dtype=torch.float32)
 
 	def train(self, mode: bool = True) -> LoRAQwenClassifier:
@@ -215,8 +192,10 @@ class LoRAQwenClassifier(nn.Module):
 		return self.classifier(*self.encode(batch))
 
 	def log_probabilities(self, batch: PairwiseBatch) -> Tensor:
-		"""Average both head orientations after encoding each branch once."""
+		"""Return the selected head's original-only or averaged log probabilities."""
 		a, b = self.encode(batch)
+		if self.head_architecture == EXPT:
+			return F.log_softmax(self.classifier(a, b), dim=-1)
 		return ABSwapAverager.log_probabilities(self.classifier, a, b)
 
 	@staticmethod

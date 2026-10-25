@@ -18,7 +18,8 @@ from torch.optim import AdamW
 
 from ...config import GPUConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
-from ..common import CacheStorage, PairwiseClassificationHead
+from ..common import CacheStorage
+from .heads import PAIRWISE_MLP, create_classification_head
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,7 @@ class HeadWarmupCache:
 		*,
 		quantize_training: bool = False,
 		model_label: str = "LoRA",
+		head_architecture: str = PAIRWISE_MLP,
 	) -> None:
 		self.root = root
 		self._config = config
@@ -63,6 +65,7 @@ class HeadWarmupCache:
 		self._device = device
 		self._quantize_training = quantize_training
 		self._model_label = model_label
+		self._head_architecture = head_architecture
 
 	def path(self, entry: WarmupCacheEntry) -> Path:
 		"""Retain the real source path when a cache is shared across profiles."""
@@ -101,6 +104,8 @@ class HeadWarmupCache:
 		# Preserve enabled schema-v5 cache paths; disabled heads have a separate key.
 		if not config.use_abs_diff:
 			metadata["use_abs_diff"] = False
+		if self._head_architecture != PAIRWISE_MLP:
+			metadata["head_architecture"] = self._head_architecture
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))
 		if refresh:
 			return entry
@@ -221,11 +226,13 @@ class HeadWarmupCache:
 			raise ValueError("Invalid warmup precision.")
 		# Meta construction checks the shared architecture without allocating weights or drawing RNG.
 		with torch.device("meta"):
-			expected = PairwiseClassificationHead(
+			expected = create_classification_head(
 				metadata["backbone_hidden_size"],
 				self._config.hidden_size,
 				self._config.dropout,
+				compute_dtype=torch.float32,
 				use_abs_diff=self._config.use_abs_diff,
+				head_architecture=self._head_architecture,
 			).state_dict()
 		head = payload["head_state_dict"]
 		moments = payload["optimizer_state"]

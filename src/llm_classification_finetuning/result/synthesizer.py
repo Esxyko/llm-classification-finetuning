@@ -16,7 +16,7 @@ from .publisher import ResultPublisher
 
 @dataclass(frozen=True, slots=True)
 class ReducedResults:
-	"""Canonical records and their two-vote confusion matrix."""
+	"""Canonical records and the confusion matrix for their prediction policy."""
 
 	records: pd.DataFrame
 	confusion_matrix: np.ndarray
@@ -36,7 +36,7 @@ class ResultSynthesisResult:
 
 
 class AugmentationReducer:
-	"""Reduce orientation pairs into canonical source records."""
+	"""Reduce original predictions or orientation pairs into source records."""
 
 	PROBABILITY_COLUMNS = (
 		"winner_model_a",
@@ -45,6 +45,7 @@ class AugmentationReducer:
 	)
 	SWAPPED_PROBABILITY_ORDER = (1, 0, 2)
 	AVERAGED_AGGREGATION = "ab_swap_average"
+	ORIGINAL_ONLY_AGGREGATION = "original_only"
 
 	def reduce(
 		self,
@@ -57,6 +58,16 @@ class AugmentationReducer:
 		swapped = predictions.loc[predictions["is_swapped"]].copy()
 		if original.empty:
 			raise ResultSynthesisError("The processed data contains no source records.")
+		expected = original["label"].to_numpy(dtype=np.int64)
+		original_probabilities = original.loc[
+			:, list(self.PROBABILITY_COLUMNS)
+		].to_numpy(dtype=np.float64)
+		if prediction_aggregation == self.ORIGINAL_ONLY_AGGREGATION:
+			if not swapped.empty or original["id"].duplicated().any():
+				raise ResultSynthesisError(
+					"Original-only results require one original prediction per ID."
+				)
+			return self._reduce_canonical(original, expected, original_probabilities)
 		if original["id"].duplicated().any() or swapped["id"].duplicated().any():
 			raise ResultSynthesisError(
 				"Each ID must have exactly one original and one swapped prediction."
@@ -73,7 +84,6 @@ class AugmentationReducer:
 			)
 		swapped = swapped.loc[original_ids]
 
-		expected = original["label"].to_numpy(dtype=np.int64)
 		swapped_expected = swapped["label"].to_numpy(dtype=np.int64)
 		translated_swapped_expected = np.take(
 			np.array((1, 0, 2), dtype=np.int64),
@@ -84,9 +94,6 @@ class AugmentationReducer:
 				"Swapped labels do not translate back to their source labels."
 			)
 
-		original_probabilities = original.loc[
-			:, list(self.PROBABILITY_COLUMNS)
-		].to_numpy(dtype=np.float64)
 		swapped_probabilities = swapped.loc[:, list(self.PROBABILITY_COLUMNS)].to_numpy(
 			dtype=np.float64
 		)
@@ -104,27 +111,7 @@ class AugmentationReducer:
 				raise ResultSynthesisError(
 					"Averaged original and swapped predictions do not match."
 				)
-			actual = np.argmax(original_probabilities, axis=1)
-			incorrects = (actual != expected).astype(np.int8)
-			row_indices = np.arange(len(expected))
-			expected_probability = np.clip(
-				original_probabilities[row_indices, expected],
-				np.finfo(np.float64).tiny,
-				1.0,
-			)
-			records = pd.DataFrame(
-				{
-					"id": original["id"].to_numpy(),
-					"split": original["split"].to_numpy(),
-					"expected_labels": expected.astype(np.int8),
-					"actual_labels": [str(label) for label in actual],
-					"incorrects": incorrects,
-					"contributed_loss": -np.log(expected_probability),
-				}
-			)
-			confusion = np.zeros((3, 3), dtype=np.int64)
-			np.add.at(confusion, (expected, actual), 1)
-			return ReducedResults(records=records, confusion_matrix=confusion)
+			return self._reduce_canonical(original, expected, original_probabilities)
 		if prediction_aggregation is not None:
 			raise ResultSynthesisError(
 				f"Unknown prediction aggregation: {prediction_aggregation}."
@@ -180,6 +167,31 @@ class AugmentationReducer:
 		)
 		return ReducedResults(records=records, confusion_matrix=confusion)
 
+	@staticmethod
+	def _reduce_canonical(
+		original: pd.DataFrame, expected: np.ndarray, probabilities: np.ndarray
+	) -> ReducedResults:
+		"""Count one distribution and one confusion-matrix vote per source ID."""
+		actual = np.argmax(probabilities, axis=1)
+		expected_probability = np.clip(
+			probabilities[np.arange(len(expected)), expected],
+			np.finfo(np.float64).tiny,
+			1.0,
+		)
+		records = pd.DataFrame(
+			{
+				"id": original["id"].to_numpy(),
+				"split": original["split"].to_numpy(),
+				"expected_labels": expected.astype(np.int8),
+				"actual_labels": [str(label) for label in actual],
+				"incorrects": (actual != expected).astype(np.int8),
+				"contributed_loss": -np.log(expected_probability),
+			}
+		)
+		confusion = np.zeros((3, 3), dtype=np.int64)
+		np.add.at(confusion, (expected, actual), 1)
+		return ReducedResults(records=records, confusion_matrix=confusion)
+
 
 class ResultSynthesizer:
 	"""Coordinate result discovery, validation, reduction, and publishing."""
@@ -215,6 +227,10 @@ class ResultSynthesizer:
 			source_dir = self._select_source_dir(subfolder)
 			prediction_aggregation = self._read_prediction_aggregation(source_dir)
 			reference = self._read_reference()
+			if prediction_aggregation == AugmentationReducer.ORIGINAL_ONLY_AGGREGATION:
+				reference = reference.loc[~reference["is_swapped"]].reset_index(
+					drop=True
+				)
 			predictions = self._read_validation_predictions(source_dir, reference)
 			reduced = self._reducer.reduce(
 				predictions,

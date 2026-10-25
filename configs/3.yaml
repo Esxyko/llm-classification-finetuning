@@ -22,7 +22,7 @@ warmup:
   use_abs_diff: true
   model_name: Qwen/Qwen3-4B
   max_length: 13514
-  hidden_size: 512
+  hidden_size: 256
   dropout: 0.1
   warmup_epochs: 1
   extraction_budget: 524288
@@ -48,7 +48,7 @@ qwen3_4b:
   dataloader_workers: 0
 
 qwen3_4b_lora:
-  A/B_swap: aug
+  A/B_swap: none
   use_abs_diff: true
   model_name: Qwen/Qwen3-4B
   max_length: 13514
@@ -58,10 +58,10 @@ qwen3_4b_lora:
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 1024
   epochs: 1
-  extraction_budget: 393216
+  extraction_budget: 262144
   learning_rate: 0.0001
   head_learning_rate: 0.0001
-  hidden_size: 512
+  hidden_size: 256
   weight_decay: 0.01
   dropout: 0.1
   max_grad_norm: 1.0

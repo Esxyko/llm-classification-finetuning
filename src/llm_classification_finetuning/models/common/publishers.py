@@ -51,14 +51,17 @@ class ModelResultPublisher:
 		divisor = 2 if prediction_aggregation == "ab_swap_average" else 1
 		if not len(result.ids) or len(result.ids) % divisor:
 			raise ModelExecutionError(
-				"Validation predictions must contain complete, nonempty orientation pairs."
+				"Validation predictions must be nonempty, with complete orientation pairs when averaging."
 			)
 		prediction_count = len(result.ids) // divisor
 		metrics = {
 			"run_name": run_name,
 			"generated_at": generated_at.isoformat(timespec="seconds"),
 			"model_name": model_config.model_name,
-			"embedding_combination": PairwiseClassificationHead.embedding_combination(
+			"head_architecture": profile.head_architecture,
+			"embedding_combination": "sum_signed_diff_abs_diff"
+			if profile.head_architecture == "swap_equivariant_reparam_v1"
+			else PairwiseClassificationHead.embedding_combination(
 				model_config.use_abs_diff
 				if isinstance(model_config, LoRAModelConfig)
 				else True
@@ -175,6 +178,9 @@ class ModelResultPublisher:
 			sections["warmup"] = asdict(config.warmup)
 			for key in (*LORA_WARMUP_FIELDS, "warmup_extraction_budget"):
 				model_section.pop(key)
+			if model_config.ab_swap == "none":
+				model_section.pop("ab_swap")
+				sections["warmup"].pop("ab_swap")
 		sections[profile.config_key] = model_section
 		return {
 			section_name: {

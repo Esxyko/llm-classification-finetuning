@@ -15,6 +15,7 @@ from torch import Tensor
 
 from ...config import GPUConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
+from .heads import PAIRWISE_MLP
 from .model import LoRAQwenClassifier
 
 
@@ -39,6 +40,7 @@ class LoRACheckpointCompatibility:
 	truncation_side: str = "right"
 	bias: str = "none"
 	training_quantization: str = "none"
+	head_architecture: str = PAIRWISE_MLP
 
 	@classmethod
 	def from_config(
@@ -47,6 +49,7 @@ class LoRACheckpointCompatibility:
 		serializer_version: str,
 		*,
 		quantize_training: bool = False,
+		head_architecture: str = PAIRWISE_MLP,
 	) -> LoRACheckpointCompatibility:
 		return cls(
 			model_name=config.model_name,
@@ -61,6 +64,7 @@ class LoRACheckpointCompatibility:
 			ab_swap=config.ab_swap,
 			use_abs_diff=config.use_abs_diff,
 			training_quantization="bnb-nf4-double" if quantize_training else "none",
+			head_architecture=head_architecture,
 		)
 
 
@@ -151,6 +155,7 @@ class LoRACheckpointStore:
 			metadata = {
 				"training_quantization": "none",
 				"use_abs_diff": True,
+				"head_architecture": PAIRWISE_MLP,
 				**checkpoint["metadata"],
 			}
 			mismatches = [

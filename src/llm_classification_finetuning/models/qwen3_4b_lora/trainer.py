@@ -44,6 +44,7 @@ from .data import (
 	PairwiseFeatureStore,
 )
 from .extractor import LoRAEmbeddingExtractor
+from .heads import PAIRWISE_MLP
 from .model import LoRAQwenClassifier
 from .warmup_cache import HeadWarmupCache, WarmupCacheContext, WarmupCacheEntry
 
@@ -92,6 +93,7 @@ class LoRATrainer:
 			else (profile.config_key if profile else "qwen3_4b_lora")
 		)
 		self._quantize_training = profile.quantize_training if profile else False
+		self._head_architecture = profile.head_architecture if profile else PAIRWISE_MLP
 		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
 		artifact_stem = profile.artifact_stem if profile else "qwen3_4b_lora"
 		self._warmup_cache = HeadWarmupCache(
@@ -101,6 +103,7 @@ class LoRATrainer:
 			device,
 			quantize_training=self._quantize_training,
 			model_label=self._model_label,
+			head_architecture=self._head_architecture,
 		)
 		self._lora_warmup_cache = (
 			HeadWarmupCache(
@@ -108,6 +111,7 @@ class LoRATrainer:
 				config,
 				gpu,
 				device,
+				head_architecture=self._head_architecture,
 			)
 			if self._quantize_training
 			else None
@@ -138,6 +142,7 @@ class LoRATrainer:
 				else quantize_backbone
 			),
 			warmup_only=self._warmup_only,
+			head_architecture=self._head_architecture,
 		)
 		self._base_revision = model.base_revision
 		self._model_initialized = True
@@ -217,13 +222,17 @@ class LoRATrainer:
 				raise ModelExecutionError(
 					"The holdout run did not produce validation predictions."
 				)
-			ids = validation["id"].to_numpy(dtype=np.int64, copy=True)
-			probabilities = ABSwapAverager.align_rows(
-				ids,
-				validation["is_swapped"].to_numpy(dtype=np.bool_),
-				originals["id"].to_numpy(dtype=np.int64),
-				history.validation_probabilities,
-			)
+			if self._config.ab_swap == "none":
+				ids = originals["id"].to_numpy(dtype=np.int64, copy=True)
+				probabilities = history.validation_probabilities
+			else:
+				ids = validation["id"].to_numpy(dtype=np.int64, copy=True)
+				probabilities = ABSwapAverager.align_rows(
+					ids,
+					validation["is_swapped"].to_numpy(dtype=np.bool_),
+					originals["id"].to_numpy(dtype=np.int64),
+					history.validation_probabilities,
+				)
 		finally:
 			del model
 			gc.collect()
@@ -719,9 +728,14 @@ class LoRATrainer:
 		start = 0
 		for features, labels in feature_loader:
 			features = features.to(self._device, non_blocking=True)
-			log_probabilities = ABSwapAverager.log_probabilities(
-				model.classifier, features[:, 0], features[:, 1]
-			)
+			if self._config.ab_swap == "none":
+				log_probabilities = F.log_softmax(
+					model.classifier(features[:, 0], features[:, 1]), dim=-1
+				)
+			else:
+				log_probabilities = ABSwapAverager.log_probabilities(
+					model.classifier, features[:, 0], features[:, 1]
+				)
 			finite_probabilities.logical_and_(torch.isfinite(log_probabilities).all())
 			if "label" in reference:
 				labels = labels.to(self._device, non_blocking=True)

@@ -129,7 +129,11 @@ class LoRAModelPipeline:
 				validation_result,
 				self._config,
 				self._profile,
-				prediction_aggregation="ab_swap_average",
+				prediction_aggregation=(
+					"original_only"
+					if self._model_config.ab_swap == "none"
+					else "ab_swap_average"
+				),
 			)
 			return ModelRunResult(output_dir, predictions, validation_loss)
 		except torch.cuda.OutOfMemoryError as error:
@@ -200,4 +204,5 @@ class LoRAModelPipeline:
 			self._model_config,
 			serializer_version,
 			quantize_training=self._profile.quantize_training,
+			head_architecture=self._profile.head_architecture,
 		)

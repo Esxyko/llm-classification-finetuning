@@ -252,6 +252,14 @@ actual training data, rather than the holdout/build mode. Checkpoint tags do not
 affect this cache. Submission inference
 does not use it.
 
+The experimental `qwen3-4b-lora-EXPT` profile stores its built-in warmup in
+`qwen3_4b_lora_EXPT_warmup/<key>.pt`. Its identity includes
+`head_architecture: swap_equivariant_reparam_v1` and the fixed original-only
+training policy. Meta-device validation constructs the matching head and
+checks its three reparameterized weight tensors and named optimizer states.
+Standard MLP caches retain their existing keys and cannot be reused by EXPT.
+The standalone warmup command continues to build the standard MLP cache.
+
 The data key hashes only the sorted original training ID set. For normal model
 builds this is the full original ID set; for holdout runs and standalone warmup
 it is the saved training partition.

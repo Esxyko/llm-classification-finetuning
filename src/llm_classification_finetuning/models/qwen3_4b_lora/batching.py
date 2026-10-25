@@ -655,7 +655,7 @@ class LoRATrainingBatchRepository:
 		reference = self.data.reference
 		if not full_data:
 			reference = reference.loc[reference["split"].eq("train")]
-		if self._config.ab_swap == "inf":
+		if self._config.ab_swap in {"inf", "none"}:
 			reference = reference.loc[~reference["is_swapped"]]
 		reference = reference.reset_index(drop=True).copy()
 		if reference.empty or reference.duplicated(["id", "is_swapped"]).any():

@@ -51,6 +51,7 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `warmup` | Shared warmup epochs, extraction token budget, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
 | `qwen3_4b_lora` | Live LoRA training, per-branch sequence length, training batches, `extraction_budget` for joint-validation/submission backbone extraction, `head_inference_batch_size` for validation/submission heads, optional `gradient_checkpointing_threshold` for initial batch packing and automatic checkpointing, optional `gradient_checkpointing_budget` for merging checkpointed singletons within each update, accumulation, adapter and classifier hyperparameters; `A/B_swap` training mode (`aug` or `inf`) |
+| `qwen3_4b_lora_EXPT` | The same LoRA settings with a fixed equivariant head, original-only warmup/training/inference, and no `A/B_swap` option |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -73,7 +74,7 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `warmup.A/B_swap` | `aug` |
-| `qwen3_4b_lora.use_abs_diff` / `warmup.use_abs_diff` | `true` |
+| `qwen3_4b_lora.use_abs_diff` / `qwen3_4b_lora_EXPT.use_abs_diff` / `warmup.use_abs_diff` | `true` (EXPT requires `true`) |
 | `qwen3_4b_lora.gradient_checkpointing_threshold` | `0` |
 | `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
 
@@ -97,9 +98,26 @@ Standalone `model warmup --build` uses `warmup.use_abs_diff`, also defaulting to
 uses its own switch during its built-in warmup. The frozen `qwen3_4b` profile
 continues to use `[A, B, |A - B|]`.
 
+## Experimental LoRA model
+
+Add `qwen3_4b_lora_EXPT` to select `model qwen3-4b-lora-EXPT`. Its required
+hyperparameters match the standard LoRA section, except it rejects `A/B_swap`.
+The root preset copies the standard LoRA values, including `hidden_size: 512`.
+`use_abs_diff` may be omitted or set to `true`; `false` is rejected because the
+head always includes `C = |A - B|`.
+
+Warmup, holdout training, and full-data builds select only original rows from
+the existing processed data. Validation and submission execute the head once
+per pair. The shared `warmup` section remains required for its three optimization
+fields and extraction budget; its `A/B_swap` and `use_abs_diff` values do not
+control EXPT. EXPT snapshots omit `A/B_swap` from both sections.
+
+EXPT uses its own checkpoint and warmup-cache namespaces. The existing
+`configs/` presets and batch scripts keep their current model selection.
+
 ## Standalone warmup
 
-The `warmup` section is required when `qwen3_4b_lora` is present. LoRA reads
+The `warmup` section is required when `qwen3_4b_lora` or `qwen3_4b_lora_EXPT` is present. LoRA reads
 `warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
 this section; these three keys are rejected inside `qwen3_4b_lora`. Move their
 existing values into `warmup` when migrating an older configuration.

@@ -8,12 +8,16 @@ adapters. See [LoRA training](lora.md) for its objectives and settings.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 
-Both profiles use the same pairwise MLP head. By default, it concatenates the
+The frozen and standard LoRA profiles use the same pairwise MLP head. By default, it concatenates the
 pooled branch embeddings as `[A, B, |A - B|]`, where the absolute difference is
 elementwise and the head input has width `3H` for backbone hidden size `H`.
 LoRA can set `qwen3_4b_lora.use_abs_diff: false` to use `[A, B]` with a `2H` input
 throughout warmup, training, validation, and submission. Standalone warmup uses
 `warmup.use_abs_diff`; the frozen profile keeps the `3H` input.
+
+The `qwen3-4b-lora-EXPT` profile uses a [swap-equivariant head](lora.md#experimental-equivariant-head)
+with shared class readout. It trains and predicts only original rows, without
+A/B augmentation or orientation averaging.
 
 ## Frozen-model holdout validation
 
@@ -27,7 +31,7 @@ The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
 `validation.csv`, `metrics.json`, and a `config.yaml` containing the shared and
 current model sections to a timestamped model-named results directory.
-Both active profiles consume the same saved 80/20 split and initialize one model
+All active profiles consume the same saved 80/20 split and initialize one model
 per default profile run. See [validation reports and timing metrics](reports.md)
 for their interpretation.
 

@@ -35,6 +35,41 @@ starts with fresh adapters and initializes the classifier from completed
 compatible warmup when available. Holdout validation saves warmup cache states,
 but no production adapter checkpoints.
 
+## Experimental equivariant head
+
+Use the `qwen3_4b_lora_EXPT` section and these commands for the experimental model:
+
+```shell
+uv run model qwen3-4b-lora-EXPT
+uv run model qwen3-4b-lora-EXPT --build
+uv run model qwen3-4b-lora-EXPT --submit
+```
+
+For pooled features `A,B` of width `D` and configured head width `h`, the head
+forms `S=A+B`, `T=A-B`, and `C=abs(T)`. One bias-free `Linear(2D,2h)` maps
+`[S,C]` to `u,w`; one bias-free `Linear(D,h)` maps `T` to `v`. It stacks
+`u+v,u-v,w` into `[batch,3,h]`, applies one exact GELU, then dropout and a
+shared bias-free `Linear(h,1)`. Logits retain the A-win, B-win, tie order.
+The fused reparameterized weights are trained and saved directly with standard
+PyTorch initialization. No original L/M/N matrices are constructed.
+
+Dropout generates one mask for the first two classes and an independent mask
+for ties. Under the same mask, swapping the features swaps the first two scores
+and leaves the tie score unchanged; evaluation disables dropout. Parameters
+remain FP32, BF16 head autocast follows the existing precision policy, and the
+head returns FP32 logits without softmax.
+
+This profile accepts no `A/B_swap` setting. Its built-in warmup and joint
+training use only original samples and one cross-entropy prediction per pair;
+validation and submission also run the head once, then convert logits to
+probabilities. The absolute-difference feature is mandatory. Each validation
+ID has one CSV row with `prediction_aggregation: original_only`; see
+[reports](reports.md). All other LoRA batching, extraction, and GPU behavior
+is shared. Checkpoints use `models/qwen3_4b_lora_EXPT/adapter[_TAG].pt`, and
+warmup caches use `qwen3_4b_lora_EXPT_warmup` beside the processed data.
+The standalone `model warmup --build` command builds the standard MLP cache;
+EXPT builds its own warmup during validation or a full-data build.
+
 ## Hardware and input limits
 
 Training uses one NVIDIA CUDA GPU with sufficient memory for the selected

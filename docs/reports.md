@@ -11,19 +11,26 @@ succeeds. `config.yaml` records the effective `data`, `validation`, `gpu`, and
 current model sections, including default values and resolved data paths. LoRA
 snapshots also include the required `warmup` section, with the three warmup
 optimization fields and internal `warmup_extraction_budget` omitted from
-`qwen3_4b_lora`. Each section retains its own `extraction_budget`.
+the current LoRA model section. Each section retains its own `extraction_budget`.
+EXPT snapshots omit `A/B_swap` from both the model and warmup sections because
+EXPT always uses original rows and a single prediction per ID.
 Other model sections are omitted; frozen-model snapshots also omit `warmup`.
 The snapshot uses the same YAML field names as the input configuration and can
 be passed to `--config`.
 `metrics.json` does not contain a `config` field.
 Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual
-A/B-selected `training_rows`. No fold count or cross-fold average is recorded.
+A/B-selected `training_rows`, or original-only `training_rows` for EXPT.
+No fold count or cross-fold average is recorded.
 
 New runs record `embedding_combination` in `metrics.json`:
 `"concat_a_b_abs_diff"` identifies `[A, B, |A - B|]` with an elementwise absolute
 difference, while `"concat_a_b"` identifies `[A, B]` when LoRA sets
 `use_abs_diff: false`. Configuration snapshots include the effective boolean.
+EXPT records `"sum_signed_diff_abs_diff"` for its sum, signed difference, and
+absolute difference features. New runs also record `head_architecture`:
+`"pairwise_mlp"` for the existing classifiers and
+`"swap_equivariant_reparam_v1"` for EXPT's shared-readout head.
 This combination marker is kept in metrics only; the
 prediction CSVs, configuration snapshot, terminal summary, and generated reports
 retain their existing formats. Historical results are left unchanged.
@@ -54,7 +61,10 @@ id,winner_model_a,winner_model_b,winner_tie
 ```
 
 Rows follow the exact ID order of the processed Parquet's `split=validation`
-rows, including original and swapped rows. Training rows do not enter reports.
+rows, including original and swapped rows for existing models. EXPT writes
+only the original validation rows, preserving their order, with one row per ID.
+The processed artifact is still fully validated before selecting those rows.
+Training rows do not enter reports.
 IDs must be finite integers; probabilities must be finite, lie in `[0, 1]`, and
 sum to one within an absolute
 tolerance of `1e-6`.
@@ -81,7 +91,11 @@ Aggregation is selected by `metrics.json`, rather than the model's name:
   one confusion-matrix count, and the log loss of its averaged distribution.
   Original and A/B-restored swapped probabilities must already match within
   `1e-6`; the report command validates them and does not average distinct votes.
-  Both active models publish this marker.
+  The frozen model and standard LoRA model publish this marker.
+- `prediction_aggregation: "original_only"`: EXPT supplies one original
+  prediction per ID. Each ID contributes one actual label, an `incorrects`
+  value of 0 or 1, one log loss, and one confusion-matrix count. Swapped
+  predictions are neither required nor generated.
 - Missing or null `prediction_aggregation` in a valid holdout `metrics.json`:
   Each ID contributes two orientation votes to the confusion matrix.
   `actual_labels` contains both labels, `incorrects` ranges from 0 to 2, and
@@ -92,7 +106,7 @@ its CSVs so report synthesis uses the intended policy.
 
 ## Timing metrics
 
-For both frozen and LoRA models (including head warmup), `metrics.json` records
+For frozen and LoRA models (including EXPT and head warmup), `metrics.json` records
 `training_time`, `validation_time`, and `total_time` as `HH:MM:SS` strings rounded
 to whole seconds for every executed epoch and run. Hours can exceed 24.
 Training and validation times measure each phase's elapsed wall time after
@@ -118,7 +132,7 @@ The command also prints each model's duration at completion.
 Holdout validation automatically monitors the configured `gpu.device` for each
 model's complete run. Monitoring begins before pipeline initialization and covers
 model loading, embedding preparation, all executed epochs (including LoRA head
-warmup), training, validation, cleanup, and result publication. Both active models,
+warmup), training, validation, cleanup, and result publication. All active models,
 `model ALL`, and `scripts/validate_all_configs.py` use the same monitoring path.
 Builds and submissions do not enable this monitoring.
 
