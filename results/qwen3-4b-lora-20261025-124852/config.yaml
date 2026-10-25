@@ -1,0 +1,64 @@
+data:
+  competition: llm-classification-finetuning
+  raw_dir: /root/llm-classification-finetuning/data/raw
+  processed_path: /root/llm-classification-finetuning/data/processed/train_validation.parquet
+validation:
+  validation_fraction: 0.2
+  random_state: 42
+  tokenizer_name: Qwen/Qwen3-4B
+  tokenizer_revision: 1cfa9a7208912126459214e8b04321603b3df60c
+  max_token_deviation: 0.005
+gpu:
+  device: cuda:0
+  precision: bf16
+  attention_implementation: sdpa
+  allow_tf32: false
+  submit_devices:
+  - cuda:0
+  - cuda:1
+warmup:
+  model_name: Qwen/Qwen3-4B
+  max_length: 13514
+  hidden_size: 512
+  dropout: 0.1
+  weight_decay: 0.01
+  warmup_epochs: 1
+  extraction_budget: 524288
+  warmup_training_batch_size: 2048
+  warmup_learning_rate: 0.001
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+  A/B_swap: aug
+  use_abs_diff: true
+qwen3_4b_lora:
+  model_name: Qwen/Qwen3-4B
+  max_length: 13514
+  hidden_size: 512
+  dropout: 0.1
+  weight_decay: 0.01
+  extraction_budget: 393216
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+  A/B_swap: aug
+  use_abs_diff: true
+  training_batch_size: 1
+  head_inference_batch_size: 4096
+  gradient_accumulation_steps: 1024
+  epochs: 1
+  learning_rate: 0.0001
+  head_learning_rate: 5.0e-05
+  lora_rank: 32
+  lora_alpha: 64
+  lora_dropout: 0.05
+  lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+  gradient_checkpointing_threshold: 10752
+  gradient_checkpointing_budget: 131072
