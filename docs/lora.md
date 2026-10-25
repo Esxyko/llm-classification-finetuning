@@ -83,6 +83,11 @@ BF16 autocast for every head forward pass, including warmup and original-only
 inference, then returns FP32 logits for loss calculation and probabilities.
 Trainable parameters, gradients, and AdamW moment tensors remain
 FP32. RMSNorm retains FP32 variance calculation with BF16 weights and outputs.
+PEFT's [`disable_input_dtype_casting`](https://github.com/huggingface/peft/blob/main/src/peft/helpers.py)
+disables adapter input upcasts during BF16 backbone encoding and gradient-checkpoint
+recomputation. Autocast selects matrix-multiplication precision without the redundant
+BF16-to-FP32-to-BF16 input conversion; adapter parameter promotion remains enabled
+to preserve FP32 parameters, gradients, and optimizer states.
 FP16 and FP32 modes retain FP32 pooled/CPU features and classifier computation.
 
 With `gpu.attention_implementation: sdpa`, LoRA permits only Flash, memory-efficient,

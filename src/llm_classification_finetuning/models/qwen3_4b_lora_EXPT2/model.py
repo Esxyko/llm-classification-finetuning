@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 
 import torch
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
+from peft.helpers import disable_input_dtype_casting
 from torch import Tensor, nn
 from torch.nn import functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
@@ -102,6 +104,7 @@ class LoRAQwenClassifier(nn.Module):
 					target_modules=list(config.lora_target_modules),
 					bias="none",
 				),
+				# Keep adapter parameters, their gradients, and AdamW moments in FP32.
 				autocast_adapter_dtype=True,
 			)
 		self._gradient_checkpointing_enabled = self.backbone.is_gradient_checkpointing
@@ -163,7 +166,7 @@ class LoRAQwenClassifier(nn.Module):
 		input_device = self.backbone.get_input_embeddings().weight.device
 		input_ids = branch.input_ids.to(input_device, non_blocking=True)
 		with (
-			self._attention_context(),
+			self._backbone_context(),
 			torch.autocast(
 				device_type="cuda",
 				dtype=self.dtype,
@@ -208,8 +211,21 @@ class LoRAQwenClassifier(nn.Module):
 			]
 		)
 
+	@contextmanager
+	def _backbone_context(self) -> Iterator[None]:
+		"""Let BF16 autocast handle adapter matmuls without upcasting their inputs."""
+		with (
+			self._attention_context(),
+			disable_input_dtype_casting(
+				self.backbone,
+				active=self.dtype == torch.bfloat16 and not self.warmup_only,
+			),
+		):
+			yield
+
 	def _checkpoint_contexts(
 		self,
 	) -> tuple[AbstractContextManager[object], AbstractContextManager[object]]:
-		"""Keep math disabled during checkpoint forward and backward recomputation."""
-		return self._attention_context(), self._attention_context()
+		"""Restore fused attention and the forward adapter dtype policy on recompute."""
+		# Checkpoint forwards inherit the outer backbone context; backward runs later.
+		return self._attention_context(), self._backbone_context()

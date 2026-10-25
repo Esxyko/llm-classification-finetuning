@@ -591,8 +591,11 @@ logic depend on a particular timestamped run.
   preserves legacy MLP state-dict keys and all heads use BF16 autocast
   for all training/inference calls, and returns FP32 logits for losses and
   orientation averaging. Trainable adapter/head parameters, gradients, and AdamW
-  moments remain FP32. FP16/FP32 modes retain FP32 features and head computation;
-  the frozen model's precision policy is unchanged.
+  moments remain FP32. PEFT's `disable_input_dtype_casting` scopes BF16 adapter
+  input handling during backbone encoding and checkpoint recomputation, letting
+  autocast choose matmul precision without BF16-to-FP32-to-BF16 input round trips.
+  Adapter parameter promotion stays enabled. FP16/FP32 modes retain FP32 features
+  and head computation; the frozen model's precision policy is unchanged.
 - LoRA checkpoint compatibility excludes hardware, compute precision, and batch
   settings; model name, classifier size/dropout, LoRA settings, input format,
   schema/class count, pooling, truncation side, and bias are checked. Context
