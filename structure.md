@@ -617,7 +617,7 @@ logic depend on a particular timestamped run.
   A/B-selected training rows and original validation IDs, counting merged warmup
   and joint updates and rounding batch counts separately. Training groups
   (including FP16-skipped updates) and validation batches count as one unit,
-  except warmup training groups and warmup validation batches count as half a
+  except warmup training groups and warmup validation batches count as a quarter of a
   unit each, including standalone warmup. Extraction, preparation, caches, and
   publication are excluded, and reused warmup contributes no work. Dynamic
   micro-batches

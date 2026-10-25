@@ -62,7 +62,7 @@ a build uses only `epochs * ceil(training_rows / training_batch_size)`.
 Training counts use both orientations for `aug` and originals for `inf`;
 validation counts use original IDs with probability averaging inside each batch.
 Short final batches are included. [LoRA progress](lora.md#training-progress)
-uses update groups; warmup updates and warmup validation batches count as half
+uses update groups; warmup updates and warmup validation batches count as a quarter of
 a unit each. Reused warmup contributes no historical work.
 
 The final epoch's validation completes the same counter. Extraction, preparation,

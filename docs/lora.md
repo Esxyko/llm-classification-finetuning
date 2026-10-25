@@ -257,7 +257,7 @@ joint validation, or submission separately.
 Head warmup, joint training, and the validation batches after every epoch share
 one progress counter across all executed epochs. Progress is printed at
 approximately 5% intervals, with the current stage identified in each line.
-Each warmup training update group and warmup validation batch counts as **0.5**
+Each warmup training update group and warmup validation batch counts as **0.25**
 work units; each joint-training update group and joint validation batch counts as
 **1**. With `warmup_epochs: 0` or reused warmup, the total contains only joint
 training and its validation for that holdout/build.
@@ -267,7 +267,7 @@ For a holdout run, let `W` be
 `J` be `max(1, training_rows // (training_batch_size * gradient_accumulation_steps))`
 for nonempty training data,
 and `V` be `ceil(validation_rows / head_inference_batch_size)` using original validation
-IDs. The run contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
+IDs. The run contributes `0.25 * warmup_epochs * (W + V) + epochs * (J + V)` work
 units when warmup runs, or `epochs * (J + V)` when warmup is reused.
 The count covers one fixed split; a build uses all selected training rows
 with `V = 0`. Training counts respect `A/B_swap`,

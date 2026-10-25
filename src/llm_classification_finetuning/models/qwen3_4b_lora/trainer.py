@@ -61,7 +61,7 @@ class LoRATrainingHistory:
 class LoRATrainer:
 	"""Run adapter optimization on one configured CUDA device."""
 
-	WARMUP_PROGRESS_WEIGHT = 0.5
+	WARMUP_PROGRESS_WEIGHT = 0.25
 
 	def __init__(
 		self,
@@ -449,7 +449,7 @@ class LoRATrainer:
 		validation_rows: int = 0,
 		warmup_required: bool = True,
 	) -> TrainingProgress:
-		"""Count one run's training and validation, weighting warmup work by half."""
+		"""Count one run's training and validation, weighting warmup work by a quarter."""
 		warmup_training_steps = OptimizerGroupLayout(
 			training_rows, self._config.warmup_training_batch_size
 		).update_count
