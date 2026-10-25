@@ -21,6 +21,7 @@ from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import (
 	ABSwapAverager,
+	ClassificationLoss,
 	EpochMetrics,
 	ExtractionBatchSampler,
 	PairwiseText,
@@ -82,6 +83,9 @@ class LoRATrainer:
 		if warmup_only and profile is not None and profile.quantize_training:
 			raise ValueError("Standalone warmup cannot use a quantized profile.")
 		self._config = config
+		self._criterion = ClassificationLoss(
+			label_smoothing=config.label_smoothing, reduction="sum"
+		)
 		self._warmup_only = warmup_only
 		self._gpu = gpu
 		self._device = device
@@ -568,10 +572,12 @@ class LoRATrainer:
 				log_probabilities = ABSwapAverager.log_probabilities(
 					model.classifier, *encodings
 				)
-				loss_sum = F.nll_loss(log_probabilities, labels, reduction="sum")
+				loss_sum = self._criterion.from_log_probabilities(
+					log_probabilities, labels
+				)
 			else:
 				logits = model.classifier(*encodings)
-				loss_sum = F.cross_entropy(logits, labels, reduction="sum")
+				loss_sum = self._criterion(logits, labels)
 			finite_losses.logical_and_(torch.isfinite(loss_sum.detach()))
 			scaler.scale(loss_sum / group_rows).backward()
 			loss_total.add_(loss_sum.detach())

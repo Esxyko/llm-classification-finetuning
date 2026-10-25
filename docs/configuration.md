@@ -74,6 +74,7 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
 | `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `warmup.A/B_swap` | `aug` |
+| `qwen3_4b.label_smoothing` / `qwen3_4b_lora.label_smoothing` / `warmup.label_smoothing` | `0.0` |
 | `qwen3_4b_lora.gradient_checkpointing_threshold` | `0` |
 | `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
 
@@ -82,6 +83,25 @@ All other fields in a present section are required, including `gpu.device`,
 and learning rate. Unknown keys are rejected. Numeric values described as
 presets in these guides refer to the
 root [`config.yaml`](../config.yaml); files in `configs/` can use different values.
+
+## Label smoothing
+
+Each model section and `warmup` accept optional `label_smoothing`, a finite
+number in `[0, 1]` defaulting to `0.0`. The root configuration and active presets
+set it explicitly to `0.0`, preserving the existing training objective.
+For three classes, smoothing replaces a one-hot target with
+`(1 - label_smoothing) * one_hot + label_smoothing / 3`.
+It applies to ordinary cross entropy and to the loss of averaged A/B
+probabilities in `A/B_swap: inf` mode. Validation and reporting continue to use
+unsmoothed log loss against the original labels.
+
+`qwen3_4b.label_smoothing` controls frozen-head training.
+`qwen3_4b_lora.label_smoothing` controls both head warmup and joint training for
+standard LoRA and EXPT. `warmup.label_smoothing` controls only standalone
+`model warmup --build`; align it with the LoRA value to share a warmup cache.
+Nonzero smoothing values enter the warmup-cache identity, while zero retains
+existing unsmoothed cache keys. Effective values are included in result
+configuration snapshots.
 
 ## Pairwise absolute difference
 
@@ -132,12 +152,12 @@ uv run model warmup --build --config config.yaml
 Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
 `warmup_epochs`, `extraction_budget`, `warmup_training_batch_size`,
 `warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
-`dataloader_workers`, and `A/B_swap`. All except `A/B_swap` are required;
-`A/B_swap` defaults to `aug`.
+`dataloader_workers`, `A/B_swap`, and `label_smoothing`. All except `A/B_swap`
+and `label_smoothing` are required; their defaults are `aug` and `0.0`.
 `warmup_epochs` must be nonnegative;
 `model warmup --build` requires it to be strictly positive. The other fields in
 this section configure standalone warmup; LoRA continues to use its own model,
-classifier, weight decay, clipping, seed, workers, and `A/B_swap`
+classifier, weight decay, clipping, seed, workers, `A/B_swap`, and `label_smoothing`
 settings.
 
 The root preset copies the LoRA warmup settings: Qwen3-4B, `max_length: 13514`,

@@ -277,7 +277,9 @@ Other keys identify the model and exact Hub revision or local weight/configurati
 content, backbone/head dimensions, tokenizer content,
 serialization version, quantization mode, head dropout, A/B objective, warmup epochs/training batch
 size/learning rate, effective seed, weight decay, gradient clipping, and cache
-schema. Local model paths are excluded when weight/configuration contents
+schema. Nonzero `label_smoothing` also enters the key; zero retains existing
+unsmoothed cache identities. Standalone warmup and LoRA must use the same
+smoothing value to share a cache. Local model paths are excluded when weight/configuration contents
 match. Compute precision, attention implementation, TF32, warmup extraction
 token budget, and all LoRA rank/alpha/dropout/target-module settings are excluded,
 as are joint-training learning rates, epoch count, batch size, accumulation,

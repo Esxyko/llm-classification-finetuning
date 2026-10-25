@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +71,7 @@ class ModelConfig:
 	random_state: int
 	dataloader_workers: int
 	ab_swap: str
+	label_smoothing: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +91,7 @@ class WarmupModelConfig:
 	random_state: int
 	dataloader_workers: int
 	ab_swap: str
+	label_smoothing: float = field(default=0.0, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +366,7 @@ def _load_warmup_fields(
 		ab_swap=_require_choice(
 			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
 		),
+		label_smoothing=_load_label_smoothing(section, section_name),
 	)
 
 
@@ -471,6 +474,7 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
 		"random_state",
 		"dataloader_workers",
 		"A/B_swap",
+		"label_smoothing",
 	}
 	_reject_unknown_keys(section, allowed_keys, section_name)
 
@@ -519,7 +523,16 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
 		ab_swap=_require_choice(
 			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
 		),
+		label_smoothing=_load_label_smoothing(section, section_name),
 	)
+
+
+def _load_label_smoothing(section: Mapping[str, Any], section_name: str) -> float:
+	field_name = f"{section_name}.label_smoothing"
+	value = _require_float(section.get("label_smoothing", 0.0), field_name)
+	if not 0.0 <= value <= 1.0:
+		raise ConfigurationError(f"{field_name} must be in [0, 1].")
+	return value
 
 
 def _require_mapping(value: Any, field_name: str) -> Mapping[str, Any]:

@@ -101,6 +101,9 @@ class HeadWarmupCache:
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
+		# Preserve existing unsmoothed cache identities while isolating smoothed warmup.
+		if config.label_smoothing != 0.0:
+			metadata["label_smoothing"] = config.label_smoothing
 		if self._head_architecture != PAIRWISE_MLP:
 			metadata["head_architecture"] = self._head_architecture
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))

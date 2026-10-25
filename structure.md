@@ -256,6 +256,10 @@ and print summaries. Business logic belongs below the CLI layer.
       for metrics.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed split rows.
+    - `loss.py`: Shares uniform label smoothing for cross entropy on logits and
+      A/B-averaged log probabilities, with mean or summed training reductions.
+      Zero smoothing preserves the existing objectives; validation remains
+      unsmoothed log loss.
     - `progress.py`: Counts weighted training update groups and validation batches,
       flushing two-line progress logs with elapsed/estimated total durations at
       five-percent milestones using CPU-only counters and a monotonic clock.
@@ -507,7 +511,8 @@ logic depend on a particular timestamped run.
   exact Hub revision or local weight/configuration contents, tokenizer and
   serialization identities, backbone/head dimensions, head dropout,
   quantization, A/B objective, warmup epochs/training batch size/learning rate,
-  effective seed, weight decay, gradient clipping, and cache schema. Compute
+  effective seed, weight decay, gradient clipping, nonzero label smoothing,
+  and cache schema. Zero smoothing retains existing cache keys. Compute
   precision, attention/TF32, extraction token budget, all LoRA initialization
   settings, local model paths, and joint learning rates/epochs/batching/
   accumulation/token budget are excluded. Schema v5 preserves existing `3H`

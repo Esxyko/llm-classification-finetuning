@@ -23,6 +23,7 @@ from .data import (
 from .extraction_batching import ExtractionBatchSampler
 from .hardware import GPUEnvironment, GPUMemoryMonitor, GPUMemoryPeak
 from .inputs import TestInputLoader, TrainingInputLoader
+from .loss import ClassificationLoss
 from .model import PairwiseClassificationHead, PairwiseQwenClassifier
 from .orientation import ABSwapAverager
 from .pipeline import ModelPipeline
@@ -36,6 +37,7 @@ __all__ = (
 	"CacheCorruptionError",
 	"CacheFileSession",
 	"CacheStorage",
+	"ClassificationLoss",
 	"ConversationSerializer",
 	"EpochMetrics",
 	"ExtractionBatchSampler",

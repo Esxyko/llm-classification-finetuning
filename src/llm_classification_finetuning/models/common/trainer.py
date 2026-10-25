@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import torch
 from torch import Tensor
-from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
@@ -18,6 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from ...config import ModelConfig
 from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
+from .loss import ClassificationLoss
 from .model import PairwiseClassificationHead
 from .orientation import ABSwapAverager
 from .progress import TrainingProgress
@@ -126,7 +126,7 @@ class ModelTrainer:
 		self._config = config
 		self._device = device
 		self._config_key = config_key
-		self._criterion = CrossEntropyLoss()
+		self._criterion = ClassificationLoss(label_smoothing=config.label_smoothing)
 
 	def train(
 		self,
@@ -350,7 +350,7 @@ class ModelTrainer:
 			optimizer.zero_grad(set_to_none=True)
 			if self._config.ab_swap == "inf":
 				log_probabilities = ABSwapAverager.log_probabilities(head, h_a, h_b)
-				loss = F.nll_loss(log_probabilities, labels)
+				loss = self._criterion.from_log_probabilities(log_probabilities, labels)
 			else:
 				logits = head(h_a, h_b)
 				loss = self._criterion(logits, labels)
