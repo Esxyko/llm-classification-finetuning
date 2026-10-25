@@ -32,7 +32,7 @@ matching historical code version.
 Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual
 A/B-selected `training_rows` for the frozen profile, or original-only
-`training_rows` for EXPT2.
+`training_rows` for EXPT2 and SR2.
 No fold count or cross-fold average is recorded.
 
 New runs record `embedding_combination` in `metrics.json`:
@@ -76,7 +76,7 @@ id,winner_model_a,winner_model_b,winner_tie
 
 Rows follow the exact ID order of the processed Parquet's `split=validation`
 rows, including original and swapped rows for the frozen model.
-EXPT2 writes only the original validation rows, preserving their order,
+EXPT2 and SR2 write only the original validation rows, preserving their order,
 with one row per ID.
 The processed artifact is still fully validated before selecting those rows.
 Training rows do not enter reports.
@@ -107,7 +107,7 @@ Aggregation is selected by `metrics.json`, rather than the model's name:
   Original and A/B-restored swapped probabilities must already match within
   `1e-6`; the report command validates them and does not average distinct votes.
   The frozen model publishes this marker; historical standard LoRA also uses it.
-- `prediction_aggregation: "original_only"`: EXPT2 supplies one original
+- `prediction_aggregation: "original_only"`: EXPT2 and SR2 supply one original
   prediction per ID. Each ID contributes one actual label, an `incorrects`
   value of 0 or 1, one log loss, and one confusion-matrix count. Swapped
   predictions are neither required nor generated.
@@ -121,15 +121,16 @@ its CSVs so report synthesis uses the intended policy.
 
 ## Timing metrics
 
-For frozen and EXPT2 LoRA validation runs (including their head-warmup epochs),
+For frozen, EXPT2, and SR2 validation runs (including LoRA head-warmup epochs),
 `metrics.json` records `training_time`, `validation_time`, and `total_time`
 as `HH:MM:SS` strings rounded
 to whole seconds for every executed epoch and run. Hours can exceed 24.
 Training and validation times measure each phase's elapsed wall time after
 waiting for GPU work to finish. Run totals also include initialization,
 prediction alignment, and LoRA cleanup; epoch totals include epoch setup.
-LoRA's first warmup training time includes canonical feature extraction for
-both training and validation IDs. Each LoRA joint-validation time includes fresh
+LoRA warmup feature extraction for training and validation IDs finishes before
+epoch timing starts. It is excluded from epoch training and total times but
+included in complete-run runtime. Each LoRA joint-validation time includes fresh
 backbone extraction followed by head inference; warmup validation reuses the
 existing features. Reused warmup adds no old losses, epoch entries, or timings
 to the new run; joint epoch numbers retain their configured warmup offset.

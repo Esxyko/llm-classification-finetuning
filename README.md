@@ -9,7 +9,8 @@ generate reports or submissions for Kaggle's
 The project compares two model responses to a shared prompt and predicts an A
 win, a B win, or a tie. It supports:
 
-- One stratified 80/20 split grouped by canonical prompt, with A/B-swapped training rows.
+- One shared stratified split grouped by canonical prompt (80/20 in the root
+  preset), with original and A/B-swapped rows saved in both partitions.
 - A frozen Qwen3-4B backbone with a trainable pairwise classifier.
 - Qwen3-4B and Skywork-Reward-V2-Qwen3-4B LoRA adapters trained with the
   EXPT2 swap-equivariant classifier,

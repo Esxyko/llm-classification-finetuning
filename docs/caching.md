@@ -56,11 +56,12 @@ so on. Commit the manifest and all referenced volumes together. Git preserves
 volume bytes without line-ending conversion through `.gitattributes`.
 
 Reads reconstruct and validate multipart files on disk rather than loading an
-entire serialized file into memory. Each session uses a private `.cache-work/`
-directory beside the logical cache, removed when the session ends; lock files
-remain there for reuse. These working directories are ignored by Git and may
-temporarily contain files larger than the publication limit. Allow disk space
-for a reconstructed file and newly staged volumes when updating large caches.
+entire serialized file into memory. Each session uses a private subdirectory
+under `.cache-work/` beside the logical cache. The session subdirectory is removed
+on exit; `.cache-work/` and its lock files remain for reuse. These working
+directories are ignored by Git and may temporarily contain files larger than
+the publication limit. Allow disk space for a reconstructed file and newly
+staged volumes when updating large caches.
 
 Sessions hold a per-cache process lock on Windows and Linux, with a 30-second
 lock timeout. Updates operate on private working copies. After serialization
@@ -178,8 +179,7 @@ threshold or effective batch size rebuilds plans while reusing tokens. With
 `gradient_checkpointing_threshold: 0`, tokens are cached but no global plan is
 created, and all fixed joint-training batches use gradient checkpointing.
 Plan schema version `4` stores `threshold` instead of the old `budget`
-metadata; older plan versions are rebuilt. The obsolete checked-in plans have
-been removed.
+metadata; older plan versions are not reused and are rebuilt when needed.
 Legacy per-model batch directories and per-model `tokens/*.pt` files are no
 longer read. Identical plan keys remain reusable across configurations and
 training modes. Different thresholds or selected rows still select

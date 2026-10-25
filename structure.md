@@ -296,8 +296,9 @@ and print summaries. Business logic belongs below the CLI layer.
 - `result/`
   - `synthesizer.py`: Discovers and validates validation.csv, reverses swapped-row
     orientation, and reduces each pair to one source record.
-    The `metrics.json` aggregation marker selects one already-averaged
-    prediction per pair or two legacy orientation votes, regardless of model name.
+    The `metrics.json` aggregation marker selects one original prediction,
+    one already-averaged prediction per pair, or two legacy orientation votes,
+    regardless of model name.
   - `publisher.py`: Stages both report files, replaces the report directory,
     and restores the previous report on a publication failure.
   - `writers.py`: Renders the confusion-matrix PNG and filterable Excel workbook.
@@ -354,10 +355,12 @@ logic depend on a particular timestamped run.
 
 ## Invariants to preserve
 
-- All active models use the same saved 80/20 holdout with seed 42. Prompt groups
-  remain whole. Original-class quotas use largest remainders and the nearest
-  total validation row count; multirow groups are selected first, then singleton
-  groups fill quotas. Infeasible quotas fail without publishing a dataset.
+- All active models consume the same saved holdout. The root preset uses an
+  80/20 split with seed 42; the validation fraction and seed are configurable.
+  Prompt groups remain whole. Original-class quotas use largest remainders and
+  the nearest total validation row count; multirow groups are selected first,
+  then singleton groups fill quotas. Infeasible quotas fail without publishing
+  a dataset.
 - Row and token proportions use canonical inputs before A/B augmentation.
   Validation row deviation `abs(validation_share / validation_fraction - 1)`
   must be strictly below 0.005. Token deviation uses the same formula and must
@@ -513,7 +516,7 @@ logic depend on a particular timestamped run.
   backward, including merged multi-row batches. Warmup and inference always
   disable it. The old token-budget name and boolean checkpointing configuration
   are rejected. Plan schema `4` uses `threshold` metadata instead of `budget`;
-  obsolete checked-in plans are removed and older versions rebuild. Only initial
+  older versions are not reused and rebuild when needed. Only initial
   packing groups are persisted, so the second-pass budget is excluded from cache
   keys and final epoch batches are never written to disk.
   Fixed and token-budget training use the same update-group row counts,
@@ -654,8 +657,9 @@ logic depend on a particular timestamped run.
   order is frozen Qwen3-4B, EXPT2, then SR2. The `qwen3_4b_lora_EXPT2` and
   `SR2_Qwen3_4B_lora` sections enable their respective profiles. Standard LoRA
   and EXPT selectors/exports are retired, and old LoRA configuration sections
-  have no aliases. The batch validation script defaults to both LoRA profiles in
-  registry order, with an independent config filename list for each model.
+  have no aliases. The batch validation script uses explicit `MODEL_CONFIGS`
+  dictionary order and independent filename lists; its current selection is
+  SR2 with `1.yaml` through `4.yaml`.
 - Frozen full-data builds save only the classifier head; LoRA builds save
   adapters and head without base weights or optimizer state. Holdout validation
   does not save production checkpoints, but adapter profiles save completed

@@ -37,10 +37,11 @@ uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag example
 uv run model SR2-Qwen3-4B-lora --submit --checkpoint-tag example
 ```
 
-The root config and each active preset copy their EXPT2 settings into SR2,
-changing only `model_name`. Each profile remains independently configurable.
-SR2 reads the three warmup optimization fields and extraction budget from
-`warmup`; all other warmup model/head settings come from `SR2_Qwen3_4B_lora`.
+The root config gives SR2 the same settings as EXPT2 apart from `model_name`.
+Experiment presets can vary additional fields independently between profiles.
+SR2 reads the three warmup optimization fields, extraction budget, and optional
+label smoothing from `warmup`; its remaining warmup model/head settings come
+from `SR2_Qwen3_4B_lora`.
 It warms up against Skywork features and writes
 `SR2_Qwen3_4B_lora_warmup/<key>.pt` beside the processed data.
 The standalone `model warmup --build` command retains the EXPT2 cache namespace.
@@ -168,8 +169,8 @@ the optimizer can modify weights.
 
 ## Measured input lengths
 
-The local processed training data was inspected on 2026-10-20 using the actual
-`aligned-prompt-newline-response-v1` serialization and the `Qwen/Qwen3-4B`
+A historical processed training snapshot was inspected on 2026-10-20 using
+the actual `aligned-prompt-newline-response-v1` serialization and the `Qwen/Qwen3-4B`
 tokenizer at revision `1cfa9a7208912126459214e8b04321603b3df60c`, with no truncation
 and the tokenizer's default special-token behavior.
 
@@ -184,8 +185,10 @@ The longest branch is A for ID `2995198009` (the corresponding B branch has
 4,225 tokens). The processed Parquet file's SHA-256 fingerprint is
 `0db037aac8f94bf68d3f6e02b2bf4214e6bf4817ed01d4c475af5c2f41fab4ff`.
 The root EXPT2 preset's 13,514-token limit preserves every training branch in this
-snapshot. New training or test data is checked independently; these measurements
-do not establish its maximum length. The 43,035,297 canonical tokens occupy about
+historical snapshot. Its fingerprint differs from the currently checked-in
+Parquet manifest. Current training and test data are checked independently;
+these measurements do not establish their maximum lengths.
+The 43,035,297 canonical tokens occupy about
 164 MiB of int32 payload, excluding offsets and other runtime objects. At batch
 size one, lowering the configured ceiling does not reduce work for inputs already
 below that ceiling.
@@ -197,7 +200,7 @@ target attention `q_proj`, `k_proj`, `v_proj`, `o_proj` and MLP `gate_proj`,
 `up_proj`, `down_proj`.
 The 256-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
 `0.0001`, head learning rate `0.0001`, weight decay `0.01`, and gradient clipping
-at 1.0. Training starts with two head-only warmup epochs at a fixed learning rate
+at 1.0. Training starts with one head-only warmup epoch at a fixed learning rate
 of `0.001`, then jointly trains adapters and head for two epochs at fixed learning
 rates. Joint-training settings are configured in `qwen3_4b_lora_EXPT2`.
 Warmup epochs, head-training batch size, and learning rate are
@@ -253,7 +256,7 @@ excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
 `warmup.warmup_training_batch_size` is a required positive integer controlling only the
-head-warmup forward batch size over extracted features (root preset: `2048`). A
+head-warmup forward batch size over extracted features (root preset: `1024`). A
 short final batch accumulates gradients with the preceding full batch for one
 optimizer update, retaining both forward batch sizes. An epoch smaller than one
 batch still performs one update; exact multiples keep one update per full batch.
@@ -449,11 +452,14 @@ checkpointing budget (`0` disables singleton merging), or lower
 `warmup.extraction_budget` for warmup backbone extraction,
 `warmup.warmup_training_batch_size` for warmup head training, or
 `qwen3_4b_lora_EXPT2.extraction_budget` for joint-validation/submission backbone
-extraction. Lower `training_batch_size` for joint training or
-`head_inference_batch_size` for classifier inference over CPU features. Increase
-`gradient_accumulation_steps` when reducing the training batch to retain the
-desired effective batch. Keep `max_length` at least as large as the longest
-required input. Larger GPUs can use larger batches. Memory fit for the
+extraction, or lower `head_inference_batch_size` for classifier inference over
+CPU features. With a zero threshold, lowering `training_batch_size` reduces the
+initial joint-training micro-batch size; increase `gradient_accumulation_steps`
+to retain the desired effective batch. With a positive threshold, token packing
+determines micro-batch sizes: changing those two fields while keeping their
+product fixed does not reduce the packing limits. Lower the threshold or
+checkpointing budget to change those limits. Keep `max_length` at least as large
+as the longest required input. Larger GPUs can use larger batches. Memory fit for the
 `gradient_checkpointing_threshold: 10752` preset on a 32 GB GPU has not been measured;
 execution reports OOM without silently lowering context length.
 

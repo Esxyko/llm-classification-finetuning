@@ -111,16 +111,17 @@ submission environment; `uv run` would synchronize the training lock again.
 For two T4 GPUs, use `gpu.precision: fp16`,
 `gpu.attention_implementation: sdpa`, and
 `gpu.submit_devices: [cuda:0, cuda:1]` in the selected YAML. The selected model
-section's `extraction_budget` controls padded tokens per backbone micro-batch;
-the root and active presets use `524288`. Lower it if extraction runs out of
-memory, preserving `max_length`. See
+section's `extraction_budget` controls padded tokens per backbone micro-batch.
+The root and active presets use `524288` for the frozen model and `262144` for
+both LoRA profiles' submission extraction. Lower the selected model's budget
+if extraction runs out of memory, preserving `max_length`. See
 [extraction budgets](configuration.md#extraction-token-budgets).
 `head_inference_batch_size` for LoRA controls only the head over extracted
 CPU features. All present model sections still need their usual configuration
 fields; see [configuration](configuration.md).
 
-Both active model profiles apply submission SDPA compatibility in the process that
-executes `--submit`, before loading backbone weights. Transformers expands K/V
+All three active model profiles apply submission SDPA compatibility in the
+process that executes `--submit`, before loading backbone weights. Transformers expands K/V
 heads with `repeat_kv`, memory-efficient attention is enabled, and math fallback
 is disabled. Flash and cuDNN attention remain eligible where supported. The GQA
 predicate and SDPA backend flags are restored after success or failure. Explicit

@@ -42,19 +42,24 @@
   `qwen3_4b.extraction_budget`, the padded-token limit per extraction micro-batch
   (active presets: `524288`). A branch above the budget still runs alone.
   Lowering `qwen3_4b.max_length` also reduces
-  input length by truncating longer branches; a saved frozen head requires the
-  same length and compute settings used at build time. Rebuild it if those
-  compatibility fields change.
+  input length by truncating longer branches. Frozen checkpoints permit changes
+  to `max_length`, precision, attention implementation, and TF32 without a
+  rebuild. Precision changes select a different embedding cache; length changes
+  reuse vectors only when the effective token IDs still match. Predictions can
+  change with the new inputs or compute settings; see
+  [checkpoint compatibility](models.md#checkpoint-compatibility).
 - **Frozen head training or inference runs out of memory:** Reduce
   `qwen3_4b.training_batch_size`; the frozen profile uses it for head training,
   validation, and submission inference.
 - **LoRA runs out of memory:** Lower `warmup.extraction_budget` for warmup
   backbone extraction or `warmup.warmup_training_batch_size` for warmup head
-  training. Lower the selected model section's `extraction_budget`,
-  `training_batch_size`, or `head_inference_batch_size` for joint-validation/submission
-  extraction, joint training, or head inference respectively. Alternatively, lower
-  a positive `gradient_checkpointing_threshold`,
-  or lower `gradient_checkpointing_budget` (`0` disables singleton merging).
+  training. Lower the selected model section's `extraction_budget` for
+  joint-validation/submission extraction or `head_inference_batch_size` for head
+  inference. For joint training, lower a positive
+  `gradient_checkpointing_threshold` or lower `gradient_checkpointing_budget`
+  (`0` disables singleton merging). With a zero threshold, lowering
+  `training_batch_size` reduces initial micro-batches. With a positive threshold,
+  micro-batch sizes follow token packing; see [memory tuning](lora.md#memory-tuning).
   `head_inference_batch_size` controls only head inference over the
   extracted CPU features. Keep
   `max_length` at least as large as the longest required branch. Gradient
@@ -75,9 +80,11 @@
   checkpoint types allow changes to precision, attention implementation, TF32,
   and `max_length`. Frozen checkpoints also allow changes to `qwen3_4b.A/B_swap`.
 - **Report rows or aggregation do not match:** Use the processed Parquet and
-  saved split corresponding to that run, preserve both orientations in
-  `validation.csv`, and keep its holdout `metrics.json`. Old five-fold data and
-  results require migration; regenerate the split and run the model again. See [report requirements](reports.md).
+  saved split corresponding to that run, and keep its holdout `metrics.json`.
+  Frozen `validation.csv` files contain both orientations; EXPT2 and SR2 contain
+  only original validation rows. Preserve the expected order for that policy.
+  Old five-fold data and results require migration; regenerate the split and run
+  the model again. See [report requirements](reports.md).
 
 For the complete setup, see [getting started](getting-started.md). For hardware
 settings and memory tuning, see [GPU configuration](configuration.md#gpu-configuration)

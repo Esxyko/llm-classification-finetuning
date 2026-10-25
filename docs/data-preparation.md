@@ -8,10 +8,11 @@ to rebuild from local raw files. All commands accept `--config PATH`.
 
 ## One shared train/validation split
 
-Both active models use the same saved split. Preparation starts from the complete
+All active models use the same saved split. Preparation starts from the complete
 raw training table, derives labels and canonical prompt hashes, and assigns
-whole prompt groups to training or validation. The default validation fraction
-is 20%, using random seed 42. It does not select a fold from the previous data.
+whole prompt groups to training or validation. The root preset uses a 20%
+validation fraction and random seed 42; both are configurable. Preparation does
+not select a fold from the previous data.
 
 Original-class quotas use the nearest total validation row count and largest
 fractional remainders. Multirow prompt groups are selected deterministically,

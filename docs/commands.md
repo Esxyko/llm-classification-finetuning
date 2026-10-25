@@ -55,9 +55,11 @@ See [cache reuse](caching.md#standalone-warmup-build).
 
 Add `--refresh-cache` to rebuild requested shared token encodings and
 model-specific frozen embeddings or LoRA batch plans and head-warmup
-states. For adapter holdout validation/builds, this forces warmup even when a
-compatible completed state exists. Token encodings are shared
-by all models and by training, validation, and test inference. See
+states needed by the selected mode. Submission does not prepare joint-training
+plans or use warmup states. For adapter holdout validation/builds with warmup
+enabled, this forces warmup even when a compatible completed state exists.
+Token encodings are shared by all models and by training, validation, and test
+inference. See
 [caching](caching.md) for reuse and compatibility rules.
 
 For `warmup --build`, refresh rebuilds train-partition LoRA warmup and its

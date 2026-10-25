@@ -52,9 +52,9 @@ The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
 pairwise MLP head is trained. A validation run writes one competition-format
 `validation.csv`, `metrics.json`, and a `config.yaml` containing the shared and
 current model sections to a timestamped model-named results directory.
-All active profiles consume the same saved 80/20 split and initialize one model
-per default profile run. See [validation reports and timing metrics](reports.md)
-for their interpretation.
+All active profiles consume the same saved split (80/20 in the root preset) and
+initialize one model per profile run. See
+[validation reports and timing metrics](reports.md) for their interpretation.
 
 Each [serialized conversation branch](data-preparation.md) is tokenized with
 special tokens enabled and right-truncated to `qwen3_4b.max_length` when needed.
@@ -67,8 +67,9 @@ Set `qwen3_4b.A/B_swap` to `aug` (the default) to train on both original and
 A/B-swapped rows, or `inf` to train on original IDs using the loss of their
 averaged original and swapped probabilities. Both modes average the two
 orientations for validation predictions and loss, and for test submissions.
-Changing modes requires rebuilding the saved head;
-[embedding caches](caching.md#frozen-embeddings) are shared.
+To train a head with a different objective, rebuild it; loading an existing
+checkpoint does not check `A/B_swap` or change its trained weights. Both modes
+share [embedding caches](caching.md#frozen-embeddings).
 
 ## Training progress
 
