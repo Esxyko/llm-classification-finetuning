@@ -19,7 +19,7 @@ gpu:
 
 warmup:
   A/B_swap: aug
-  label_smoothing: 0.0
+  label_smoothing: 0.12
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   hidden_size: 256
@@ -35,7 +35,7 @@ warmup:
 
 qwen3_4b:
   A/B_swap: aug
-  label_smoothing: 0.0
+  label_smoothing: 0.12
   model_name: Qwen/Qwen3-4B
   max_length: 16384
   extraction_budget: 524288
@@ -50,7 +50,7 @@ qwen3_4b:
 
 qwen3_4b_lora:
   A/B_swap: aug
-  label_smoothing: 0.12
+  label_smoothing: 0.0
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   gradient_checkpointing_threshold: 10752
