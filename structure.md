@@ -225,7 +225,8 @@ and print summaries. Business logic belongs below the CLI layer.
     QLoRA retains its README and archive-level settings. Active code never
     imports this archive. Retired selectors are excluded from CLI choices and
     `ALL`, and their configuration keys are rejected. Historical results,
-    checkpoints, caches, and archived configurations remain in place. Local
+    checkpoints, and archived configurations remain in place. Retired-profile
+    warmup caches are unused by active profiles and may be removed. Local
     archives are not included in a fresh clone.
   - `common/pipeline.py`: Selects holdout validation, build, or submission behavior for
     frozen pairwise models.
@@ -326,11 +327,11 @@ exports over importing private helpers across package boundaries.
 | `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
 | `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
 | `data/processed/adapter_batches/` | Shared LoRA holdout/build base batch-plan caches, keyed by selected rows, lengths, checkpointing threshold, and update-group size; second-pass checkpointing budgets are excluded |
-| `data/processed/qwen3_4b_lora_warmup/` | Historical standard MLP head-warmup caches; retained |
-| `data/processed/qwen3_4b_lora_EXPT_warmup/` | Historical EXPT head-warmup caches; retained |
+| `data/processed/qwen3_4b_lora_warmup/` | Historical standard MLP head-warmup cache namespace; unused by active profiles |
+| `data/processed/qwen3_4b_lora_EXPT_warmup/` | Historical EXPT head-warmup cache namespace; unused by active profiles |
 | `data/processed/qwen3_4b_lora_EXPT2_warmup/` | Completed original-only EXPT2 head warmup, also written by standalone warmup; tracked using the shared cache-storage policy |
 | `data/processed/SR2_Qwen3_4B_lora_warmup/` | Completed SR2 head warmup on the Skywork backbone, isolated from EXPT2 and tracked using the shared cache-storage policy |
-| `data/processed/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup caches; retained without active CLI access |
+| `data/processed/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup cache namespace; unused by active profiles |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Historical standard LoRA adapter/head checkpoints; retained |
 | `models/qwen3_4b_lora_EXPT/` | Historical EXPT adapter/head checkpoints; retained |

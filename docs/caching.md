@@ -228,7 +228,8 @@ schema remains v5. Meta-device validation checks the symmetric, directional,
 tie, and readout weights, symmetric/tie biases, and named AdamW states.
 Existing EXPT2 paths and cache keys remain unchanged. Missing or incompatible
 entries rebuild through the existing miss path. Retired standard MLP and EXPT
-caches are retained in their original directories and cannot be reused by EXPT2.
+caches cannot be reused by active EXPT2 or SR2 profiles and may be deleted when
+no longer needed for archived workflows.
 
 The data key hashes only the sorted original training ID set. For normal model
 builds this is the full original ID set; for holdout runs and standalone warmup
