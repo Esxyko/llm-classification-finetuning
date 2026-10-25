@@ -60,7 +60,7 @@ class ModelResultPublisher:
 			"model_name": model_config.model_name,
 			"head_architecture": profile.head_architecture,
 			"embedding_combination": "sum_signed_diff_abs_diff"
-			if profile.head_architecture == "swap_equivariant_reparam_v1"
+			if profile.head_architecture == "swap_equivariant_reparam_v2"
 			else PairwiseClassificationHead.embedding_combination(),
 			"validation_strategy": "holdout",
 			"training_rows": result.training_rows,

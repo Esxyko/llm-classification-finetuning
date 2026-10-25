@@ -8,7 +8,7 @@ from torch import Tensor, nn
 from ..common.model import PairwiseClassificationHead
 
 PAIRWISE_MLP = "pairwise_mlp"
-EXPT = "swap_equivariant_reparam_v1"
+EXPT = "swap_equivariant_reparam_v2"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -54,8 +54,9 @@ class SwapEquivariantClassificationHead(nn.Module):
 	) -> None:
 		super().__init__()
 		self._compute_dtype = compute_dtype
+		# The fused bias holds b_u and b_w in the same order as the output chunks.
 		self.symmetric_projection = nn.Linear(
-			2 * backbone_hidden_size, 2 * hidden_size, bias=False
+			2 * backbone_hidden_size, 2 * hidden_size, bias=True
 		)
 		self.direction_projection = nn.Linear(
 			backbone_hidden_size, hidden_size, bias=False

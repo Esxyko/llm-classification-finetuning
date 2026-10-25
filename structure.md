@@ -167,8 +167,9 @@ and print summaries. Business logic belongs below the CLI layer.
       training and standalone warmup.
     - `heads.py`: Own the legacy precision-wrapped MLP and the experimental
       swap-equivariant head, selected by one factory shared with cache validation.
-      EXPT stores a fused symmetric projection, a directional projection, and
-      one shared readout; one exact GELU precedes dropout with a shared win mask.
+      EXPT stores a fused symmetric projection with `b_u,b_w`, a directional
+      projection, and one shared readout; one exact GELU precedes dropout with a
+      shared win mask.
       Both heads retain BF16 autocast and FP32 logits.
     - `extractor.py`: Batch individual A/B branches and reconstruct one
       no-gradient canonical feature pair per needed ID for warmup, each
@@ -352,8 +353,9 @@ logic depend on a particular timestamped run.
   pooled features `[A, B, |A - B|]` and `3H` inputs for backbone hidden size `H`.
   This fixed input applies to standalone warmup, LoRA head warmup, joint
   training, validation, and submission.
-- EXPT fixes `S=A+B`, `T=A-B`, `C=abs(T)`. A bias-free `Linear(2D,2h)`
-  projects `[S,C]` to `u,w`, and a bias-free `Linear(D,h)` projects `T` to `v`.
+- EXPT fixes `S=A+B`, `T=A-B`, `C=abs(T)`. A `Linear(2D,2h)` with bias
+  projects `[S,C]` to `u=SU+CV+b_u,w=SX+CY+b_w`, and a bias-free
+  `Linear(D,h)` projects `T` to `v=TW`.
   One exact GELU acts on stacked `[u+v,u-v,w]` before dropout and one shared
   bias-free `Linear(h,1)`. Win classes share each dropout mask; ties use an
   independent mask. Deterministic feature swaps exchange win logits and preserve
@@ -589,8 +591,10 @@ logic depend on a particular timestamped run.
   retained; local base weights are neither stored nor content-fingerprinted.
   Schema v2 checks head tensor names and shapes before loading the backbone,
   preserving existing `3H` checkpoints and rejecting historical `2H` heads.
-  `head_architecture` distinguishes EXPT from the
-  standard MLP; a missing marker identifies the MLP. Schema v1 checkpoints require rebuilding.
+  `head_architecture: swap_equivariant_reparam_v2` identifies EXPT with `b_u,b_w`;
+  bias-free EXPT v1 checkpoints require rebuilding and its warmup caches are
+  not reused. A missing marker identifies the standard MLP. Schema v1
+  checkpoints require rebuilding.
 - Archived QLoRA support remains in shared LoRA modules with its quantization
   dependencies, but has no active model registration or configuration section.
   The retained implementation shares the training, batching, pooling, objective,

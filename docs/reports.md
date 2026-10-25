@@ -30,7 +30,7 @@ difference for the frozen and standard LoRA profiles.
 EXPT records `"sum_signed_diff_abs_diff"` for its sum, signed difference, and
 absolute difference features. New runs also record `head_architecture`:
 `"pairwise_mlp"` for the existing classifiers and
-`"swap_equivariant_reparam_v1"` for EXPT's shared-readout head.
+`"swap_equivariant_reparam_v2"` for EXPT's shared-readout head with `b_u,b_w`.
 This combination marker is kept in metrics only; the
 prediction CSVs, configuration snapshot, terminal summary, and generated reports
 retain their existing formats. Historical results are left unchanged.

@@ -44,12 +44,15 @@ uv run model qwen3-4b-lora-EXPT --submit
 ```
 
 For pooled features `A,B` of width `D` and configured head width `h`, the head
-forms `S=A+B`, `T=A-B`, and `C=abs(T)`. One bias-free `Linear(2D,2h)` maps
-`[S,C]` to `u,w`; one bias-free `Linear(D,h)` maps `T` to `v`. It stacks
+forms `S=A+B`, `T=A-B`, and `C=abs(T)`. One `Linear(2D,2h)` with bias maps
+`[S,C]` to `u=SU+CV+b_u` and `w=SX+CY+b_w`; its bias vector concatenates
+`b_u,b_w`. One bias-free `Linear(D,h)` computes `v=TW`. It stacks
 `u+v,u-v,w` into `[batch,3,h]`, applies one exact GELU, then dropout and a
 shared bias-free `Linear(h,1)`. Logits retain the A-win, B-win, tie order.
-The fused reparameterized weights are trained and saved directly with standard
-PyTorch initialization. No original L/M/N matrices are constructed.
+The fused reparameterized weights and biases are trained and saved directly
+with standard PyTorch initialization. No original L/M/N matrices are constructed.
+The architecture marker is `swap_equivariant_reparam_v2`; warmup caches from
+the bias-free v1 head are not reused, and v1 checkpoints require a new `--build`.
 
 Dropout generates one mask for the first two classes and an independent mask
 for ties. Under the same mask, swapping the features swaps the first two scores
