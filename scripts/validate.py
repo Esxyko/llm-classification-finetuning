@@ -13,7 +13,7 @@ from typing import TextIO
 
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
-	"SR2-Qwen3-4B-lora": ["1.yaml", "2.yaml", "3.yaml", "4.yaml"],
+	"SR2-Qwen3-4B-lora": ["5.yaml", "6.yaml", "7.yaml"],
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -64,8 +64,7 @@ def _validate() -> int:
 					encoding="utf-8",
 					errors="replace",
 					bufsize=1,
-					env=os.environ
-					| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+					env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
 				) as process:
 					assert process.stdout is not None
 					for line in process.stdout:
