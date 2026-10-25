@@ -13,6 +13,7 @@ All commands accept [`--config PATH`](configuration.md#configuration-files-and-p
 | `uv run model qwen3-4b` | Runs Qwen3-4B holdout validation | `results/qwen3-4b-*/` |
 | `uv run model qwen3-4b-lora` | Runs Qwen3-4B LoRA holdout validation | `results/qwen3-4b-lora-*/` |
 | `uv run model qwen3-4b-lora-EXPT` | Runs LoRA with the experimental equivariant head on original rows | `results/qwen3-4b-lora-EXPT-*/` |
+| `uv run model qwen3-4b-lora-EXPT2` | Runs LoRA with the equivariant head deriving ties from win representations | `results/qwen3-4b-lora-EXPT2-*/` |
 | `uv run model warmup --build` | Builds non-quantized head warmup on the saved train partition | `data/processed/qwen3_4b_lora_warmup/<key>.pt` |
 | `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the classifier and any adapters on all training and validation IDs | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
@@ -25,16 +26,18 @@ see [processed data](data-preparation.md#processed-data).
 
 ## Model selection and execution modes
 
-Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, `qwen3-4b-lora-EXPT`, `warmup`, or exact uppercase `ALL`.
+Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora`, `qwen3-4b-lora-EXPT`,
+`qwen3-4b-lora-EXPT2`, `warmup`, or exact uppercase `ALL`.
 `--build` and `--submit` are mutually exclusive; without either flag, registered
 profiles run holdout validation. `ALL` runs only profiles with a model section in the
-selected YAML, in the order `qwen3-4b`, `qwen3-4b-lora`, then `qwen3-4b-lora-EXPT`, and accepts the same
+selected YAML, in the order `qwen3-4b`, `qwen3-4b-lora`, `qwen3-4b-lora-EXPT`,
+then `qwen3-4b-lora-EXPT2`, and accepts the same
 `--build`, `--submit`, and `--refresh-cache` options. If one model fails, the
 remaining models still run; the command exits with status `1` if any failed.
 YAML validation happens before this loop; an invalid field in any present
 section stops the command before any model runs.
-Standard LoRA and EXPT both read `qwen3_4b_lora`, so that section enables both
-profiles in `ALL`; EXPT ignores its `A/B_swap` value.
+Standard LoRA, EXPT, and EXPT2 all read `qwen3_4b_lora`, so that section enables
+all three profiles in `ALL`; EXPT and EXPT2 ignore its `A/B_swap` value.
 The old `--test` flag is no longer accepted.
 
 `warmup` requires `--build` and its own [configuration section](configuration.md#standalone-warmup).

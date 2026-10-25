@@ -259,7 +259,16 @@ training policy. Meta-device validation constructs the matching head and
 checks its three reparameterized weight tensors, fused `b_u,b_w` bias vector,
 and named optimizer states. Bias-free v1 caches retain their old keys and are
 not reused.
-Standard MLP caches retain their existing keys and cannot be reused by EXPT.
+
+EXPT2 stores its built-in warmup in `qwen3_4b_lora_EXPT2_warmup/<key>.pt`
+with `head_architecture: swap_equivariant_tie_from_wins_v1` and the same fixed
+original-only policy. Its meta-device validation checks the symmetric,
+directional, tie, and readout weights, the symmetric and tie biases, and their
+named AdamW states. Warmup schema v5 remains unchanged; EXPT and EXPT2 have
+distinct directories and architecture identities and cannot reuse each other's
+states. Invalid or incompatible caches rebuild through the existing miss path.
+Standard MLP caches retain their existing keys and cannot be reused by either
+experimental profile.
 The standalone warmup command continues to build the standard MLP cache.
 
 The data key hashes only the sorted original training ID set. For normal model

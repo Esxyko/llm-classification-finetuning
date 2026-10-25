@@ -71,6 +71,51 @@ warmup caches use `qwen3_4b_lora_EXPT_warmup` beside the processed data.
 The standalone `model warmup --build` command builds the standard MLP cache;
 EXPT builds its own warmup during validation or a full-data build.
 
+## EXPT2 equivariant head
+
+EXPT2 derives its tie representation from the two activated win branches:
+
+```shell
+uv run model qwen3-4b-lora-EXPT2
+uv run model qwen3-4b-lora-EXPT2 --build
+uv run model qwen3-4b-lora-EXPT2 --submit
+```
+
+For column vectors `A,B` of width `D` and configured head width `h`:
+
+```text
+u = W_s [A+B; |A-B|] + b_1       W_s: [h,2D], b_1: [h]
+v = W_d (A-B)                    W_d: [h,D], no bias
+p_A = GELU(u+v), p_B = GELU(u-v)
+t = GELU(W_t ((p_A+p_B)/2) + b_2)  W_t: [h,h], b_2: [h]
+```
+
+The head trains and saves these reparameterized weights directly with standard
+PyTorch initialization, without constructing L/M matrices. The win branches use
+one batched exact GELU on `[batch,2,h]`. The tie projection runs once on their
+mean before any dropout; a second exact GELU produces `t`. Dropout then applies
+one shared win mask and an independent tie mask. One shared bias-free
+`Linear(h,1)` scores all three representations in a single batched call,
+returning FP32 logits in A-win, B-win, tie order. Under the same masks, swapping
+A/B exchanges the win scores and preserves the tie score; evaluation disables
+dropout. FP32 parameters and BF16 autocast follow EXPT's precision policy.
+
+EXPT2 reads the existing `qwen3_4b_lora` and shared `warmup` sections, ignores
+`A/B_swap`, and uses EXPT's original-only warmup, joint training, validation,
+and submission flows. Its architecture marker is
+`swap_equivariant_tie_from_wins_v1`. Checkpoints use
+`models/qwen3_4b_lora_EXPT2/adapter[_TAG].pt`, and warmup caches use
+`qwen3_4b_lora_EXPT2_warmup/<key>.pt` beside the processed data. Validation
+results use `results/qwen3-4b-lora-EXPT2-*/`; submissions use
+`results/submit/qwen3-4b-lora-EXPT2-*/submission.csv`.
+
+Checkpoint schema v2 and warmup schema v5 validate the architecture marker,
+head tensor names/shapes, and named warmup optimizer states through the shared
+head factory. Standard LoRA, EXPT, and EXPT2 cannot reuse one another's head
+checkpoints or warmup states. Existing EXPT artifacts retain their identity.
+EXPT2 builds its warmup during validation or a full-data build; the standalone
+`model warmup --build` command continues to build the standard MLP cache.
+
 ## Hardware and input limits
 
 Training uses one NVIDIA CUDA GPU with sufficient memory for the selected

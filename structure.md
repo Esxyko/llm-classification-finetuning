@@ -34,6 +34,8 @@ train_validation.parquet
      -> models/qwen3_4b_lora/adapter_TAG.pt
   -> model qwen3-4b-lora-EXPT --build
      -> models/qwen3_4b_lora_EXPT/adapter.pt
+  -> model qwen3-4b-lora-EXPT2 --build
+     -> models/qwen3_4b_lora_EXPT2/adapter.pt
 
 head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
   -> model MODEL --submit -> results/submit/MODEL-.../submission.csv
@@ -96,8 +98,8 @@ and print summaries. Business logic belongs below the CLI layer.
   submission. All extraction budgets are required positive padded-token limits;
   the previous batch-size keys and the internal field are rejected in YAML.
   Zero warmup epochs disable LoRA warmup, while the standalone command requires
-  positive epochs. Both LoRA profiles read `qwen3_4b_lora`; EXPT ignores
-  `A/B_swap` through a profile-level copy with the internal policy fixed to
+  positive epochs. All three LoRA profiles read `qwen3_4b_lora`; EXPT and EXPT2
+  ignore `A/B_swap` through a profile-level copy with the internal policy fixed to
   `none`. Shared YAML/config objects retain the standard LoRA mode.
 - `model_storage.py`: Routes config/tokenizer/backbone loads through the shared
   `load_pretrained` wrapper to a persistent native Hub cache at optional
@@ -129,14 +131,14 @@ and print summaries. Business logic belongs below the CLI layer.
     accepts the explicit build-only `warmup` selector outside the registry,
     rejects unsupported flags before data/GPU setup, and keeps it out of `ALL`.
   - `profile.py`: Maps selectors to configuration/artifact namespaces and head architectures;
-    resolves immutable effective settings, including EXPT's A/B policy override.
+    resolves immutable effective settings, including EXPT/EXPT2's A/B policy override.
   - `warmup.py`: Orchestrates train-partition-only non-quantized head-warmup
     cache builds from the `warmup` section, reusing adapter batching
     and training without adapters, joint plans, validation, or checkpoints.
   - `qwen3_4b/`: Active lightweight model profile definition.
   - `qwen3_4b_lora/`: LoRA adapter implementation with single-GPU training and
     dual-GPU submission. Shared quantization branches for the archived QLoRA
-    profile remain here, along with their dependencies. The standard and EXPT
+    profile remain here, along with their dependencies. The standard, EXPT, and EXPT2
     non-quantized profiles are registered; profiles control configuration
     keys, head architectures, logs, and artifact namespaces.
     - `data.py`: Orient shared canonical token/feature views, flatten canonical
@@ -166,11 +168,14 @@ and print summaries. Business logic belongs below the CLI layer.
       directly on their target GPUs during loading, including non-quantized
       training and standalone warmup.
     - `heads.py`: Own the legacy precision-wrapped MLP and the experimental
-      swap-equivariant head, selected by one factory shared with cache validation.
+      swap-equivariant heads, selected by one factory shared with cache validation.
       EXPT stores a fused symmetric projection with `b_u,b_w`, a directional
       projection, and one shared readout; one exact GELU precedes dropout with a
-      shared win mask.
-      Both heads retain BF16 autocast and FP32 logits.
+      shared win mask. EXPT2 projects symmetric/directional features into the
+      two activated win branches, then projects their undropped mean once to
+      produce the activated tie representation. Its win branches share a dropout
+      mask, ties use an independent mask, and one readout scores all three classes.
+      All heads retain BF16 autocast and FP32 logits.
     - `extractor.py`: Batch individual A/B branches and reconstruct one
       no-gradient canonical feature pair per needed ID for warmup, each
       joint-validation pass, or submission, retaining shared
@@ -184,8 +189,8 @@ and print summaries. Business logic belongs below the CLI layer.
       validation/test, and one weighted progress counter
       shared across all executed training/validation stages. Standalone warmup
       returns valid cache hits before loading weights and stops after head
-      warmup on a miss. EXPT consumes original rows only in both training stages,
-      runs one head call for validation/submission, and returns one row per ID.
+      warmup on a miss. EXPT and EXPT2 consume original rows only in both training
+      stages, run one head call for validation/submission, and return one row per ID.
       The retained QLoRA branch checks LoRA warmup before
       its own cache.
     - `warmup_cache.py`: Identify completed head warmup by selected original
@@ -202,6 +207,9 @@ and print summaries. Business logic belongs below the CLI layer.
   - `qwen3_4b_lora_EXPT/`: Registers the original-only equivariant-head profile,
     sharing the `qwen3_4b_lora` configuration and LoRA pipeline while retaining
     independent artifact namespaces.
+  - `qwen3_4b_lora_EXPT2/`: Registers the original-only profile deriving ties
+    from win representations, sharing the same configuration and pipeline with
+    its own head architecture, checkpoint, warmup, and result namespaces.
   - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B and QLoRA
     profiles and their configuration sections. `qwen3_4b_qlora/` retains its
     entry module and historical guide in `README.md`; archive-level
@@ -303,7 +311,7 @@ exports over importing private helpers across package boundaries.
 | `scripts/count_split_tokens.py` | Count actual unpadded, untruncated A/B tokens in the saved split using training serialization; publish per-ID CSV, split CSV, and tokenizer/source metadata |
 | `scripts/migrate_hf_models.py` | Copy or move existing native HF repositories directly into `MODEL_PATH`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
 | `<MODEL_PATH>/models--*/` | Persistent native Hub repositories, including weights, configurations, tokenizers, refs, and snapshots |
-| `configs/` | Complete YAML configurations with both active models and shared training/submission GPU settings |
+| `configs/` | Complete YAML configurations for frozen and LoRA profiles with shared training/submission GPU settings |
 | `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
 | `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
 | `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
@@ -312,12 +320,16 @@ exports over importing private helpers across package boundaries.
 | `data/processed/adapter_batches/` | Shared LoRA holdout/build base batch-plan caches, keyed by selected rows, lengths, checkpointing threshold, and update-group size; second-pass checkpointing budgets are excluded |
 | `data/processed/qwen3_4b_lora_warmup/` | Completed non-quantized LoRA head warmup by actual training IDs, also written by standalone warmup |
 | `data/processed/qwen3_4b_lora_EXPT_warmup/` | Completed original-only EXPT head warmup, with its own architecture identity |
+| `data/processed/qwen3_4b_lora_EXPT2_warmup/` | Completed original-only EXPT2 head warmup, isolated by directory and architecture identity |
 | `data/processed/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup caches; retained without active CLI access |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Saved adapters, classifier head, and metadata in one `adapter[_TAG].pt` file |
 | `models/qwen3_4b_lora_EXPT/` | Saved EXPT adapters, reparameterized head weights, and metadata |
+| `models/qwen3_4b_lora_EXPT2/` | Saved EXPT2 adapters, symmetric/directional/tie projections, shared readout, and metadata |
 | `models/qwen3_4b_qlora/` | Historical QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file; retained |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
+| `results/qwen3-4b-lora-EXPT2-*/` | EXPT2 original-only validation predictions, metrics, and effective configuration |
+| `results/submit/qwen3-4b-lora-EXPT2-*/` | EXPT2 submissions generated from its own checkpoint |
 | `results/MODEL-YYYYMMDD-HHMMSS/config.yaml` | Effective `data`, `validation`, `gpu`, and current model sections, using input YAML field names, resolved data paths, and loaded defaults |
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
@@ -360,6 +372,15 @@ logic depend on a particular timestamped run.
   bias-free `Linear(h,1)`. Win classes share each dropout mask; ties use an
   independent mask. Deterministic feature swaps exchange win logits and preserve
   tie logits. Training and prediction use only originals without A/B averaging.
+- EXPT2 uses `u=W_s[A+B;abs(A-B)]+b_1`, `v=W_d(A-B)` with
+  `W_s:[h,2D]`, `W_d:[h,D]`, and no directional bias. One exact GELU acts on
+  stacked `[u+v,u-v]` to produce `p_A,p_B`. The tie representation is
+  `GELU(W_t((p_A+p_B)/2)+b_2)` with `W_t:[h,h]`, computed by one tie projection
+  before any dropout. The symmetric, directional, and tie weights are trained
+  directly without L/M matrices. Dropout shares the win mask and uses an
+  independent tie mask; one shared bias-free `Linear(h,1)` scores the stacked
+  `[p_A,p_B,t]`. Feature swaps exchange win scores and preserve ties under the
+  same masks. Training and prediction use EXPT's original-only flow.
 - Frozen embeddings are shared across training/test and addressed by actual
   token IDs after truncation, independent of labels, splits, IDs, reference order,
   source files, serializers, and configured length caps when effective IDs match.
@@ -579,7 +600,7 @@ logic depend on a particular timestamped run.
 - LoRA BF16 mode (also retained in the QLoRA path) keeps residual states,
   activation-checkpoint layer inputs,
   pooled features, and CPU feature storage in BF16. The LoRA head factory
-  preserves legacy MLP state-dict keys and both heads use BF16 autocast
+  preserves legacy MLP state-dict keys and all heads use BF16 autocast
   for all training/inference calls, and returns FP32 logits for losses and
   orientation averaging. Trainable adapter/head parameters, gradients, and AdamW
   moments remain FP32. FP16/FP32 modes retain FP32 features and head computation;
@@ -593,7 +614,11 @@ logic depend on a particular timestamped run.
   preserving existing `3H` checkpoints and rejecting historical `2H` heads.
   `head_architecture: swap_equivariant_reparam_v2` identifies EXPT with `b_u,b_w`;
   bias-free EXPT v1 checkpoints require rebuilding and its warmup caches are
-  not reused. A missing marker identifies the standard MLP. Schema v1
+  not reused. `head_architecture: swap_equivariant_tie_from_wins_v1` identifies
+  EXPT2 and its separate tie projection. It retains checkpoint schema v2 and
+  warmup schema v5; architecture identities and factory-derived tensor checks
+  reject cross-profile head states without changing existing cache keys.
+  A missing marker identifies the standard MLP. Schema v1
   checkpoints require rebuilding.
 - Archived QLoRA support remains in shared LoRA modules with its quantization
   dependencies, but has no active model registration or configuration section.
@@ -623,7 +648,9 @@ logic depend on a particular timestamped run.
   earlier checkpoints require rebuilding without invalidating branch embeddings.
 - Model sections are optional. `model ALL` runs only configured profiles in
   registry order and rejects configurations with no model sections. The
-  `qwen3_4b_lora` section configures both standard LoRA and EXPT.
+  `qwen3_4b_lora` section configures standard LoRA, EXPT, and EXPT2. Registry
+  order is frozen, standard LoRA, EXPT, then EXPT2. Batch scripts retain their
+  existing standard-LoRA defaults.
 - Frozen full-data builds save only the classifier head; LoRA builds save
   adapters and head without base weights or optimizer state. Holdout validation
   does not save production checkpoints, but adapter profiles save completed
@@ -641,13 +668,14 @@ logic depend on a particular timestamped run.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
   New runs record `head_architecture`; `embedding_combination` is
-  `concat_a_b_abs_diff` or EXPT's `sum_signed_diff_abs_diff`
-  in metrics only, matching the selected head. EXPT snapshots omit `A/B_swap`
+  `concat_a_b_abs_diff` or EXPT/EXPT2's `sum_signed_diff_abs_diff`
+  in metrics only, matching the selected head. EXPT and EXPT2 snapshots omit `A/B_swap`
   from the model and warmup sections; other snapshots retain the selected flags;
   historical results retain their original contents.
-  Result synthesis consumes only split=validation. EXPT marks `original_only`
-  and retains original rows with one vote per ID; existing profiles retain both
-  orientations for A/B alignment. Legacy five-fold results are rejected. Excel uses a split column.
+  Result synthesis consumes only split=validation. EXPT and EXPT2 mark
+  `original_only` and retain original rows with one vote per ID; frozen and
+  standard LoRA profiles retain both orientations for A/B alignment. Legacy
+  five-fold results are rejected. Excel uses a split column.
   Complete runtime and GPU peaks are recorded after the model run succeeds.
 - Training progress uses one counter across all executed stages and epochs of a
   model run, including validation batches after every epoch. Totals use

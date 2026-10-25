@@ -18,6 +18,10 @@ The `qwen3-4b-lora-EXPT` profile uses a [swap-equivariant head](lora.md#experime
 with shared class readout. It trains and predicts only original rows, without
 A/B augmentation or orientation averaging.
 
+The `qwen3-4b-lora-EXPT2` profile uses the same original-only flow with a
+[head that derives ties from win representations](lora.md#expt2-equivariant-head).
+It shares configuration with standard LoRA and EXPT and stores separate artifacts.
+
 ## Frozen-model holdout validation
 
 Prepare the [training data](data-preparation.md) first, then run holdout validation:

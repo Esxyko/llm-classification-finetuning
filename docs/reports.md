@@ -12,25 +12,27 @@ current model sections, including default values and resolved data paths. LoRA
 snapshots also include the required `warmup` section, with the three warmup
 optimization fields and internal `warmup_extraction_budget` omitted from
 the current LoRA model section. Each section retains its own `extraction_budget`.
-EXPT snapshots omit `A/B_swap` from both the model and warmup sections because
-EXPT always uses original rows and a single prediction per ID.
-Both LoRA profiles name their model configuration section `qwen3_4b_lora`.
+EXPT and EXPT2 snapshots omit `A/B_swap` from both the model and warmup sections
+because both always use original rows and a single prediction per ID.
+All three LoRA profiles name their model configuration section `qwen3_4b_lora`.
 Other model sections are omitted; frozen-model snapshots also omit `warmup`.
 The snapshot uses the same YAML field names as the input configuration and can
 be passed to `--config`.
 `metrics.json` does not contain a `config` field.
 Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual
-A/B-selected `training_rows`, or original-only `training_rows` for EXPT.
+A/B-selected `training_rows`, or original-only `training_rows` for EXPT and EXPT2.
 No fold count or cross-fold average is recorded.
 
 New runs record `embedding_combination` in `metrics.json`:
 `"concat_a_b_abs_diff"` identifies `[A, B, |A - B|]` with an elementwise absolute
 difference for the frozen and standard LoRA profiles.
-EXPT records `"sum_signed_diff_abs_diff"` for its sum, signed difference, and
-absolute difference features. New runs also record `head_architecture`:
-`"pairwise_mlp"` for the existing classifiers and
-`"swap_equivariant_reparam_v2"` for EXPT's shared-readout head with `b_u,b_w`.
+EXPT and EXPT2 record `"sum_signed_diff_abs_diff"` for their sum, signed
+difference, and absolute difference features. New runs also record `head_architecture`:
+`"pairwise_mlp"` for the frozen and standard LoRA classifiers,
+`"swap_equivariant_reparam_v2"` for EXPT's shared-readout head with `b_u,b_w`,
+and `"swap_equivariant_tie_from_wins_v1"` for EXPT2's head deriving ties from
+the activated win branches.
 This combination marker is kept in metrics only; the
 prediction CSVs, configuration snapshot, terminal summary, and generated reports
 retain their existing formats. Historical results are left unchanged.
@@ -61,8 +63,9 @@ id,winner_model_a,winner_model_b,winner_tie
 ```
 
 Rows follow the exact ID order of the processed Parquet's `split=validation`
-rows, including original and swapped rows for existing models. EXPT writes
-only the original validation rows, preserving their order, with one row per ID.
+rows, including original and swapped rows for frozen and standard LoRA models.
+EXPT and EXPT2 write only the original validation rows, preserving their order,
+with one row per ID.
 The processed artifact is still fully validated before selecting those rows.
 Training rows do not enter reports.
 IDs must be finite integers; probabilities must be finite, lie in `[0, 1]`, and
@@ -92,7 +95,7 @@ Aggregation is selected by `metrics.json`, rather than the model's name:
   Original and A/B-restored swapped probabilities must already match within
   `1e-6`; the report command validates them and does not average distinct votes.
   The frozen model and standard LoRA model publish this marker.
-- `prediction_aggregation: "original_only"`: EXPT supplies one original
+- `prediction_aggregation: "original_only"`: EXPT and EXPT2 supply one original
   prediction per ID. Each ID contributes one actual label, an `incorrects`
   value of 0 or 1, one log loss, and one confusion-matrix count. Swapped
   predictions are neither required nor generated.
@@ -106,8 +109,9 @@ its CSVs so report synthesis uses the intended policy.
 
 ## Timing metrics
 
-For frozen and LoRA models (including EXPT and head warmup), `metrics.json` records
-`training_time`, `validation_time`, and `total_time` as `HH:MM:SS` strings rounded
+For frozen and LoRA models (including EXPT, EXPT2, and head warmup),
+`metrics.json` records `training_time`, `validation_time`, and `total_time`
+as `HH:MM:SS` strings rounded
 to whole seconds for every executed epoch and run. Hours can exceed 24.
 Training and validation times measure each phase's elapsed wall time after
 waiting for GPU work to finish. Run totals also include initialization,

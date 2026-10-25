@@ -50,11 +50,11 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `warmup` | Shared warmup epochs, extraction token budget, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Shared hyperparameters for standard LoRA and EXPT: model, sequence length, training batches, extraction/head inference budgets, gradient checkpointing, accumulation, adapters, and classifier; standard LoRA uses `A/B_swap` (`aug` or `inf`), while EXPT ignores it |
+| `qwen3_4b_lora` | Shared hyperparameters for standard LoRA, EXPT, and EXPT2: model, sequence length, training batches, extraction/head inference budgets, gradient checkpointing, accumulation, adapters, and classifier; standard LoRA uses `A/B_swap` (`aug` or `inf`), while EXPT and EXPT2 ignore it |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
-The `qwen3_4b_lora` section configures both LoRA profiles for `ALL`.
+The `qwen3_4b_lora` section configures all three LoRA profiles for `ALL`.
 The retired `qwen3_4b_qlora` section is rejected as an unknown root key. Remove
 it from older configurations; see [retired profiles](models.md#retired-profiles).
 
@@ -97,7 +97,7 @@ unsmoothed log loss against the original labels.
 
 `qwen3_4b.label_smoothing` controls frozen-head training.
 `qwen3_4b_lora.label_smoothing` controls both head warmup and joint training for
-standard LoRA and EXPT. `warmup.label_smoothing` controls only standalone
+standard LoRA, EXPT, and EXPT2. `warmup.label_smoothing` controls only standalone
 `model warmup --build`; align it with the LoRA value to share a warmup cache.
 Nonzero smoothing values enter the warmup-cache identity, while zero retains
 existing unsmoothed cache keys. Effective values are included in result
@@ -114,26 +114,29 @@ heads require rebuilding.
 
 ## Experimental LoRA model
 
-Select `model qwen3-4b-lora-EXPT` using the existing `qwen3_4b_lora` section.
-Both LoRA profiles read the same hyperparameters. EXPT ignores `A/B_swap` and
-internally fixes its policy to original-only, while standard LoRA uses the
-configured mode. A separate `qwen3_4b_lora_EXPT` YAML section is not supported;
-move any older EXPT section's settings into `qwen3_4b_lora`.
-The EXPT head always includes `C = |A - B|`.
+Select `model qwen3-4b-lora-EXPT` or `model qwen3-4b-lora-EXPT2` using the
+existing `qwen3_4b_lora` section. All three LoRA profiles read the same
+hyperparameters. EXPT and EXPT2 ignore `A/B_swap` and internally fix their
+policy to original-only, while standard LoRA uses the configured mode.
+Separate `qwen3_4b_lora_EXPT` and `qwen3_4b_lora_EXPT2` YAML sections are not
+supported; move any older EXPT section's settings into `qwen3_4b_lora`.
+Both experimental heads always include `C = |A - B|`; EXPT2 derives its tie
+representation from the activated win branches before dropout. See the
+[EXPT2 head definition](lora.md#expt2-equivariant-head).
 
 Warmup, holdout training, and full-data builds select only original rows from
 the existing processed data. Validation and submission execute the head once
 per pair. The shared `warmup` section remains required for its three optimization
-fields and extraction budget; its `A/B_swap` value does not control EXPT.
-EXPT snapshots omit `A/B_swap` from both sections.
+fields and extraction budget; its `A/B_swap` value does not control EXPT or EXPT2.
+EXPT and EXPT2 snapshots omit `A/B_swap` from both sections.
 
-EXPT uses its own checkpoint and warmup-cache namespaces. The existing
-`configs/` presets and batch scripts keep their current model selection.
+EXPT and EXPT2 each use independent checkpoint and warmup-cache namespaces.
+The existing `configs/` presets and batch scripts keep their current model selection.
 
 ## Standalone warmup
 
-The `warmup` section is required when `qwen3_4b_lora` is present. Both LoRA profiles read
-`warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
+The `warmup` section is required when `qwen3_4b_lora` is present. All three LoRA
+profiles read `warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
 this section; these three keys are rejected inside `qwen3_4b_lora`. Move their
 existing values into `warmup` when migrating an older configuration.
 LoRA warmup also uses `warmup.extraction_budget`, while
@@ -211,9 +214,9 @@ the old key is rejected. The root configuration and all active presets use
 
 `qwen3_4b_lora.extraction_budget` controls backbone extraction
 for every joint-validation pass and submissions, including when warmup is
-disabled. `warmup.extraction_budget` controls warmup extraction for both LoRA
-and standalone warmup. `qwen3_4b.extraction_budget` controls extraction of missing
-frozen-model branches.
+disabled. `warmup.extraction_budget` controls warmup extraction for all LoRA
+profiles and standalone warmup. `qwen3_4b.extraction_budget` controls extraction
+of missing frozen-model branches.
 
 All three use the same deterministic best-fit decreasing packing: sort individual
 A/B branches by length descending, breaking ties by original branch index, and
