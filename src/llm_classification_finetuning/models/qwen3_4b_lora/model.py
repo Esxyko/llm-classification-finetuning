@@ -111,7 +111,6 @@ class LoRAQwenClassifier(nn.Module):
 			config.hidden_size,
 			config.dropout,
 			compute_dtype=self.feature_dtype,
-			use_abs_diff=config.use_abs_diff,
 			head_architecture=head_architecture,
 		).to(device=device, dtype=torch.float32)
 

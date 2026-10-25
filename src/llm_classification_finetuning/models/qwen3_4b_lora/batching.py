@@ -476,7 +476,11 @@ class LoRATrainingBatchRepository:
 			if warmup_only
 			else ("QLoRA" if profile and profile.quantize_training else "LoRA")
 		)
-		model = getattr(config, model_key, None)
+		model = (
+			profile.resolve_config(config)
+			if profile is not None and not warmup_only
+			else getattr(config, model_key, None)
+		)
 		if model is None:
 			raise ModelExecutionError(
 				f"{model_label} batch preparation requires {model_key} configuration."

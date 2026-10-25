@@ -12,12 +12,10 @@ uv run model qwen3-4b-lora --submit
 ```
 
 The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
-prompt+B separately. The shared pairwise MLP defaults to `[A, B, |A - B|]`, with an
+prompt+B separately. The shared pairwise MLP always uses `[A, B, |A - B|]`, with an
 elementwise absolute difference and input width `3H` for backbone hidden size
 `H`, throughout warmup, joint training, validation, and submission.
-Set `qwen3_4b_lora.use_abs_diff: false` to use `[A, B]` with input width `2H`
-throughout those stages. The optional boolean defaults to `true`; standalone
-warmup has its own `warmup.use_abs_diff` setting, which must match for cache reuse.
+Standalone warmup uses the same fixed `3H` head.
 LoRA adapters and the pairwise MLP are trained together;
 original backbone parameters remain frozen. `A/B_swap: aug` (the default) trains
 on both processed orientations with per-row cross-entropy. Set
@@ -37,7 +35,7 @@ but no production adapter checkpoints.
 
 ## Experimental equivariant head
 
-Use the `qwen3_4b_lora_EXPT` section and these commands for the experimental model:
+Use the shared `qwen3_4b_lora` section and these commands for the experimental model:
 
 ```shell
 uv run model qwen3-4b-lora-EXPT
@@ -59,7 +57,7 @@ and leaves the tie score unchanged; evaluation disables dropout. Parameters
 remain FP32, BF16 head autocast follows the existing precision policy, and the
 head returns FP32 logits without softmax.
 
-This profile accepts no `A/B_swap` setting. Its built-in warmup and joint
+This profile ignores `qwen3_4b_lora.A/B_swap`. Its built-in warmup and joint
 training use only original samples and one cross-entropy prediction per pair;
 validation and submission also run the head once, then convert logits to
 probabilities. The absolute-difference feature is mandatory. Each validation
@@ -431,7 +429,7 @@ Builds atomically save adapters, the classifier, and compatibility metadata in
 `models/qwen3_4b_lora/adapter.pt`. `--checkpoint-tag TAG` selects
 `adapter_TAG.pt`. Base weights and optimizer state are not stored. The checkpoint
 records the resolved Hub base revision so inference reloads matching weights
-and tokenizer files. Model name, classifier size and dropout, `use_abs_diff`,
+and tokenizer files. Model name, classifier size and dropout,
 serialization, and LoRA settings must match. `max_length` and `A/B_swap` remain
 recorded in checkpoint metadata. The `training_quantization` marker must also be `none`
 (including older checkpoints without the marker); historical quantized
@@ -444,10 +442,10 @@ the checkpoint neither includes nor fingerprints local base weights.
 There are no persistent LoRA embedding caches.
 BF16 head computation preserves the classifier's state-dict keys and FP32
 checkpoint parameters, so compute-precision changes preserve compatibility for
-current-schema checkpoints. Schema v2 records `use_abs_diff`; earlier v2
-checkpoints without this field are treated as `true` and remain loadable with
-the enabled setting. Changing the switch requires a matching checkpoint;
-schema v1 adapter/head checkpoints still require a new `--build`.
+current-schema checkpoints. Schema v2 checkpoints with the fixed `3H` head
+remain loadable; head tensor names and shapes are checked before loading the
+backbone. Historical `2H` heads and schema v1 adapter/head checkpoints require
+a new `--build`.
 
 See [caching and Python APIs](caching.md) for shared token encodings and batch-plan
 reuse, [configuration](configuration.md) for batch experiments, and

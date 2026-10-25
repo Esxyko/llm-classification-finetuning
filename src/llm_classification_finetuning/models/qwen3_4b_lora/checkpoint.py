@@ -15,7 +15,7 @@ from torch import Tensor
 
 from ...config import GPUConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
-from .heads import PAIRWISE_MLP
+from .heads import PAIRWISE_MLP, create_classification_head
 from .model import LoRAQwenClassifier
 
 
@@ -33,7 +33,6 @@ class LoRACheckpointCompatibility:
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
 	ab_swap: str
-	use_abs_diff: bool = True
 	schema_version: int = 2
 	class_count: int = 3
 	pooling: str = "last-nonpadding-token"
@@ -62,7 +61,6 @@ class LoRACheckpointCompatibility:
 			lora_dropout=config.lora_dropout,
 			lora_target_modules=tuple(sorted(config.lora_target_modules)),
 			ab_swap=config.ab_swap,
-			use_abs_diff=config.use_abs_diff,
 			training_quantization="bnb-nf4-double" if quantize_training else "none",
 			head_architecture=head_architecture,
 		)
@@ -154,7 +152,6 @@ class LoRACheckpointStore:
 			# Checkpoints predating QLoRA were trained with a non-quantized base.
 			metadata = {
 				"training_quantization": "none",
-				"use_abs_diff": True,
 				"head_architecture": PAIRWISE_MLP,
 				**checkpoint["metadata"],
 			}
@@ -181,13 +178,30 @@ class LoRACheckpointStore:
 				not isinstance(revision, str) or not revision.strip()
 			):
 				raise ValueError("base_revision must be non-empty text or null")
+			head_state = self._validate_state(
+				checkpoint.get("head_state_dict"), "head_state_dict"
+			)
+			with torch.device("meta"):
+				expected_head = create_classification_head(
+					hidden_size,
+					expected.classifier_hidden_size,
+					expected.classifier_dropout,
+					compute_dtype=torch.float32,
+					head_architecture=expected.head_architecture,
+				).state_dict()
+			if head_state.keys() != expected_head.keys() or any(
+				head_state[name].shape != parameter.shape
+				for name, parameter in expected_head.items()
+			):
+				raise ValueError(
+					"classification head tensors do not match the required architecture. "
+					f"Run '{self._build_command}' to rebuild the checkpoint."
+				)
 			return LoadedLoRACheckpoint(
 				self._validate_state(
 					checkpoint.get("adapter_state_dict"), "adapter_state_dict"
 				),
-				self._validate_state(
-					checkpoint.get("head_state_dict"), "head_state_dict"
-				),
+				head_state,
 				hidden_size,
 				revision,
 			)

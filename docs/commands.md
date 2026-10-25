@@ -33,6 +33,8 @@ selected YAML, in the order `qwen3-4b`, `qwen3-4b-lora`, then `qwen3-4b-lora-EXP
 remaining models still run; the command exits with status `1` if any failed.
 YAML validation happens before this loop; an invalid field in any present
 section stops the command before any model runs.
+Standard LoRA and EXPT both read `qwen3_4b_lora`, so that section enables both
+profiles in `ALL`; EXPT ignores its `A/B_swap` value.
 The old `--test` flag is no longer accepted.
 
 `warmup` requires `--build` and its own [configuration section](configuration.md#standalone-warmup).

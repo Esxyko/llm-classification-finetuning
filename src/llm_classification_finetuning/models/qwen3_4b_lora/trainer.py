@@ -87,10 +87,15 @@ class LoRATrainer:
 		self._device = device
 		self._token_cache_dir = token_cache_dir
 		self._refresh_cache = refresh_cache
-		self._model_key = (
+		self._config_key = (
 			"warmup"
 			if warmup_only
 			else (profile.config_key if profile else "qwen3_4b_lora")
+		)
+		self._model_key = (
+			"warmup"
+			if warmup_only
+			else (profile.artifact_stem if profile else "qwen3_4b_lora")
 		)
 		self._quantize_training = profile.quantize_training if profile else False
 		self._head_architecture = profile.head_architecture if profile else PAIRWISE_MLP
@@ -779,7 +784,7 @@ class LoRATrainer:
 				revision=self._base_revision,
 				max_length=self._config.max_length,
 				refresh_cache=self._refresh_cache,
-				max_length_field=f"{self._model_key}.max_length",
+				max_length_field=f"{self._config_key}.max_length",
 			)
 		return self._tokens
 

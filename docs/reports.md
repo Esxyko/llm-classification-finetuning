@@ -14,6 +14,7 @@ optimization fields and internal `warmup_extraction_budget` omitted from
 the current LoRA model section. Each section retains its own `extraction_budget`.
 EXPT snapshots omit `A/B_swap` from both the model and warmup sections because
 EXPT always uses original rows and a single prediction per ID.
+Both LoRA profiles name their model configuration section `qwen3_4b_lora`.
 Other model sections are omitted; frozen-model snapshots also omit `warmup`.
 The snapshot uses the same YAML field names as the input configuration and can
 be passed to `--config`.
@@ -25,8 +26,7 @@ No fold count or cross-fold average is recorded.
 
 New runs record `embedding_combination` in `metrics.json`:
 `"concat_a_b_abs_diff"` identifies `[A, B, |A - B|]` with an elementwise absolute
-difference, while `"concat_a_b"` identifies `[A, B]` when LoRA sets
-`use_abs_diff: false`. Configuration snapshots include the effective boolean.
+difference for the frozen and standard LoRA profiles.
 EXPT records `"sum_signed_diff_abs_diff"` for its sum, signed difference, and
 absolute difference features. New runs also record `head_architecture`:
 `"pairwise_mlp"` for the existing classifiers and

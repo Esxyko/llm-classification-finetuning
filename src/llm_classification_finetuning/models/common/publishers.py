@@ -61,11 +61,7 @@ class ModelResultPublisher:
 			"head_architecture": profile.head_architecture,
 			"embedding_combination": "sum_signed_diff_abs_diff"
 			if profile.head_architecture == "swap_equivariant_reparam_v1"
-			else PairwiseClassificationHead.embedding_combination(
-				model_config.use_abs_diff
-				if isinstance(model_config, LoRAModelConfig)
-				else True
-			),
+			else PairwiseClassificationHead.embedding_combination(),
 			"validation_strategy": "holdout",
 			"training_rows": result.training_rows,
 			"source_training_rows": result.source_training_rows,

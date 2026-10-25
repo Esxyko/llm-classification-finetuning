@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..config import AppConfig, LoRAModelConfig, ModelConfig
 from ..errors import ConfigurationError
@@ -18,6 +18,7 @@ class ModelProfile:
 	result_prefix: str
 	quantize_training: bool = False
 	head_architecture: str = "pairwise_mlp"
+	ab_swap_override: str | None = None
 
 	def is_configured(self, config: AppConfig) -> bool:
 		"""Return whether the selected YAML includes this model's section."""
@@ -33,4 +34,6 @@ class ModelProfile:
 			)
 		if not isinstance(value, (ModelConfig, LoRAModelConfig)):
 			raise TypeError(f"{self.config_key} is not a model configuration.")
+		if self.ab_swap_override is not None:
+			return replace(value, ab_swap=self.ab_swap_override)
 		return value

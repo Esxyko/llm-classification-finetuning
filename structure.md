@@ -87,9 +87,8 @@ and print summaries. Business logic belongs below the CLI layer.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
   loading, and raw/processed-data path resolution from the working directory.
   `WarmupModelConfig` owns shared head-warmup fields;
-  `LoRAModelConfig` extends it with joint-training and adapter settings. Both
-  accept an optional boolean `use_abs_diff` defaulting to `true`; LoRA uses its
-  own value during built-in warmup, while standalone warmup uses its own section.
+  `LoRAModelConfig` extends it with joint-training and adapter settings. All
+  classification heads always include the absolute-difference feature.
   The YAML loader resolves its three warmup optimization fields from the required
   top-level `warmup` section and rejects those keys in `qwen3_4b_lora`. It also resolves
   internal `warmup_extraction_budget` from `warmup.extraction_budget`,
@@ -97,9 +96,9 @@ and print summaries. Business logic belongs below the CLI layer.
   submission. All extraction budgets are required positive padded-token limits;
   the previous batch-size keys and the internal field are rejected in YAML.
   Zero warmup epochs disable LoRA warmup, while the standalone command requires
-  positive epochs. The optional `qwen3_4b_lora_EXPT` section reuses LoRA fields,
-  rejects `A/B_swap`, fixes the internal policy to `none`, and requires the
-  absolute-difference feature. Its shared warmup fields have the same source.
+  positive epochs. Both LoRA profiles read `qwen3_4b_lora`; EXPT ignores
+  `A/B_swap` through a profile-level copy with the internal policy fixed to
+  `none`. Shared YAML/config objects retain the standard LoRA mode.
 - `model_storage.py`: Routes config/tokenizer/backbone loads through the shared
   `load_pretrained` wrapper to a persistent native Hub cache at optional
   `MODEL_PATH`, preserving default caching and explicit local model paths.
@@ -129,7 +128,8 @@ and print summaries. Business logic belongs below the CLI layer.
     holdout validation model run in complete-run GPU peak monitoring. Also
     accepts the explicit build-only `warmup` selector outside the registry,
     rejects unsupported flags before data/GPU setup, and keeps it out of `ALL`.
-  - `profile.py`: Maps selectors to configuration/artifact namespaces and head architectures.
+  - `profile.py`: Maps selectors to configuration/artifact namespaces and head architectures;
+    resolves immutable effective settings, including EXPT's A/B policy override.
   - `warmup.py`: Orchestrates train-partition-only non-quantized head-warmup
     cache builds from the `warmup` section, reusing adapter batching
     and training without adapters, joint plans, validation, or checkpoints.
@@ -199,7 +199,8 @@ and print summaries. Business logic belongs below the CLI layer.
       without persistent embedding caches; explicitly disable quantization for
       submissions, including the retained QLoRA path.
   - `qwen3_4b_lora_EXPT/`: Registers the original-only equivariant-head profile,
-    reusing the LoRA pipeline and independent artifact namespaces.
+    sharing the `qwen3_4b_lora` configuration and LoRA pipeline while retaining
+    independent artifact namespaces.
   - `archive/`: Git-ignored local copies of the retired Qwen3-1.7B and QLoRA
     profiles and their configuration sections. `qwen3_4b_qlora/` retains its
     entry module and historical guide in `README.md`; archive-level
@@ -251,7 +252,7 @@ and print summaries. Business logic belongs below the CLI layer.
       tokenizer content, and encoding options in shared SQLite shards; provide
       compact CPU text views, canonical pair views, and LoRA context validation.
     - `model.py`: Defines backbone pooling and the shared pairwise MLP head over
-      `[A, B, |A - B|]` or `[A, B]`, including the embedding-combination marker
+      `[A, B, |A - B|]`, including the embedding-combination marker
       for metrics.
     - `orientation.py`: Averages original and swapped class probabilities and
       aligns validation predictions with processed split rows.
@@ -343,11 +344,10 @@ logic depend on a particular timestamped run.
   `split`; A/B fields and labels `0`/`1` are reversed, while label `2` is unchanged.
 - Prediction CSVs use `id`, `winner_model_a`, `winner_model_b`, and `winner_tie`
   in that order, with finite probabilities that sum to one.
-- The frozen and standard LoRA profiles default to the shared pairwise head with concatenated
+- The frozen and standard LoRA profiles always use the shared pairwise head with concatenated
   pooled features `[A, B, |A - B|]` and `3H` inputs for backbone hidden size `H`.
-  LoRA's `use_abs_diff: false` selects `[A, B]` with `2H` inputs throughout head
-  warmup, joint training, validation, and submission. Standalone warmup uses its
-  own switch; frozen models retain the default `3H` head.
+  This fixed input applies to standalone warmup, LoRA head warmup, joint
+  training, validation, and submission.
 - EXPT fixes `S=A+B`, `T=A-B`, `C=abs(T)`. A bias-free `Linear(2D,2h)`
   projects `[S,C]` to `u,w`, and a bias-free `Linear(D,h)` projects `T` to `v`.
   One exact GELU acts on stacked `[u+v,u-v,w]` before dropout and one shared
@@ -510,9 +510,9 @@ logic depend on a particular timestamped run.
   effective seed, weight decay, gradient clipping, and cache schema. Compute
   precision, attention/TF32, extraction token budget, all LoRA initialization
   settings, local model paths, and joint learning rates/epochs/batching/
-  accumulation/token budget are excluded. Schema v5 preserves enabled `3H`
-  cache identities and includes `use_abs_diff: false` for separate `2H` caches,
-  retaining training-only ID identities and merged-tail warmup; legacy
+  accumulation/token budget are excluded. Schema v5 preserves existing `3H`
+  cache identities, retaining training-only ID identities and merged-tail
+  warmup. Historical `2H` caches are not read; legacy
   v1/v2/v3/v4 warmup files are retained and no longer read. Token,
   embedding, and batch-plan cache identities are preserved.
   Current input/length validation still runs. Completed
@@ -582,8 +582,9 @@ logic depend on a particular timestamped run.
   schema/class count, pooling, truncation side, and bias are checked. Context
   and A/B training mode are recorded but not checked. Hub base revisions are
   retained; local base weights are neither stored nor content-fingerprinted.
-  Schema v2 checks `use_abs_diff`, defaulting missing markers to `true` for
-  existing `3H` checkpoints. `head_architecture` distinguishes EXPT from the
+  Schema v2 checks head tensor names and shapes before loading the backbone,
+  preserving existing `3H` checkpoints and rejecting historical `2H` heads.
+  `head_architecture` distinguishes EXPT from the
   standard MLP; a missing marker identifies the MLP. Schema v1 checkpoints require rebuilding.
 - Archived QLoRA support remains in shared LoRA modules with its quantization
   dependencies, but has no active model registration or configuration section.
@@ -612,7 +613,8 @@ logic depend on a particular timestamped run.
   backbone hidden size. Schema v3 identifies the `3H` absolute-difference head;
   earlier checkpoints require rebuilding without invalidating branch embeddings.
 - Model sections are optional. `model ALL` runs only configured profiles in
-  registry order and rejects configurations with no model sections.
+  registry order and rejects configurations with no model sections. The
+  `qwen3_4b_lora` section configures both standard LoRA and EXPT.
 - Frozen full-data builds save only the classifier head; LoRA builds save
   adapters and head without base weights or optimizer state. Holdout validation
   does not save production checkpoints, but adapter profiles save completed
@@ -630,7 +632,7 @@ logic depend on a particular timestamped run.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.
   New runs record `head_architecture`; `embedding_combination` is
-  `concat_a_b_abs_diff`, `concat_a_b`, or EXPT's `sum_signed_diff_abs_diff`
+  `concat_a_b_abs_diff` or EXPT's `sum_signed_diff_abs_diff`
   in metrics only, matching the selected head. EXPT snapshots omit `A/B_swap`
   from the model and warmup sections; other snapshots retain the selected flags;
   historical results retain their original contents.

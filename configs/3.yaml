@@ -19,7 +19,6 @@ gpu:
 
 warmup:
   A/B_swap: aug
-  use_abs_diff: true
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   hidden_size: 256
@@ -48,8 +47,7 @@ qwen3_4b:
   dataloader_workers: 0
 
 qwen3_4b_lora:
-  A/B_swap: none
-  use_abs_diff: true
+  A/B_swap: aug
   model_name: Qwen/Qwen3-4B
   max_length: 13514
   gradient_checkpointing_threshold: 10752
@@ -57,7 +55,7 @@ qwen3_4b_lora:
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 1024
-  epochs: 1
+  epochs: 2
   extraction_budget: 262144
   learning_rate: 0.0001
   head_learning_rate: 0.0001

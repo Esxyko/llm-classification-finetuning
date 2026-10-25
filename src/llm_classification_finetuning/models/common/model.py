@@ -10,7 +10,7 @@ from ...model_storage import load_pretrained
 
 
 class PairwiseClassificationHead(nn.Module):
-	"""Classify pooled A/B states with an optional absolute-difference feature."""
+	"""Classify pooled A/B states and their elementwise absolute difference."""
 
 	EMBEDDING_COMBINATION = "concat_a_b_abs_diff"
 
@@ -19,30 +19,25 @@ class PairwiseClassificationHead(nn.Module):
 		backbone_hidden_size: int,
 		hidden_size: int,
 		dropout: float,
-		*,
-		use_abs_diff: bool = True,
 	) -> None:
 		super().__init__()
-		self.use_abs_diff = use_abs_diff
 		self.network = nn.Sequential(
-			nn.Linear(backbone_hidden_size * (3 if use_abs_diff else 2), hidden_size),
+			nn.Linear(backbone_hidden_size * 3, hidden_size),
 			nn.GELU(),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_size, 3),
 		)
 
 	@classmethod
-	def embedding_combination(cls, use_abs_diff: bool = True) -> str:
-		"""Return the result marker for the selected classifier inputs."""
-		return cls.EMBEDDING_COMBINATION if use_abs_diff else "concat_a_b"
+	def embedding_combination(cls) -> str:
+		"""Return the result marker for the fixed classifier inputs."""
+		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
 		"""Return A-win, B-win, and tie logits for paired pooled states."""
 		if h_a.shape != h_b.shape or h_a.ndim != 2:
 			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
-		features: tuple[Tensor, ...] = (h_a, h_b)
-		if self.use_abs_diff:
-			features += (torch.abs(h_a - h_b),)
+		features = (h_a, h_b, torch.abs(h_a - h_b))
 		return self.network(torch.cat(features, dim=-1))
 
 

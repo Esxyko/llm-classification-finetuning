@@ -23,11 +23,8 @@ class _LoRAClassificationHead(PairwiseClassificationHead):
 		dropout: float,
 		*,
 		compute_dtype: torch.dtype,
-		use_abs_diff: bool,
 	) -> None:
-		super().__init__(
-			backbone_hidden_size, hidden_size, dropout, use_abs_diff=use_abs_diff
-		)
+		super().__init__(backbone_hidden_size, hidden_size, dropout)
 		self._compute_dtype = compute_dtype
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -56,7 +53,6 @@ class SwapEquivariantClassificationHead(nn.Module):
 		compute_dtype: torch.dtype,
 	) -> None:
 		super().__init__()
-		self.use_abs_diff = True
 		self._compute_dtype = compute_dtype
 		self.symmetric_projection = nn.Linear(
 			2 * backbone_hidden_size, 2 * hidden_size, bias=False
@@ -69,10 +65,8 @@ class SwapEquivariantClassificationHead(nn.Module):
 		self.readout = nn.Linear(hidden_size, 1, bias=False)
 
 	@classmethod
-	def embedding_combination(cls, use_abs_diff: bool = True) -> str:
+	def embedding_combination(cls) -> str:
 		"""Return the marker for the fixed sum, signed and absolute differences."""
-		if not use_abs_diff:
-			raise ValueError("The EXPT classification head requires use_abs_diff=True.")
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -105,7 +99,6 @@ def create_classification_head(
 	dropout: float,
 	*,
 	compute_dtype: torch.dtype,
-	use_abs_diff: bool = True,
 	head_architecture: str = PAIRWISE_MLP,
 ) -> nn.Module:
 	"""Construct the selected head without changing legacy MLP tensor names."""
@@ -115,11 +108,8 @@ def create_classification_head(
 			hidden_size,
 			dropout,
 			compute_dtype=compute_dtype,
-			use_abs_diff=use_abs_diff,
 		)
 	if head_architecture == EXPT:
-		if not use_abs_diff:
-			raise ValueError("The EXPT classification head requires use_abs_diff=True.")
 		return SwapEquivariantClassificationHead(
 			backbone_hidden_size,
 			hidden_size,

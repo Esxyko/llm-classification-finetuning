@@ -274,7 +274,7 @@ Changing training text or labels while retaining IDs thus reuses the old warmup;
 use `--refresh-cache` to retrain it. Input and token-length checks still run.
 
 Other keys identify the model and exact Hub revision or local weight/configuration
-content, backbone/head dimensions, `use_abs_diff`, tokenizer content,
+content, backbone/head dimensions, tokenizer content,
 serialization version, quantization mode, head dropout, A/B objective, warmup epochs/training batch
 size/learning rate, effective seed, weight decay, gradient clipping, and cache
 schema. Local model paths are excluded when weight/configuration contents
@@ -300,10 +300,8 @@ fresh warmup under the new settings. Rank/target-module changes can affect
 classification-head initialization through random-number consumption on a
 cache miss; cached heads and named optimizer states remain reusable.
 
-Schema v5 supports the default `[A, B, |A - B|]` classifier with a `3H` input and
-the optional `[A, B]` classifier with a `2H` input. Disabled heads include
-`use_abs_diff: false` in their cache identity; enabled heads retain their existing
-v5 cache paths. Standalone warmup and LoRA must select the same switch for reuse.
+Schema v5 uses the fixed `[A, B, |A - B|]` classifier with a `3H` input and
+preserves its existing cache paths. Historical `2H` warmup caches are not read.
 The schema retains training-ID identities without a validation-set binding and
 merges a short final batch into the preceding full optimizer update. Legacy
 v1/v2/v3/v4 warmup files are retained and no longer read.
