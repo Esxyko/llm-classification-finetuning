@@ -10,8 +10,11 @@ directory. The three files are staged and published together after training
 succeeds. `config.yaml` records the effective `data`, `validation`, `gpu`, and
 current model sections, including default values and resolved data paths. LoRA
 snapshots also include the required `warmup` section, with the three warmup
-optimization fields and internal `warmup_extraction_budget` omitted from
-the current LoRA model section. Each section retains its own `extraction_budget`.
+optimization fields and internal `warmup_extraction_budget` and
+`warmup_label_smoothing` omitted from the current LoRA model section. Each section
+retains its own `extraction_budget` and `label_smoothing`; the warmup section's
+smoothing value applies to all head warmup, and the model section's value applies
+to joint training.
 EXPT2 and SR2 snapshots omit `A/B_swap` from both the model and warmup sections
 because both use original rows and a single prediction per ID.
 The current LoRA model configuration section is `qwen3_4b_lora_EXPT2` or

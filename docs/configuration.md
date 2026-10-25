@@ -95,7 +95,7 @@ root [`config.yaml`](../config.yaml); files in `configs/` can use different valu
 Each model section and `warmup` accept optional `label_smoothing`, a finite
 number in `[0, 1]` defaulting to `0.0`. The root configuration and active presets
 record it explicitly; values can differ between the frozen, EXPT2, SR2, and
-standalone warmup sections.
+warmup sections.
 For three classes, smoothing replaces a one-hot target with
 `(1 - label_smoothing) * one_hot + label_smoothing / 3`.
 It applies to ordinary cross entropy and to the loss of averaged A/B
@@ -103,10 +103,10 @@ probabilities in `A/B_swap: inf` mode. Validation and reporting continue to use
 unsmoothed log loss against the original labels.
 
 `qwen3_4b.label_smoothing` controls frozen-head training.
-Each LoRA section's `label_smoothing` controls both its head warmup and joint training.
-`warmup.label_smoothing` controls only standalone
-`model warmup --build`; align it with the EXPT2 value and other warmup settings
-to share that profile's warmup cache.
+Each LoRA section's `label_smoothing` controls only its joint training.
+`warmup.label_smoothing` always controls head warmup, including standalone
+`model warmup --build` and both LoRA profiles' inline warmup. If omitted, it
+defaults to `0.0` independently of the model section's value.
 Nonzero smoothing values enter the warmup-cache identity, while zero retains
 existing unsmoothed cache keys. Effective values are included in result
 configuration snapshots.
@@ -135,8 +135,9 @@ while retaining the existing conversation serialization and saved split.
 Warmup, holdout training, and full-data builds select only original rows from
 the existing processed data. Validation and submission execute the head once
 per pair. The shared `warmup` section remains required for its three optimization
-fields and extraction budget. Standalone warmup uses the same EXPT2 head and
-original-only policy. Both LoRA profiles' snapshots omit `A/B_swap` from both sections.
+fields, extraction budget, and label smoothing. Standalone warmup uses the same
+EXPT2 head and original-only policy. Both LoRA profiles' snapshots omit `A/B_swap`
+from both sections.
 `A/B_swap` is supported only in `qwen3_4b`; remove it from the two LoRA
 sections and `warmup` when migrating older configs, as it is rejected there.
 
@@ -151,10 +152,11 @@ The `warmup` section is required when either LoRA section is present. Both read
 `warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
 this section; these three keys are rejected inside either LoRA section. Move their
 existing values into `warmup` when migrating an older configuration.
-LoRA warmup also uses `warmup.extraction_budget`, while
+LoRA warmup also uses `warmup.label_smoothing` and `warmup.extraction_budget`, while
 each LoRA section's `extraction_budget` controls its joint-validation and submission
-extraction. The resolved `warmup_extraction_budget` field is internal and is
-rejected in YAML; it is omitted from configuration snapshots.
+extraction. The resolved `warmup_extraction_budget` and `warmup_label_smoothing`
+fields are internal and are rejected in YAML; they are omitted from configuration
+snapshots.
 Set `warmup.warmup_epochs: 0` to disable LoRA head warmup and its cache.
 
 The section can also be used without any model sections. A config containing
@@ -172,8 +174,8 @@ are required; its default is `0.0`.
 `warmup_epochs` must be nonnegative;
 `model warmup --build` requires it to be strictly positive. The other fields in
 this section configure standalone warmup; LoRA continues to use its own model,
-classifier, weight decay, clipping, seed, workers, and `label_smoothing`
-settings. Both commands always select original rows.
+classifier, weight decay, clipping, seed, and workers settings. Both commands
+always select original rows.
 SR2's inline warmup uses its own Skywork backbone and head settings. The
 standalone command continues to write the EXPT2 cache namespace; use SR2's
 validation or build command to generate its separate warmup state.
@@ -182,14 +184,14 @@ The root preset uses Qwen3-4B, `max_length: 13514`, a 256-unit EXPT2 head with
 dropout 0.1, two warmup epochs, extraction budget 524288, training batch size
 2048, learning rate 0.001, weight decay 0.01, clipping 1.0, seed 42, and zero
 workers. These are explicit preset values, not parser defaults. Shared GPU
-settings control its single training device and precision. Existing smoothing
-values are retained: the root preset has `warmup.label_smoothing: 0.12` and
-`qwen3_4b_lora_EXPT2.label_smoothing: 0.0`, so those settings do not share a cache
-unless explicitly aligned.
+settings control its single training device and precision. The root preset has
+`warmup.label_smoothing: 0.12`, which applies to standalone and inline warmup
+regardless of either LoRA section's joint-training smoothing value.
 
 To reuse the result in LoRA, its warmup compatibility fields and actual
 training IDs must match. Warmup extraction and the three shared optimization
-fields apply to both commands; the remaining settings must be aligned separately.
+fields, as well as label smoothing, apply to both commands; the remaining
+settings must be aligned separately.
 Full-data builds use a different training ID set and do not reuse this
 train-partition cache. See
 [warmup compatibility](caching.md#lora-head-warmup).

@@ -89,6 +89,12 @@ class LoRATrainer:
 		self._criterion = ClassificationLoss(
 			label_smoothing=config.label_smoothing, reduction="sum"
 		)
+		self._warmup_criterion = ClassificationLoss(
+			label_smoothing=config.warmup_label_smoothing
+			if isinstance(config, LoRAModelConfig)
+			else config.label_smoothing,
+			reduction="sum",
+		)
 		self._warmup_only = warmup_only
 		self._gpu = gpu
 		self._device = device
@@ -520,6 +526,7 @@ class LoRATrainer:
 		description: str = "Build",
 	) -> float:
 		"""Optimize one epoch, optionally retaining gradients only for the head."""
+		criterion = self._warmup_criterion if head_only else self._criterion
 		model.train()
 		if head_only:
 			model.backbone.eval()
@@ -567,12 +574,10 @@ class LoRATrainer:
 				log_probabilities = ABSwapAverager.log_probabilities(
 					model.classifier, *encodings
 				)
-				loss_sum = self._criterion.from_log_probabilities(
-					log_probabilities, labels
-				)
+				loss_sum = criterion.from_log_probabilities(log_probabilities, labels)
 			else:
 				logits = model.classifier(*encodings)
-				loss_sum = self._criterion(logits, labels)
+				loss_sum = criterion(logits, labels)
 			finite_losses.logical_and_(torch.isfinite(loss_sum.detach()))
 			scaler.scale(loss_sum / group_rows).backward()
 			loss_total.add_(loss_sum.detach())

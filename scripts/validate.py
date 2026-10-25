@@ -7,7 +7,7 @@ from pathlib import Path
 
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
-	"SR2-Qwen3-4B-lora": ["1.yaml", "3.yaml", "5.yaml"],
+	"SR2-Qwen3-4B-lora": ["1.yaml", "2.yaml", "3.yaml", "4.yaml"],
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

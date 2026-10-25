@@ -109,6 +109,7 @@ class LoRAModelConfig(WarmupModelConfig):
 	lora_alpha: int
 	lora_dropout: float
 	lora_target_modules: tuple[str, ...]
+	warmup_label_smoothing: float = field(default=0.0, kw_only=True)
 	gradient_checkpointing_threshold: int = 0
 	gradient_checkpointing_budget: int = 0
 
@@ -387,6 +388,7 @@ def _load_lora_model_config(
 	keys = set(LoRAModelConfig.__dataclass_fields__) - {
 		"ab_swap",
 		"warmup_extraction_budget",
+		"warmup_label_smoothing",
 		*LORA_WARMUP_FIELDS,
 	}
 	_reject_unknown_keys(section, keys, section_name)
@@ -452,6 +454,7 @@ def _load_lora_model_config(
 	return LoRAModelConfig(
 		**asdict(shared),
 		warmup_extraction_budget=warmup.extraction_budget,
+		warmup_label_smoothing=warmup.label_smoothing,
 		training_batch_size=positive_integer("training_batch_size"),
 		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),

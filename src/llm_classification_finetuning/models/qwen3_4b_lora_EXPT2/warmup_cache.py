@@ -16,7 +16,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import AdamW
 
-from ...config import GPUConfig, WarmupModelConfig
+from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import CacheStorage
 from .heads import EXPT2, PAIRWISE_MLP, create_classification_head
@@ -102,8 +102,13 @@ class HeadWarmupCache:
 			"max_grad_norm": config.max_grad_norm,
 		}
 		# Preserve existing unsmoothed cache identities while isolating smoothed warmup.
-		if config.label_smoothing != 0.0:
-			metadata["label_smoothing"] = config.label_smoothing
+		label_smoothing = (
+			config.warmup_label_smoothing
+			if isinstance(config, LoRAModelConfig)
+			else config.label_smoothing
+		)
+		if label_smoothing != 0.0:
+			metadata["label_smoothing"] = label_smoothing
 		if self._head_architecture != PAIRWISE_MLP:
 			metadata["head_architecture"] = self._head_architecture
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))

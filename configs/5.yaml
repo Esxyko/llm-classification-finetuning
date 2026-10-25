@@ -50,8 +50,8 @@ qwen3_4b_lora_EXPT2:
   dropout: 0.1
   max_grad_norm: 1.0
   lora_dropout: 0.05
-  lora_rank: 16
-  lora_alpha: 32
+  lora_rank: 32
+  lora_alpha: 64
   lora_target_modules:
     - q_proj
     - k_proj
@@ -96,8 +96,8 @@ SR2_Qwen3_4B_lora:
   dropout: 0.1
   max_grad_norm: 1.0
   lora_dropout: 0.05
-  lora_rank: 32
-  lora_alpha: 64
+  lora_rank: 64
+  lora_alpha: 128
   lora_target_modules:
     - q_proj
     - k_proj

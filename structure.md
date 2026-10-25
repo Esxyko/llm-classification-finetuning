@@ -92,10 +92,12 @@ and print summaries. Business logic belongs below the CLI layer.
   classification heads always include the absolute-difference feature.
   The YAML loader resolves its three warmup optimization fields from the required
   top-level `warmup` section and rejects those keys in either LoRA section. It also resolves
-  internal `warmup_extraction_budget` from `warmup.extraction_budget`,
+  internal `warmup_label_smoothing` from `warmup.label_smoothing` for all
+  head warmup, while each LoRA section's `label_smoothing` controls only joint
+  training. It resolves `warmup_extraction_budget` from `warmup.extraction_budget`,
   retaining the LoRA section's own extraction budget for joint validation and
   submission. All extraction budgets are required positive padded-token limits;
-  the previous batch-size keys and the internal field are rejected in YAML.
+  the previous batch-size keys and both internal fields are rejected in YAML.
   Zero warmup epochs disable LoRA warmup, while the standalone command requires
   positive epochs. EXPT2 reads `qwen3_4b_lora_EXPT2`; SR2 reads
   `SR2_Qwen3_4B_lora` through the same loader. Both are optional. The retired shared
@@ -533,10 +535,10 @@ logic depend on a particular timestamped run.
   exact Hub revision or local weight/configuration contents, tokenizer and
   serialization identities, backbone/head dimensions, head dropout,
   quantization, A/B objective, warmup epochs/training batch size/learning rate,
-  effective seed, weight decay, gradient clipping, nonzero label smoothing,
+  effective seed, weight decay, gradient clipping, nonzero `warmup.label_smoothing`,
   and cache schema. Zero smoothing retains existing cache keys. Compute
   precision, attention/TF32, extraction token budget, all LoRA initialization
-  settings, local model paths, and joint learning rates/epochs/batching/
+  settings, local model paths, and joint label smoothing/learning rates/epochs/batching/
   accumulation/token budget are excluded. Schema v5 preserves EXPT2 cache
   identities and architecture markers, retaining training-only ID identities
   and merged-tail warmup. Retired-profile caches remain separate; legacy
@@ -664,8 +666,9 @@ logic depend on a particular timestamped run.
   together. Metrics do not contain a `config` field; the adjacent YAML includes
   `data`, `validation`, `gpu`, and the current model section. LoRA snapshots also
   include the required `warmup` section and omit the three warmup optimization
-  fields and internal `warmup_extraction_budget` from the selected LoRA section;
-  both sections retain their own `extraction_budget`.
+  fields and internal `warmup_extraction_budget` and `warmup_label_smoothing`
+  from the selected LoRA section; both sections retain their own
+  `extraction_budget` and `label_smoothing`.
   Frozen-model snapshots omit `warmup`. Other model sections are excluded.
   Metrics use validation_strategy=holdout, validation_loss, a flat epochs list,
   and canonical/selected row counts, without fold counters or cross-fold means.

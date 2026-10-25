@@ -43,8 +43,8 @@ qwen3_4b_lora_EXPT2:
   gradient_accumulation_steps: 1024
   epochs: 2
   extraction_budget: 262144
-  learning_rate: 0.0002
-  head_learning_rate: 0.0002
+  learning_rate: 0.0001
+  head_learning_rate: 0.0001
   hidden_size: 256
   weight_decay: 0.01
   dropout: 0.1
@@ -89,8 +89,8 @@ SR2_Qwen3_4B_lora:
   gradient_accumulation_steps: 1024
   epochs: 2
   extraction_budget: 262144
-  learning_rate: 0.0001
-  head_learning_rate: 0.0001
+  learning_rate: 0.0002
+  head_learning_rate: 0.0002
   hidden_size: 256
   weight_decay: 0.01
   dropout: 0.1
