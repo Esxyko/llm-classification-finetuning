@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+import traceback
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
@@ -13,7 +19,24 @@ MODEL_CONFIGS: dict[str, list[str]] = {
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def main() -> int:
+class _TeeStream:
+	"""Write terminal output to the run log immediately as well."""
+
+	def __init__(self, console: TextIO, log_file: TextIO) -> None:
+		self._console = console
+		self._log_file = log_file
+
+	def write(self, text: str) -> int:
+		self._log_file.write(text)
+		self._log_file.flush()
+		return self._console.write(text)
+
+	def flush(self) -> None:
+		self._log_file.flush()
+		self._console.flush()
+
+
+def _validate() -> int:
 	total_tasks = sum(len(configs) for configs in MODEL_CONFIGS.values())
 	if not total_tasks:
 		print("No configs selected in MODEL_CONFIGS.")
@@ -32,19 +55,55 @@ def main() -> int:
 			command = ["uv", "run", "model", model, "--config", str(config)]
 			print(f"Running holdout validation for {task}", flush=True)
 			try:
-				result = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
+				with subprocess.Popen(
+					command,
+					cwd=PROJECT_ROOT,
+					stdout=subprocess.PIPE,
+					stderr=subprocess.STDOUT,
+					text=True,
+					encoding="utf-8",
+					errors="replace",
+					bufsize=1,
+					env=os.environ
+					| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+				) as process:
+					assert process.stdout is not None
+					for line in process.stdout:
+						print(line, end="", flush=True)
+					returncode = process.wait()
 			except OSError as error:
 				failed_tasks.append(task)
 				print(f"Failed holdout validation for {task}: {error}", flush=True)
 				continue
-			if result.returncode:
+			if returncode:
 				failed_tasks.append(task)
-				print(f"Failed holdout validation for {task}", flush=True)
+				print(
+					f"Failed holdout validation for {task} (exit code {returncode})",
+					flush=True,
+				)
 
 	print(f"Completed {total_tasks - len(failed_tasks)}/{total_tasks} tasks.")
 	if failed_tasks:
 		print(f"Failed tasks: {', '.join(failed_tasks)}")
 	return int(bool(failed_tasks))
+
+
+def main() -> int:
+	log_dir = PROJECT_ROOT / "results" / "logs"
+	log_dir.mkdir(parents=True, exist_ok=True)
+	generated_at = datetime.now(UTC).astimezone()
+	log_path = log_dir / f"validate-{generated_at:%Y%m%d-%H%M%S-%f}.log"
+	with (
+		log_path.open("x", encoding="utf-8") as log_file,
+		redirect_stdout(_TeeStream(sys.stdout, log_file)),
+		redirect_stderr(_TeeStream(sys.stderr, log_file)),
+	):
+		print(f"Saving validation log to {log_path}", flush=True)
+		try:
+			return _validate()
+		except BaseException:
+			traceback.print_exc(file=log_file)
+			raise
 
 
 if __name__ == "__main__":

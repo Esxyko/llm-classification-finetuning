@@ -61,9 +61,10 @@ uv run result qwen3-4b-YYYYMMDD-HHMMSS
 ```
 
 Without an argument, the command selects the most recently modified result
-subfolder, excluding `comprehensive`, `submit`, and historical `test` directories.
-It also excludes `.comprehensive-*` staging/backup directories. The selected
-folder is then validated; discovery does not search for the latest valid run.
+subfolder, excluding `comprehensive`, `submit`, `logs`, and historical `test`
+directories. It also excludes `.comprehensive-*` staging/backup directories.
+The selected folder is then validated; discovery does not search for the latest
+valid run.
 
 Report generation requires exactly one top-level CSV named `validation.csv`
 and a `metrics.json` identifying a holdout run. Legacy five-fold runs are

@@ -316,7 +316,7 @@ exports over importing private helpers across package boundaries.
 | `README.md` | Project overview and documentation index |
 | `docs/` | Detailed setup, usage, configuration, and behavioral references |
 | `structure.md` | Code ownership, runtime flow, artifact layout, and implementation invariants |
-| `scripts/validate.py` | Validate the explicit model-to-config filename lists in top-level `MODEL_CONFIGS`, resolving the string `CONFIG_DIR` from the project root and running models and configs in their declared order |
+| `scripts/validate.py` | Validate the explicit model-to-config filename lists in top-level `MODEL_CONFIGS`, resolving the string `CONFIG_DIR` from the project root and running models and configs in their declared order; stream script messages and combined child stdout/stderr to the terminal and one immediately flushed UTF-8 run log, retaining output and unexpected tracebacks on failure |
 | `<MODEL_PATH>/models--*/` | Persistent native Hub repositories, including weights, configurations, tokenizers, refs, and snapshots |
 | `configs/` | Complete YAML configurations for frozen and LoRA profiles with shared training/submission GPU settings |
 | `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
@@ -337,6 +337,7 @@ exports over importing private helpers across package boundaries.
 | `models/SR2_Qwen3_4B_lora/` | Saved Skywork LoRA adapters, EXPT2 head, and metadata in `adapter[_TAG].pt` |
 | `models/qwen3_4b_qlora/` | Historical QLoRA adapters, classifier head, and quantization metadata in one `adapter[_TAG].pt` file; retained |
 | `results/` | Validation runs, test submissions, and comprehensive reports |
+| `results/logs/` | One timestamped `validate-YYYYMMDD-HHMMSS-microseconds.log` per batch validation invocation, including failed runs; excluded from report source selection |
 | `results/qwen3-4b-lora-EXPT2-*/` | EXPT2 original-only validation predictions, metrics, and effective configuration |
 | `results/submit/qwen3-4b-lora-EXPT2-*/` | EXPT2 submissions generated from its own checkpoint |
 | `results/SR2-Qwen3-4B-lora-*/` | SR2 original-only validation predictions, metrics, and effective configuration |

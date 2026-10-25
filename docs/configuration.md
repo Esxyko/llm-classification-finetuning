@@ -385,5 +385,13 @@ config file or model section in the YAML, and summarizes successful and failed
 tasks. It exits with status `1` if any task fails or no config filenames are
 selected.
 
+Each script invocation creates one UTF-8 log at
+`results/logs/validate-YYYYMMDD-HHMMSS-microseconds.log`. All tasks share that
+file, which records the script's messages, each model's standard output and
+standard error, exit codes for failed tasks, and the final summary while output
+continues to appear in the terminal. The log is created before config checks and
+flushed as output arrives, retaining output on failure. Unexpected exceptions
+and keyboard interruptions also save their traceback before propagating.
+
 See [LoRA training](lora.md) for context limits, warmup, and token budgets, or the
 [command reference](commands.md) for execution modes and checkpoint selection.
