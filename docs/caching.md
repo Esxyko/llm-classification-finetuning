@@ -30,40 +30,6 @@ or unpacking. Explicit local model directories load directly. `HF_HOME` and
 authentication settings are preserved. These native model downloads are outside
 the training-cache multipart policy below.
 
-To migrate existing downloads, set `MODEL_PATH`, stop processes using the old
-cache, and run from the project root:
-
-```shell
-uv run python scripts/migrate_hf_models.py --move --dry-run
-uv run python scripts/migrate_hf_models.py --move
-```
-
-The source defaults to `HF_HUB_CACHE`, then legacy `HUGGINGFACE_HUB_CACHE`,
-then `<HF_HOME>/hub`, or `~/.cache/huggingface/hub` with the normal
-`XDG_CACHE_HOME` fallback. The script reads these settings without importing
-project or HF modules. You can explicitly select the old **Hub cache directory**,
-containing `models--*` directories:
-
-```shell
-uv run python scripts/migrate_hf_models.py --source "C:/Users/me/.cache/huggingface/hub" --move
-```
-
-Without `--move`, the script copies and retains the source. `--dry-run` prints
-the plan without creating or deleting files. Each model repository is copied
-into a temporary destination directory, checked file by file with SHA-256, and
-published directly under `MODEL_PATH` only after verification. `--move` removes
-that repository's source only after publication. Existing destination model
-directories are rejected without overwriting them; source and destination paths
-must not overlap. An error stops the script with exit code `1`; previously
-completed repositories remain in the destination.
-
-The script preserves `blobs`, `refs`, snapshots, and internal file symlinks;
-absolute links are rebased so they do not depend on the old cache. On Windows
-without symlink privileges, linked snapshots become regular files and may use
-more disk space. Only native `models--*` repository directories are migrated.
-Authentication tokens, datasets, spaces, download locks, and Xet caches are
-excluded. Existing ZIP archives are not read by project loaders or this script.
-
 ## Shared storage and multipart files
 
 All four cache types use the common `CacheStorage` file interface. Cache keys,

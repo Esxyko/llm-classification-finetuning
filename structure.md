@@ -57,8 +57,8 @@ Relative YAML raw/processed paths, model artifacts, and reports resolve from the
 working directory regardless of the config file's location. Absolute YAML data
 paths stay absolute.
 The paths shown in the flow are those in the root preset; raw/processed paths
-follow the selected YAML. Batch-config scripts instead run each model from the
-project root derived from their own file location.
+follow the selected YAML. The batch validation script instead runs each model
+from the project root derived from its own file location.
 
 ## Entry points
 
@@ -314,10 +314,7 @@ exports over importing private helpers across package boundaries.
 | `README.md` | Project overview and documentation index |
 | `docs/` | Detailed setup, usage, configuration, and behavioral references |
 | `structure.md` | Code ownership, runtime flow, artifact layout, and implementation invariants |
-| `scripts/validate_all_configs.py` | Validate the top-level `MODELS` selection (EXPT2, then SR2 by default) for each YAML file in `configs/` |
-| `scripts/build_all_configs.py` | Train the top-level `MODELS` selection (EXPT2, then SR2 by default) on all original IDs from both partitions for each YAML file in `configs/`, with separate tagged checkpoints |
-| `scripts/count_split_tokens.py` | Count actual unpadded, untruncated A/B tokens in the saved split using training serialization; publish per-ID CSV, split CSV, and tokenizer/source metadata |
-| `scripts/migrate_hf_models.py` | Copy or move existing native HF repositories directly into `MODEL_PATH`, preserving internal links, verifying file contents, and staging publication; supports source selection and dry runs |
+| `scripts/validate.py` | Validate the explicit model-to-config filename lists in top-level `MODEL_CONFIGS`, resolving the string `CONFIG_DIR` from the project root and running models and configs in their declared order |
 | `<MODEL_PATH>/models--*/` | Persistent native Hub repositories, including weights, configurations, tokenizers, refs, and snapshots |
 | `configs/` | Complete YAML configurations for frozen and LoRA profiles with shared training/submission GPU settings |
 | `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
@@ -641,7 +638,7 @@ logic depend on a particular timestamped run.
   checked `training_quantization` marker (`bnb-nf4-double` versus LoRA's `none`);
   a missing marker means legacy LoRA. The archived configuration was independent
   of LoRA; batch plans and token encodings remain shared, and live embeddings
-  are never persisted. The batch scripts default to EXPT2 followed by SR2.
+  are never persisted.
 - Frozen head compatibility includes model name, serializer, classifier hidden
   size, and schema/class count. Context, compute precision, attention
   implementation, TF32, and A/B training mode are recorded but not checked.
@@ -654,8 +651,8 @@ logic depend on a particular timestamped run.
   order is frozen Qwen3-4B, EXPT2, then SR2. The `qwen3_4b_lora_EXPT2` and
   `SR2_Qwen3_4B_lora` sections enable their respective profiles. Standard LoRA
   and EXPT selectors/exports are retired, and old LoRA configuration sections
-  have no aliases. Batch scripts default to both LoRA profiles in registry order;
-  token statistics default to EXPT2 and accept the SR2 selector.
+  have no aliases. The batch validation script defaults to both LoRA profiles in
+  registry order, with an independent config filename list for each model.
 - Frozen full-data builds save only the classifier head; LoRA builds save
   adapters and head without base weights or optimizer state. Holdout validation
   does not save production checkpoints, but adapter profiles save completed

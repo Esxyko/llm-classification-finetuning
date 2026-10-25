@@ -26,7 +26,7 @@ download locks, and resumable downloads in its native layout. Files remain on
 disk after the process exits; no packing or unpacking occurs.
 If `MODEL_PATH` is missing or blank, Hugging Face keeps its usual cache settings.
 Explicit local model directories are loaded directly. See
-[model cache migration](caching.md#hugging-face-model-downloads) for existing downloads.
+[model cache layout](caching.md#hugging-face-model-downloads) for existing downloads.
 
 `MODEL_PATH` controls model downloads only. `DATA_PATH` is no longer used.
 Relative YAML `data.raw_dir` and `data.processed_path` values resolve from the
@@ -141,9 +141,9 @@ original-only policy. Both LoRA profiles' snapshots omit `A/B_swap` from both se
 sections and `warmup` when migrating older configs, as it is rejected there.
 
 The existing EXPT2 checkpoint and warmup-cache namespaces remain unchanged.
-SR2 has separate checkpoint, warmup-cache, and result namespaces. Batch scripts
-select EXPT2 followed by SR2; token statistics still default to EXPT2 and accept
-`--model SR2-Qwen3-4B-lora`.
+SR2 has separate checkpoint, warmup-cache, and result namespaces. The batch
+validation script selects EXPT2 followed by SR2 by default, with independent
+config filename lists.
 
 ## Standalone warmup
 
@@ -347,50 +347,41 @@ untouched. For frozen extraction memory errors, see
 
 ## Batch experiments
 
-To validate selected models on the fixed holdout for every `.yaml` or `.yml` file in `configs/`,
-run:
+To validate selected model/config combinations on the fixed holdout, run:
 
 ```shell
-uv run python scripts/validate_all_configs.py
+uv run python scripts/validate.py
 ```
 
-To train selected models on all original training and validation IDs and build a separate checkpoint for each
-config, run:
+Edit the settings near the top of `scripts/validate.py`:
 
-```shell
-uv run python scripts/build_all_configs.py
+```python
+CONFIG_DIR = "configs"
+MODEL_CONFIGS: dict[str, list[str]] = {
+    "qwen3-4b-lora-EXPT2": ["1.yaml", "2.yaml"],
+    "SR2-Qwen3-4B-lora": ["3.yaml"],
+}
 ```
 
-Both scripts define `MODELS = ("qwen3-4b-lora-EXPT2", "SR2-Qwen3-4B-lora")`
-near the top. Edit each script's
-tuple independently to select models and their execution order; supported model
-selectors are `qwen3-4b`, `qwen3-4b-lora-EXPT2`, and `SR2-Qwen3-4B-lora`.
-Config files run in filename order,
-with the selected models running sequentially for each config. The scripts are
-independent: the build script does not run or require holdout validation.
-They locate `configs/` relative to the script's project root and run each model
-from that root, regardless of the directory from which the script was invoked.
+`CONFIG_DIR` is a string path relative to the project root. Each dictionary key
+is a model selector, and its list contains the config filenames to run for that
+model, relative to `CONFIG_DIR`. Supported selectors are `qwen3-4b`,
+`qwen3-4b-lora-EXPT2`, and `SR2-Qwen3-4B-lora`. The script defaults to both LoRA
+profiles, each listing `1.yaml` through `6.yaml`.
+Models run sequentially in dictionary order, with each model's configs running
+in list order. Only listed files run; newly added YAML files are not selected
+automatically. An empty list skips that model. The script resolves the project
+root from its own location and runs every model from that root, regardless of
+the directory from which it was invoked.
 
 Each model's validation run publishes its own `metrics.json` and an adjacent
 `config.yaml` containing the effective shared and current model sections;
 `metrics.json` does not store the source config path. `config_total_time` covers
 only that model's holdout validation run under the selected config.
-The full-data build does not produce `metrics.json`. By default, it writes
-`models/qwen3_4b_lora_EXPT2/adapter_CONFIG_STEM.pt` and
-`models/SR2_Qwen3_4B_lora/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
-also writes `models/qwen3_4b/head_CONFIG_STEM.pt`. Before starting any builds,
-the script rejects config stems that are invalid checkpoint tags or duplicate
-another stem case-insensitively.
-
-Both scripts continue after a failed config/model task, including a missing
-model section in the YAML, and summarize successful and failed tasks. They exit
-with status `1` if any task fails, no YAML files are found, or `MODELS` is empty.
-To use a tagged checkpoint for submission inference, pass its config and matching
-checkpoint tag, for example:
-
-```shell
-uv run model qwen3-4b-lora-EXPT2 --submit --config configs/config_aug_default.yaml --checkpoint-tag config_aug_default
-```
+The script continues after a failed config/model task, including a missing
+config file or model section in the YAML, and summarizes successful and failed
+tasks. It exits with status `1` if any task fails or no config filenames are
+selected.
 
 See [LoRA training](lora.md) for context limits, warmup, and token budgets, or the
 [command reference](commands.md) for execution modes and checkpoint selection.

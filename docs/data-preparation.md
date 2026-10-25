@@ -48,7 +48,7 @@ Commit the manifest and all referenced volumes together; the saved default split
 uses regular Git storage. Keep `data.processed_path` pointing to the logical
 `.parquet` path for either layout.
 
-Model training, standalone warmup, and token statistics automatically reconstruct
+Model training and standalone warmup automatically reconstruct
 and checksum multipart inputs in an ignored `.cache-work/` directory. The source
 fingerprint hashes the reconstructed Parquet bytes, preserving its identity
 across storage layouts. Existing single-file inputs remain readable and adopt
@@ -76,35 +76,6 @@ Every model serializes aligned conversation branches as chronological
 Prompt and response values must be JSON arrays with the same nonzero turn count.
 Prompts must be strings; a response may be a string or `null`, which becomes an
 empty response. LoRA rejects over-limit inputs rather than truncating them.
-
-## Token statistics
-
-After regeneration, run:
-
-```shell
-uv run python scripts/count_split_tokens.py --local-files-only
-```
-
-The script uses training serialization and shared token encodings while retaining
-the saved split. Its default model is `qwen3-4b-lora-EXPT2`; `--model`, `--config`,
-`--revision`, `--batch-size`, and `--output-dir` select alternatives. When the
-model name matches `validation.tokenizer_name`, the pinned validation tokenizer
-revision is used unless overridden. Omit `--local-files-only` to permit downloads.
-
-Reports default to `data/processed/split_token_stats/`:
-
-| File | Contents |
-| --- | --- |
-| `per_id.csv` | Original ID, split, label, A/B lengths, and total tokens |
-| `splits.csv` | Both partitions' original class counts, rows, tokens, shares, deviations, and branch-length statistics |
-| `summary.json` | Source fingerprint, tokenizer identity, balance settings, and full-precision partition statistics |
-
-`tokens_total` counts canonical A+B inputs once; `tokens_augmented` counts both
-orientations. `effective_rows` and `effective_tokens` apply the model's training
-orientation multiplier to the training partition (`aug` = 2, `inf` = 1).
-Validation uses original IDs with both probability orientations averaged.
-These volumes exclude epoch repetition, padding, warmup, and feature-cache reuse.
-Over-limit branches are reported without truncating or rejecting the statistics.
 
 ## Migration from five folds
 

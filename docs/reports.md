@@ -141,7 +141,7 @@ Holdout validation automatically monitors the configured `gpu.device` for each
 model's complete run. Monitoring begins before pipeline initialization and covers
 model loading, embedding preparation, all executed epochs (including LoRA head
 warmup), training, validation, cleanup, and result publication. All active models,
-`model ALL`, and `scripts/validate_all_configs.py` use the same monitoring path.
+`model ALL`, and `scripts/validate.py` use the same monitoring path.
 Builds and submissions do not enable this monitoring.
 
 After GPU work finishes, the command prints the model selector, device, and

@@ -63,10 +63,10 @@ When `.env` or the environment specifies a non-empty `MODEL_PATH`, each download
 model and its tokenizer use the native Hub cache directly in that directory,
 for example `<MODEL_PATH>/models--Qwen--Qwen3-4B/`. Downloaded files persist across
 processes without packing or unpacking. Otherwise the standard Hugging Face
-cache settings apply. Existing native downloads can be copied or moved with the
-[model migration script](caching.md#hugging-face-model-downloads).
+cache settings apply. See the
+[model cache layout](caching.md#hugging-face-model-downloads) for details.
 
-Project commands and token-statistics downloads default to
+Project commands default to
 [`https://hf-mirror.com`](https://hf-mirror.com) for Hugging Face model,
 configuration, and tokenizer files. Package initialization sets `HF_ENDPOINT`
 before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
@@ -124,8 +124,8 @@ executes `--submit`, before loading backbone weights. Transformers expands K/V
 heads with `repeat_kv`, memory-efficient attention is enabled, and math fallback
 is disabled. Flash and cuDNN attention remain eligible where supported. The GQA
 predicate and SDPA backend flags are restored after success or failure. Explicit
-`eager` attention keeps its existing behavior. No notebook-only patch or separate
-execution of `scripts/patch.py` is needed, including for submission subprocesses.
+`eager` attention keeps its existing behavior. The compatibility settings also
+apply to submission subprocesses.
 
 The dependency pins and SDPA workaround still require a submission run on the
 target Kaggle GPUs to verify runtime behavior and memory use.
