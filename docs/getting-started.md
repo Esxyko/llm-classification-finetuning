@@ -100,7 +100,7 @@ in the submission Python environment (Python 3.14 or newer):
 
 ```shell
 python -m pip install -r requirements-submit.txt
-model qwen3-4b-lora --submit --config path/to/submit.yaml
+model qwen3-4b-lora-EXPT2 --submit --config path/to/submit.yaml
 ```
 
 [`requirements-submit.txt`](../requirements-submit.txt) pins both libraries and

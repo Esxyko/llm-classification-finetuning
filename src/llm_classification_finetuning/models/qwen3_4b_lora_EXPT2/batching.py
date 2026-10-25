@@ -6,7 +6,7 @@ import hashlib
 import json
 import pickle
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from .data import (
 	PairwiseCollator,
 	PairwiseTokenDataset,
 )
+from .profile import PROFILE
 from .warmup_cache import WarmupCacheContext
 
 
@@ -422,7 +423,7 @@ class LoRATrainingBatchRepository:
 		cache: _BatchCache,
 		token_cache: TokenizationCache,
 		refresh_cache: bool,
-		model_key: str = "qwen3_4b_lora",
+		model_key: str = "qwen3_4b_lora_EXPT2",
 		model_label: str = "LoRA",
 		backbone_hidden_size: int | None = None,
 		local_weights_sha256: str | None = None,
@@ -466,19 +467,16 @@ class LoRATrainingBatchRepository:
 		warmup_only: bool = False,
 	) -> LoRATrainingBatchRepository:
 		"""Load data and canonical tokens once, preparing split plans on demand."""
-		model_key = (
-			"warmup"
-			if warmup_only
-			else (profile.config_key if profile else "qwen3_4b_lora")
-		)
+		profile = profile or PROFILE
+		model_key = "warmup" if warmup_only else profile.config_key
 		model_label = (
 			"Warmup"
 			if warmup_only
-			else ("QLoRA" if profile and profile.quantize_training else "LoRA")
+			else ("QLoRA" if profile.quantize_training else "LoRA")
 		)
 		model = (
 			profile.resolve_config(config)
-			if profile is not None and not warmup_only
+			if not warmup_only
 			else getattr(config, model_key, None)
 		)
 		if model is None:
@@ -488,6 +486,8 @@ class LoRATrainingBatchRepository:
 		expected_type = WarmupModelConfig if warmup_only else LoRAModelConfig
 		if not isinstance(model, expected_type):
 			raise TypeError(f"{model_key} must be a {expected_type.__name__}.")
+		if profile.ab_swap_override is not None:
+			model = replace(model, ab_swap=profile.ab_swap_override)
 		try:
 			repository = ModelDataRepository(
 				config.data.processed_path,

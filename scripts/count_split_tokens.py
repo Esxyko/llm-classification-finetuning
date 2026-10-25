@@ -216,7 +216,9 @@ class SplitTokenStatistics:
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
 	add_config_argument(parser)
-	parser.add_argument("--model", choices=MODEL_REGISTRY, default="qwen3-4b-lora")
+	parser.add_argument(
+		"--model", choices=MODEL_REGISTRY, default="qwen3-4b-lora-EXPT2"
+	)
 	parser.add_argument("--batch-size", type=int, default=256)
 	parser.add_argument("--revision", help="Optional Hub tokenizer/base revision.")
 	parser.add_argument("--local-files-only", action="store_true")

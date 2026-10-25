@@ -86,7 +86,7 @@ uv run python scripts/count_split_tokens.py --local-files-only
 ```
 
 The script uses training serialization and shared token encodings while retaining
-the saved split. Its default model is `qwen3-4b-lora`; `--model`, `--config`,
+the saved split. Its default model is `qwen3-4b-lora-EXPT2`; `--model`, `--config`,
 `--revision`, `--batch-size`, and `--output-dir` select alternatives. When the
 model name matches `validation.tokenizer_name`, the pinned validation tokenizer
 revision is used unless overridden. Omit `--local-files-only` to permit downloads.

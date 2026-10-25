@@ -30,6 +30,7 @@ models--*.zip
 !/data/processed/embedding_cache/
 !/data/processed/adapter_batches/
 !/data/processed/qwen3_4b_lora_warmup/
+!/data/processed/qwen3_4b_lora_EXPT2_warmup/
 !/data/processed/qwen3_4b_qlora_warmup/
 
 # Locally archived model implementations

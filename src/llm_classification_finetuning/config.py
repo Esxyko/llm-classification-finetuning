@@ -121,7 +121,7 @@ class AppConfig:
 	validation: ValidationConfig
 	gpu: GPUConfig
 	qwen3_4b: ModelConfig | None = None
-	qwen3_4b_lora: LoRAModelConfig | None = None
+	qwen3_4b_lora_EXPT2: LoRAModelConfig | None = None
 	warmup: WarmupModelConfig | None = None
 
 	@classmethod
@@ -162,7 +162,7 @@ class AppConfig:
 				"validation",
 				"gpu",
 				"qwen3_4b",
-				"qwen3_4b_lora",
+				"qwen3_4b_lora_EXPT2",
 				"warmup",
 			},
 			"configuration root",
@@ -200,8 +200,10 @@ class AppConfig:
 		)
 		qwen3_4b = _load_model_config(root, "qwen3_4b") if "qwen3_4b" in root else None
 		warmup = _load_warmup_model_config(root) if "warmup" in root else None
-		qwen3_4b_lora = (
-			_load_lora_model_config(root, warmup) if "qwen3_4b_lora" in root else None
+		qwen3_4b_lora_EXPT2 = (
+			_load_lora_model_config(root, warmup)
+			if "qwen3_4b_lora_EXPT2" in root
+			else None
 		)
 
 		competition = _require_non_empty_string(
@@ -301,7 +303,7 @@ class AppConfig:
 				submit_devices=(first_submit_device, second_submit_device),
 			),
 			qwen3_4b=qwen3_4b,
-			qwen3_4b_lora=qwen3_4b_lora,
+			qwen3_4b_lora_EXPT2=qwen3_4b_lora_EXPT2,
 			warmup=warmup,
 		)
 
@@ -373,7 +375,7 @@ def _load_warmup_fields(
 def _load_lora_model_config(
 	root: Mapping[str, Any],
 	warmup: WarmupModelConfig | None,
-	section_name: str = "qwen3_4b_lora",
+	section_name: str = "qwen3_4b_lora_EXPT2",
 ) -> LoRAModelConfig:
 	section = _require_mapping(root.get(section_name), section_name)
 	keys = set(LoRAModelConfig.__dataclass_fields__) - {

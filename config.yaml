@@ -48,7 +48,7 @@ qwen3_4b:
   random_state: 42
   dataloader_workers: 0
 
-qwen3_4b_lora:
+qwen3_4b_lora_EXPT2:
   A/B_swap: aug
   label_smoothing: 0.0
   model_name: Qwen/Qwen3-4B

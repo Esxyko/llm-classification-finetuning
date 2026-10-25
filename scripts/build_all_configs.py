@@ -6,7 +6,7 @@ import re
 import subprocess
 from pathlib import Path
 
-MODELS = ("qwen3-4b-lora",)
+MODELS = ("qwen3-4b-lora-EXPT2",)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = PROJECT_ROOT / "configs"

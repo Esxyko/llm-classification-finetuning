@@ -11,10 +11,9 @@ win, a B win, or a tie. It supports:
 
 - One stratified 80/20 split grouped by canonical prompt, with A/B-swapped training rows.
 - A frozen Qwen3-4B backbone with a trainable pairwise classifier.
-- Qwen3-4B LoRA adapters trained together with the classifier.
-- Experimental LoRA classifiers (EXPT and EXPT2) with swap-equivariant heads
-  and original-only training and inference; EXPT2 derives ties from its win
-  representations.
+- Qwen3-4B LoRA adapters trained with the EXPT2 swap-equivariant classifier,
+  which derives ties from its win representations and uses original rows for
+  training and inference.
 - Holdout validation, full-data checkpoints, competition submissions, and
   confusion-matrix and spreadsheet reports.
 

@@ -1,75 +1,25 @@
-# Train with LoRA
+# EXPT2 LoRA training
 
 [Documentation index](../README.md)
 
-Prepare the [training data](data-preparation.md), then use the LoRA section in
-the shared [`config.yaml`](../config.yaml):
+Prepare the [training data](data-preparation.md), configure `qwen3_4b_lora_EXPT2`
+and `warmup`, then run:
 
 ```shell
-uv run model qwen3-4b-lora
-uv run model qwen3-4b-lora --build
-uv run model qwen3-4b-lora --submit
+uv run model qwen3-4b-lora-EXPT2
+uv run model qwen3-4b-lora-EXPT2 --build
+uv run model qwen3-4b-lora-EXPT2 --submit
 ```
 
-The model uses one shared `Qwen/Qwen3-4B` backbone to encode prompt+A and
-prompt+B separately. The shared pairwise MLP always uses `[A, B, |A - B|]`, with an
-elementwise absolute difference and input width `3H` for backbone hidden size
-`H`, throughout warmup, joint training, validation, and submission.
-Standalone warmup uses the same fixed `3H` head.
-LoRA adapters and the pairwise MLP are trained together;
-original backbone parameters remain frozen. `A/B_swap: aug` (the default) trains
-on both processed orientations with per-row cross-entropy. Set
-`qwen3_4b_lora.A/B_swap` to `inf` to train once per original ID using the negative
-log-likelihood of the averaged original and A/B-restored swapped probabilities.
-Both head-only warmup and joint training use the selected objective. Each branch
-is encoded once per selected row during joint training. In `aug` mode, original
-and swapped rows are separate samples and are encoded separately. In `inf`
-mode, the two branch encodings are reused for both head orientations; joint
-training retains gradients through both encodings. In `inf` mode, training
-batch sizes, accumulation counts, and build row counts refer to original samples.
-Validation loss, holdout predictions, and test submissions
-average original and A/B-restored swapped probabilities. Each holdout run
-starts with fresh adapters and initializes the classifier from completed
-compatible warmup when available. Holdout validation saves warmup cache states,
-but no production adapter checkpoints.
+A shared Qwen3-4B backbone encodes prompt+A and prompt+B separately. LoRA
+adapters and the EXPT2 classifier train together while original backbone
+parameters remain frozen. Head warmup and joint training use original rows
+with one cross-entropy prediction per pair. Validation and submission run the
+head once per original ID and return one probability row without orientation
+averaging. `A/B_swap` is accepted but ignored for EXPT2 and standalone warmup.
 
-## Experimental equivariant head
-
-Use the shared `qwen3_4b_lora` section and these commands for the experimental model:
-
-```shell
-uv run model qwen3-4b-lora-EXPT
-uv run model qwen3-4b-lora-EXPT --build
-uv run model qwen3-4b-lora-EXPT --submit
-```
-
-For pooled features `A,B` of width `D` and configured head width `h`, the head
-forms `S=A+B`, `T=A-B`, and `C=abs(T)`. One `Linear(2D,2h)` with bias maps
-`[S,C]` to `u=SU+CV+b_u` and `w=SX+CY+b_w`; its bias vector concatenates
-`b_u,b_w`. One bias-free `Linear(D,h)` computes `v=TW`. It stacks
-`u+v,u-v,w` into `[batch,3,h]`, applies one exact GELU, then dropout and a
-shared bias-free `Linear(h,1)`. Logits retain the A-win, B-win, tie order.
-The fused reparameterized weights and biases are trained and saved directly
-with standard PyTorch initialization. No original L/M/N matrices are constructed.
-The architecture marker is `swap_equivariant_reparam_v2`; warmup caches from
-the bias-free v1 head are not reused, and v1 checkpoints require a new `--build`.
-
-Dropout generates one mask for the first two classes and an independent mask
-for ties. Under the same mask, swapping the features swaps the first two scores
-and leaves the tie score unchanged; evaluation disables dropout. Parameters
-remain FP32, BF16 head autocast follows the existing precision policy, and the
-head returns FP32 logits without softmax.
-
-This profile ignores `qwen3_4b_lora.A/B_swap`. Its built-in warmup and joint
-training use only original samples and one cross-entropy prediction per pair;
-validation and submission also run the head once, then convert logits to
-probabilities. The absolute-difference feature is mandatory. Each validation
-ID has one CSV row with `prediction_aggregation: original_only`; see
-[reports](reports.md). All other LoRA batching, extraction, and GPU behavior
-is shared. Checkpoints use `models/qwen3_4b_lora_EXPT/adapter[_TAG].pt`, and
-warmup caches use `qwen3_4b_lora_EXPT_warmup` beside the processed data.
-The standalone `model warmup --build` command builds the standard MLP cache;
-EXPT builds its own warmup during validation or a full-data build.
+The standard LoRA and EXPT profiles are [retired](models.md#retired-profiles);
+their historical usage is preserved in the local archive.
 
 ## EXPT2 equivariant head
 
@@ -98,11 +48,11 @@ one shared win mask and an independent tie mask. One shared bias-free
 `Linear(h,1)` scores all three representations in a single batched call,
 returning FP32 logits in A-win, B-win, tie order. Under the same masks, swapping
 A/B exchanges the win scores and preserves the tie score; evaluation disables
-dropout. FP32 parameters and BF16 autocast follow EXPT's precision policy.
+dropout. Parameters remain FP32; BF16 mode uses autocast for head computation.
 
-EXPT2 reads the existing `qwen3_4b_lora` and shared `warmup` sections, ignores
-`A/B_swap`, and uses EXPT's original-only warmup, joint training, validation,
-and submission flows. Its architecture marker is
+EXPT2 reads `qwen3_4b_lora_EXPT2` and the shared `warmup` section, ignores
+`A/B_swap`, and uses original-only warmup, joint training, validation, and
+submission. Its architecture marker is
 `swap_equivariant_tie_from_wins_v1`. Checkpoints use
 `models/qwen3_4b_lora_EXPT2/adapter[_TAG].pt`, and warmup caches use
 `qwen3_4b_lora_EXPT2_warmup/<key>.pt` beside the processed data. Validation
@@ -111,10 +61,11 @@ results use `results/qwen3-4b-lora-EXPT2-*/`; submissions use
 
 Checkpoint schema v2 and warmup schema v5 validate the architecture marker,
 head tensor names/shapes, and named warmup optimizer states through the shared
-head factory. Standard LoRA, EXPT, and EXPT2 cannot reuse one another's head
-checkpoints or warmup states. Existing EXPT artifacts retain their identity.
-EXPT2 builds its warmup during validation or a full-data build; the standalone
-`model warmup --build` command continues to build the standard MLP cache.
+head factory. EXPT2 rejects head checkpoints and warmup states from retired
+profiles. Its existing artifact identities remain unchanged. EXPT2 builds its
+warmup during validation or a full-data build; standalone
+`model warmup --build` builds the same head/cache namespace from train IDs.
+Reuse requires matching effective warmup settings and training IDs.
 
 ## Hardware and input limits
 
@@ -128,9 +79,9 @@ remain FP32 in all three modes.
 
 With `gpu.precision: bf16`, residual states, activation-checkpoint layer inputs,
 pooled features, and temporary CPU features remain BF16. The classifier uses
-BF16 autocast for every head forward pass, including warmup and both inference
-orientations, then returns FP32 logits for loss calculation and probability
-averaging. Trainable parameters, gradients, and AdamW moment tensors remain
+BF16 autocast for every head forward pass, including warmup and original-only
+inference, then returns FP32 logits for loss calculation and probabilities.
+Trainable parameters, gradients, and AdamW moment tensors remain
 FP32. RMSNorm retains FP32 variance calculation with BF16 weights and outputs.
 FP16 and FP32 modes retain FP32 pooled/CPU features and classifier computation.
 
@@ -145,13 +96,13 @@ and checkpoint [forward/recomputation contexts](https://docs.pytorch.org/docs/st
 
 The root [`config.yaml`](../config.yaml) preset allows **each branch** up to
 13,514 tokens, dynamically pads A and B independently, and processes branches
-sequentially with KV caching disabled. Its `gradient_checkpointing_threshold: 11264`
+sequentially with KV caching disabled. Its `gradient_checkpointing_threshold: 10752`
 packs initial micro-batches within that padded A/B token threshold without
 checkpointing; longer pairs use non-reentrant activation checkpointing.
-`gradient_checkpointing_budget: 0` leaves those checkpointed singletons separate;
-a positive budget combines them within each optimizer update.
+`gradient_checkpointing_budget: 131072` combines checkpointed singletons within
+each optimizer update; setting it to `0` leaves those singletons separate.
 `training_batch_size: 1` and `gradient_accumulation_steps: 1024` give a target
-effective batch of 1,024 augmented rows, with dynamically packed micro-batches.
+effective batch of 1,024 original rows, with dynamically packed micro-batches.
 LoRA never truncates inputs: all canonical branches are tokenized and checked
 before training, and inference checks its inputs before encoding them. An input
 longer than `max_length` raises an error with its ID, branch, actual token count,
@@ -195,7 +146,7 @@ and the tokenizer's default special-token behavior.
 The longest branch is A for ID `2995198009` (the corresponding B branch has
 4,225 tokens). The processed Parquet file's SHA-256 fingerprint is
 `0db037aac8f94bf68d3f6e02b2bf4214e6bf4817ed01d4c475af5c2f41fab4ff`.
-The root preset's 16,384-token limit preserves every training branch in this
+The root EXPT2 preset's 13,514-token limit preserves every training branch in this
 snapshot. New training or test data is checked independently; these measurements
 do not establish its maximum length. The 43,035,297 canonical tokens occupy about
 164 MiB of int32 payload, excluding offsets and other runtime objects. At batch
@@ -204,17 +155,17 @@ below that ceiling.
 
 ## Optimization and head warmup
 
-In the root preset, LoRA rank is 16, alpha is 32, and dropout is 0.05. Adapters
+In the root preset, LoRA rank is 32, alpha is 64, and dropout is 0.05. Adapters
 target attention `q_proj`, `k_proj`, `v_proj`, `o_proj` and MLP `gate_proj`,
 `up_proj`, `down_proj`.
-The 512-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
-`0.0002`, head learning rate `0.001`, weight decay `0.01`, and gradient clipping
-at 1.0. Training starts with one head-only warmup epoch at a fixed learning rate
+The 256-unit classifier uses dropout 0.1. AdamW uses adapter learning rate
+`0.0001`, head learning rate `0.0001`, weight decay `0.01`, and gradient clipping
+at 1.0. Training starts with two head-only warmup epochs at a fixed learning rate
 of `0.001`, then jointly trains adapters and head for two epochs at fixed learning
-rates. Joint-training settings are configured in `qwen3_4b_lora`.
+rates. Joint-training settings are configured in `qwen3_4b_lora_EXPT2`.
 Warmup epochs, head-training batch size, and learning rate are
 configured in the required top-level `warmup` section, shared with standalone
-warmup; their former keys inside `qwen3_4b_lora` are rejected.
+warmup; their former keys inside `qwen3_4b_lora_EXPT2` are rejected.
 Warmup extraction also uses `warmup.extraction_budget` for both commands.
 
 `warmup.warmup_epochs` is a required nonnegative integer; `0` skips head warmup and
@@ -235,10 +186,11 @@ On a cache miss, warmup uses the extraction and training settings below.
 
 `warmup.extraction_budget` is a required positive integer controlling
 no-gradient backbone extraction for warmup. The separate required positive
-`qwen3_4b_lora.extraction_budget` controls joint validation and submissions.
+`qwen3_4b_lora_EXPT2.extraction_budget` controls joint validation and submissions.
 Both replace `extraction_batch_size`, whose old branch-count values must be
 changed to token budgets; the old key is rejected. The root configuration and
-active presets use `524288` padded tokens for both stages and frozen extraction.
+active presets use `524288` padded tokens for warmup and frozen extraction;
+EXPT2 joint validation and submission use `262144` in the root preset.
 Canonical inputs are flattened as A0, B0, A1, B1, and so on, then sorted by
 length descending with original branch index as the tie-breaker. Shared best-fit
 packing limits `branch_count * longest_branch_length` to the budget, including
@@ -253,10 +205,9 @@ forward computation disabled. The adapter state is restored after extraction.
 Extraction completes before epoch timing starts, so warmup training and total epoch times exclude it;
 complete-run timing still includes it. Its paired
 features remain in CPU memory, using BF16 for `gpu.precision: bf16` and FP32
-otherwise; training rows select the appropriate A/B
-orientation and retain their original labels and row order without storing
-augmented feature copies. Warmup validation averages the two head orientations
-over these same frozen features. All warmup epochs reuse the features; both
+otherwise; training rows retain their original A/B orientation, labels, and row
+order. Warmup validation makes one prediction per original ID over these same
+frozen features. All warmup epochs reuse the features; both
 training and validation views are released when joint training starts, and
 features are never written to disk or reused between runs. Only the completed
 head and its training state are persisted. The full 57,477-ID
@@ -265,7 +216,7 @@ excluding loader batches and metadata. With `warmup_epochs: 0`, warmup feature
 extraction is skipped; joint validation and submission still extract features,
 and the shared training token cache is still used.
 `warmup.warmup_training_batch_size` is a required positive integer controlling only the
-head-warmup forward batch size over extracted features (root preset: `1024`). A
+head-warmup forward batch size over extracted features (root preset: `2048`). A
 short final batch accumulates gradients with the preceding full batch for one
 optimizer update, retaining both forward batch sizes. An epoch smaller than one
 batch still performs one update; exact multiples keep one update per full batch.
@@ -306,7 +257,7 @@ publishes the final epoch's predictions. Full-data builds have no validation set
 not run validation. Replace the removed `warmup_ratio` key with
 `warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, and
 `warmup.warmup_learning_rate`, and configure `warmup.extraction_budget` and
-`qwen3_4b_lora.extraction_budget` for their respective stages;
+`qwen3_4b_lora_EXPT2.extraction_budget` for their respective stages;
 old keys are rejected as unknown configuration options.
 
 ## Two-stage validation and submission
@@ -319,13 +270,12 @@ This setting does not control backbone extraction or checkpoint compatibility.
 After every joint-training epoch, validation first extracts each needed ID once
 in canonical A/B orientation using the current adapters. Submission extracts test
 features after restoring the checkpoint. Both use
-`qwen3_4b_lora.extraction_budget`, evaluation mode, and no gradients, even
+`qwen3_4b_lora_EXPT2.extraction_budget`, evaluation mode, and no gradients, even
 with `warmup_epochs: 0`. Extraction
 finishes before head inference starts. Paired features stay in temporary CPU
 memory in BF16 for `gpu.precision: bf16` and FP32 otherwise; the head selects
-reference-ordered feature views, averages original and
-A/B-restored swapped probabilities, and computes validation loss when labels
-exist. Submission inputs do not require labels.
+original reference-ordered feature views, makes one head call per ID, and
+computes validation loss when labels exist. Submission inputs do not require labels.
 
 Warmup validation reuses its existing features. Each joint-validation call and
 submission extracts fresh features and releases them on return; features are
@@ -351,8 +301,7 @@ and `V` be `ceil(validation_rows / head_inference_batch_size)` using original va
 IDs. The run contributes `0.5 * warmup_epochs * (W + V) + epochs * (J + V)` work
 units when warmup runs, or `epochs * (J + V)` when warmup is reused.
 The count covers one fixed split; a build uses all selected training rows
-with `V = 0`. Training counts respect `A/B_swap`,
-including original IDs only for `inf`.
+with `V = 0`. EXPT2 and standalone warmup count original training IDs only.
 
 Training advances the counter after each complete warmup or joint update group,
 including merged groups, single short epochs, and skipped FP16 updates.
@@ -390,7 +339,7 @@ gradient_checkpointing_budget: 8192
 ```
 
 The saved training partition is globally planned before joint training,
-excluding the validation set and selecting the configured A/B training orientations.
+excluding the validation set and selecting original training rows only.
 Preparation tries stable sorts by `(A_length, B_length)`,
 `(B_length, A_length)`, and `(A_length + B_length, A_length, B_length)`, with
 `(id, is_swapped)` as the tie-breaker. Each candidate is divided into cached packing
@@ -449,8 +398,8 @@ Fixed and token-budget batching use the same update sizes and update counts.
 Positive thresholds group rows by global lengths instead of fixed-batch random
 order. Floating-point accumulation order and dropout draws can
 differ. With both settings at zero, training retains the original fixed-batch
-seeded shuffle. The root preset uses a threshold of `11264` and a checkpointing
-budget of `0` for LoRA. The example values are illustrative, not measured
+seeded shuffle. The root preset uses a threshold of `10752` and a checkpointing
+budget of `131072` for EXPT2. The example values are illustrative, not measured
 recommendations for a particular GPU. Padded batches
 can change SDPA kernel selection, so dynamic batching is not guaranteed to be
 faster or use less peak memory. No throughput or peak-VRAM benchmark has been
@@ -462,19 +411,19 @@ For smaller GPUs, lower a positive checkpointing threshold, lower the
 checkpointing budget (`0` disables singleton merging), or lower
 `warmup.extraction_budget` for warmup backbone extraction,
 `warmup.warmup_training_batch_size` for warmup head training, or
-`qwen3_4b_lora.extraction_budget` for joint-validation/submission backbone
+`qwen3_4b_lora_EXPT2.extraction_budget` for joint-validation/submission backbone
 extraction. Lower `training_batch_size` for joint training or
 `head_inference_batch_size` for classifier inference over CPU features. Increase
 `gradient_accumulation_steps` when reducing the training batch to retain the
 desired effective batch. Keep `max_length` at least as large as the longest
 required input. Larger GPUs can use larger batches. Memory fit for the
-`gradient_checkpointing_threshold: 11264` preset on a 32 GB GPU has not been measured;
+`gradient_checkpointing_threshold: 10752` preset on a 32 GB GPU has not been measured;
 execution reports OOM without silently lowering context length.
 
 ## Checkpoints
 
 Builds atomically save adapters, the classifier, and compatibility metadata in
-`models/qwen3_4b_lora/adapter.pt`. `--checkpoint-tag TAG` selects
+`models/qwen3_4b_lora_EXPT2/adapter.pt`. `--checkpoint-tag TAG` selects
 `adapter_TAG.pt`. Base weights and optimizer state are not stored. The checkpoint
 records the resolved Hub base revision so inference reloads matching weights
 and tokenizer files. Model name, classifier size and dropout,
@@ -490,10 +439,9 @@ the checkpoint neither includes nor fingerprints local base weights.
 There are no persistent LoRA embedding caches.
 BF16 head computation preserves the classifier's state-dict keys and FP32
 checkpoint parameters, so compute-precision changes preserve compatibility for
-current-schema checkpoints. Schema v2 checkpoints with the fixed `3H` head
-remain loadable; head tensor names and shapes are checked before loading the
-backbone. Historical `2H` heads and schema v1 adapter/head checkpoints require
-a new `--build`.
+current-schema EXPT2 checkpoints. Schema v2 checks the EXPT2 architecture
+marker and head tensor names/shapes before loading the backbone. Retired-profile
+heads and schema v1 adapter/head checkpoints cannot be loaded as EXPT2.
 
 See [caching and Python APIs](caching.md) for shared token encodings and batch-plan
 reuse, [configuration](configuration.md) for batch experiments, and

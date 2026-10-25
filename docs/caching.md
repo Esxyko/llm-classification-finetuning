@@ -244,32 +244,19 @@ features and live LoRA encodings are never persisted in these token caches.
 
 ## LoRA head warmup
 
-Holdout validation and builds automatically save completed head warmup under
-`qwen3_4b_lora_warmup/<key>.pt` beside the processed Parquet. The standalone
-`model warmup --build` command also writes
-the LoRA directory using only the saved train partition. Identity follows the
-actual training data, rather than the holdout/build mode. Checkpoint tags do not
-affect this cache. Submission inference
-does not use it.
+EXPT2 holdout validation and builds save completed head warmup under
+`qwen3_4b_lora_EXPT2_warmup/<key>.pt` beside the processed Parquet.
+Standalone `model warmup --build` uses the same directory and EXPT2 head with
+the fixed original-only policy, using only the saved train partition.
+Identity follows actual training data and effective settings rather than the
+command. Checkpoint tags do not affect the cache; submission does not use it.
 
-The experimental `qwen3-4b-lora-EXPT` profile stores its built-in warmup in
-`qwen3_4b_lora_EXPT_warmup/<key>.pt`. Its identity includes
-`head_architecture: swap_equivariant_reparam_v2` and the fixed original-only
-training policy. Meta-device validation constructs the matching head and
-checks its three reparameterized weight tensors, fused `b_u,b_w` bias vector,
-and named optimizer states. Bias-free v1 caches retain their old keys and are
-not reused.
-
-EXPT2 stores its built-in warmup in `qwen3_4b_lora_EXPT2_warmup/<key>.pt`
-with `head_architecture: swap_equivariant_tie_from_wins_v1` and the same fixed
-original-only policy. Its meta-device validation checks the symmetric,
-directional, tie, and readout weights, the symmetric and tie biases, and their
-named AdamW states. Warmup schema v5 remains unchanged; EXPT and EXPT2 have
-distinct directories and architecture identities and cannot reuse each other's
-states. Invalid or incompatible caches rebuild through the existing miss path.
-Standard MLP caches retain their existing keys and cannot be reused by either
-experimental profile.
-The standalone warmup command continues to build the standard MLP cache.
+The architecture marker remains `swap_equivariant_tie_from_wins_v1` and warmup
+schema remains v5. Meta-device validation checks the symmetric, directional,
+tie, and readout weights, symmetric/tie biases, and named AdamW states.
+Existing EXPT2 paths and cache keys remain unchanged. Missing or incompatible
+entries rebuild through the existing miss path. Retired standard MLP and EXPT
+caches are retained in their original directories and cannot be reused by EXPT2.
 
 The data key hashes only the sorted original training ID set. For normal model
 builds this is the full original ID set; for holdout runs and standalone warmup
@@ -313,8 +300,8 @@ fresh warmup under the new settings. Rank/target-module changes can affect
 classification-head initialization through random-number consumption on a
 cache miss; cached heads and named optimizer states remain reusable.
 
-Schema v5 uses the fixed `[A, B, |A - B|]` classifier with a `3H` input and
-preserves its existing cache paths. Historical `2H` warmup caches are not read.
+Schema v5 validates the EXPT2 head architecture and preserves its existing
+cache paths. Historical MLP and EXPT warmup states are not read by EXPT2.
 The schema retains training-ID identities without a validation-set binding and
 merges a short final batch into the preceding full optimizer update. Legacy
 v1/v2/v3/v4 warmup files are retained and no longer read.
@@ -340,8 +327,8 @@ that context automatically.
 
 `uv run model warmup --build` uses the `warmup` section and the
 shared data, validation, and GPU settings. It prepares tokens only for train
-IDs, applies the configured `A/B_swap` objective, and checks the same schema-v3
-non-quantized LoRA key. A valid cache returns before backbone-weight loading,
+IDs, selects original rows regardless of `A/B_swap`, and checks the same
+schema-v5 non-quantized EXPT2 key. A valid cache returns before backbone-weight loading,
 feature extraction, or training; the summary reports zero executed epochs.
 
 On a miss it loads a frozen, non-quantized backbone without injecting adapters,
@@ -386,7 +373,7 @@ initializing CUDA:
 from pathlib import Path
 
 from llm_classification_finetuning.config import AppConfig
-from llm_classification_finetuning.models.qwen3_4b_lora import (
+from llm_classification_finetuning.models.qwen3_4b_lora_EXPT2 import (
     LoRATrainingBatchRepository,
 )
 

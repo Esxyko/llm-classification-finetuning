@@ -15,7 +15,7 @@ from torch import Tensor
 
 from ...config import GPUConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
-from .heads import PAIRWISE_MLP, create_classification_head
+from .heads import EXPT2, PAIRWISE_MLP, create_classification_head
 from .model import LoRAQwenClassifier
 
 
@@ -39,7 +39,7 @@ class LoRACheckpointCompatibility:
 	truncation_side: str = "right"
 	bias: str = "none"
 	training_quantization: str = "none"
-	head_architecture: str = PAIRWISE_MLP
+	head_architecture: str = EXPT2
 
 	@classmethod
 	def from_config(
@@ -48,7 +48,7 @@ class LoRACheckpointCompatibility:
 		serializer_version: str,
 		*,
 		quantize_training: bool = False,
-		head_architecture: str = PAIRWISE_MLP,
+		head_architecture: str = EXPT2,
 	) -> LoRACheckpointCompatibility:
 		return cls(
 			model_name=config.model_name,

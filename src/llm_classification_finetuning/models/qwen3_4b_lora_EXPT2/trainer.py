@@ -5,7 +5,7 @@ from __future__ import annotations
 import gc
 import math
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter
 
@@ -45,8 +45,8 @@ from .data import (
 	PairwiseFeatureStore,
 )
 from .extractor import LoRAEmbeddingExtractor
-from .heads import PAIRWISE_MLP
 from .model import LoRAQwenClassifier
+from .profile import PROFILE
 from .warmup_cache import HeadWarmupCache, WarmupCacheContext, WarmupCacheEntry
 
 
@@ -76,11 +76,14 @@ class LoRATrainer:
 		profile: ModelProfile | None = None,
 		warmup_only: bool = False,
 	) -> None:
+		profile = profile or PROFILE
+		if profile.ab_swap_override is not None:
+			config = replace(config, ab_swap=profile.ab_swap_override)
 		if not warmup_only and not isinstance(config, LoRAModelConfig):
 			raise TypeError("Joint training requires a LoRAModelConfig.")
 		if warmup_only and config.warmup_epochs <= 0:
 			raise ModelExecutionError("Standalone warmup requires warmup_epochs > 0.")
-		if warmup_only and profile is not None and profile.quantize_training:
+		if warmup_only and profile.quantize_training:
 			raise ValueError("Standalone warmup cannot use a quantized profile.")
 		self._config = config
 		self._criterion = ClassificationLoss(
@@ -91,20 +94,12 @@ class LoRATrainer:
 		self._device = device
 		self._token_cache_dir = token_cache_dir
 		self._refresh_cache = refresh_cache
-		self._config_key = (
-			"warmup"
-			if warmup_only
-			else (profile.config_key if profile else "qwen3_4b_lora")
-		)
-		self._model_key = (
-			"warmup"
-			if warmup_only
-			else (profile.artifact_stem if profile else "qwen3_4b_lora")
-		)
-		self._quantize_training = profile.quantize_training if profile else False
-		self._head_architecture = profile.head_architecture if profile else PAIRWISE_MLP
+		self._config_key = "warmup" if warmup_only else profile.config_key
+		self._model_key = "warmup" if warmup_only else profile.artifact_stem
+		self._quantize_training = profile.quantize_training
+		self._head_architecture = profile.head_architecture
 		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
-		artifact_stem = profile.artifact_stem if profile else "qwen3_4b_lora"
+		artifact_stem = profile.artifact_stem
 		self._warmup_cache = HeadWarmupCache(
 			token_cache_dir.parent / f"{artifact_stem}_warmup",
 			config,

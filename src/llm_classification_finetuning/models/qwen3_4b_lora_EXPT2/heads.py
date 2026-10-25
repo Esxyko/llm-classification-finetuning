@@ -159,9 +159,9 @@ def create_classification_head(
 	dropout: float,
 	*,
 	compute_dtype: torch.dtype,
-	head_architecture: str = PAIRWISE_MLP,
+	head_architecture: str = EXPT2,
 ) -> nn.Module:
-	"""Construct the selected head without changing legacy MLP tensor names."""
+	"""Construct an EXPT2 head by default, retaining legacy head definitions."""
 	if head_architecture == PAIRWISE_MLP:
 		return _LoRAClassificationHead(
 			backbone_hidden_size,

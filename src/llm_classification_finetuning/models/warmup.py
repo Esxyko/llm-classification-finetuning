@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import gc
+from dataclasses import replace
 
 import torch
 
 from ..config import AppConfig
 from ..errors import ConfigurationError, ModelExecutionError
 from .common import GPUEnvironment, WarmupBuildResult
-from .qwen3_4b_lora import LoRATrainer, LoRATrainingBatchRepository
+from .qwen3_4b_lora_EXPT2 import PROFILE, LoRATrainer, LoRATrainingBatchRepository
 
 
 class WarmupModelPipeline:
@@ -25,14 +26,17 @@ class WarmupModelPipeline:
 			raise ConfigurationError(
 				"Standalone warmup requires warmup.warmup_epochs > 0."
 			)
-		self._config = config
-		self._model_config = config.warmup
+		self._model_config = replace(config.warmup, ab_swap=PROFILE.ab_swap_override)
+		self._config = replace(config, warmup=self._model_config)
 
 	def run(self, *, refresh_cache: bool = False) -> WarmupBuildResult:
 		"""Prepare train-only tokens and publish completed warmup, or reuse a hit."""
 		try:
 			batches = LoRATrainingBatchRepository.from_config(
-				self._config, refresh_cache=refresh_cache, warmup_only=True
+				self._config,
+				refresh_cache=refresh_cache,
+				profile=PROFILE,
+				warmup_only=True,
 			)
 			device = GPUEnvironment(self._config.gpu).configure()
 			trainer = LoRATrainer(
@@ -41,6 +45,7 @@ class WarmupModelPipeline:
 				device,
 				token_cache_dir=self._config.data.processed_path.parent / "token_cache",
 				refresh_cache=refresh_cache,
+				profile=PROFILE,
 				warmup_only=True,
 			)
 			return trainer.build_warmup(batches)

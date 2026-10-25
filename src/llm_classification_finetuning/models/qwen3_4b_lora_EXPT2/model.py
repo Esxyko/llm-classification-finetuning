@@ -16,7 +16,7 @@ from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...model_storage import load_pretrained
 from ..common import ABSwapAverager, GPUEnvironment
 from .data import BranchBatch, PairwiseBatch
-from .heads import EXPT, EXPT2, PAIRWISE_MLP, create_classification_head
+from .heads import EXPT, EXPT2, create_classification_head
 
 
 class LoRAQwenClassifier(nn.Module):
@@ -32,7 +32,7 @@ class LoRAQwenClassifier(nn.Module):
 		device_map: dict[str, str] | None = None,
 		quantize_backbone: bool = False,
 		warmup_only: bool = False,
-		head_architecture: str = PAIRWISE_MLP,
+		head_architecture: str = EXPT2,
 	) -> None:
 		super().__init__()
 		if not warmup_only and not isinstance(config, LoRAModelConfig):

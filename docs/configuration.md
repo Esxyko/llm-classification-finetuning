@@ -50,13 +50,14 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `warmup` | Shared warmup epochs, extraction token budget, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora` | Shared hyperparameters for standard LoRA, EXPT, and EXPT2: model, sequence length, training batches, extraction/head inference budgets, gradient checkpointing, accumulation, adapters, and classifier; standard LoRA uses `A/B_swap` (`aug` or `inf`), while EXPT and EXPT2 ignore it |
+| `qwen3_4b_lora_EXPT2` | EXPT2 model, sequence length, training batches, extraction/head inference budgets, gradient checkpointing, accumulation, adapters, and classifier; `A/B_swap` is ignored |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
-The `qwen3_4b_lora` section configures all three LoRA profiles for `ALL`.
-The retired `qwen3_4b_qlora` section is rejected as an unknown root key. Remove
-it from older configurations; see [retired profiles](models.md#retired-profiles).
+The `qwen3_4b_lora_EXPT2` section enables EXPT2 in `ALL`.
+Retired `qwen3_4b_lora`, `qwen3_4b_lora_EXPT`, and `qwen3_4b_qlora` keys are
+rejected as unknown root keys. Rename an older shared `qwen3_4b_lora` section
+to `qwen3_4b_lora_EXPT2` to run EXPT2; see [retired profiles](models.md#retired-profiles).
 
 Every command validates the entire selected YAML before doing work, including
 any model sections it will not use. `data`, `validation`, and `gpu` are
@@ -73,10 +74,10 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.validation_fraction` | `0.2` |
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
-| `qwen3_4b.A/B_swap` / `qwen3_4b_lora.A/B_swap` / `warmup.A/B_swap` | `aug` |
-| `qwen3_4b.label_smoothing` / `qwen3_4b_lora.label_smoothing` / `warmup.label_smoothing` | `0.0` |
-| `qwen3_4b_lora.gradient_checkpointing_threshold` | `0` |
-| `qwen3_4b_lora.gradient_checkpointing_budget` | `0` |
+| `qwen3_4b.A/B_swap` / `qwen3_4b_lora_EXPT2.A/B_swap` / `warmup.A/B_swap` | `aug` (ignored by EXPT2 and standalone warmup) |
+| `qwen3_4b.label_smoothing` / `qwen3_4b_lora_EXPT2.label_smoothing` / `warmup.label_smoothing` | `0.0` |
+| `qwen3_4b_lora_EXPT2.gradient_checkpointing_threshold` | `0` |
+| `qwen3_4b_lora_EXPT2.gradient_checkpointing_budget` | `0` |
 
 All other fields in a present section are required, including `gpu.device`,
 `warmup.warmup_epochs`, extraction budgets, and the warmup training batch size
@@ -88,7 +89,8 @@ root [`config.yaml`](../config.yaml); files in `configs/` can use different valu
 
 Each model section and `warmup` accept optional `label_smoothing`, a finite
 number in `[0, 1]` defaulting to `0.0`. The root configuration and active presets
-set it explicitly to `0.0`, preserving the existing training objective.
+record it explicitly; values can differ between the frozen, EXPT2, and
+standalone warmup sections.
 For three classes, smoothing replaces a one-hot target with
 `(1 - label_smoothing) * one_hot + label_smoothing / 3`.
 It applies to ordinary cross entropy and to the loss of averaged A/B
@@ -96,8 +98,8 @@ probabilities in `A/B_swap: inf` mode. Validation and reporting continue to use
 unsmoothed log loss against the original labels.
 
 `qwen3_4b.label_smoothing` controls frozen-head training.
-`qwen3_4b_lora.label_smoothing` controls both head warmup and joint training for
-standard LoRA, EXPT, and EXPT2. `warmup.label_smoothing` controls only standalone
+`qwen3_4b_lora_EXPT2.label_smoothing` controls both head warmup and joint training for
+EXPT2. `warmup.label_smoothing` controls only standalone
 `model warmup --build`; align it with the LoRA value to share a warmup cache.
 Nonzero smoothing values enter the warmup-cache identity, while zero retains
 existing unsmoothed cache keys. Effective values are included in result
@@ -105,42 +107,34 @@ configuration snapshots.
 
 ## Pairwise absolute difference
 
-The frozen and standard LoRA profiles always classify `[A, B, |A - B|]` with a
-`3H` input. This also applies to standalone `model warmup --build`, LoRA head
-warmup, joint training, validation, and submission. The absolute-difference
-feature has no configuration switch. Metrics record the fixed combination.
-Existing `3H` checkpoints and warmup caches remain compatible; historical `2H`
-heads require rebuilding.
+The frozen profile classifies `[A, B, |A - B|]` with a `3H` input. EXPT2 and
+standalone warmup use the sum, signed difference, and absolute-difference
+features described below. The absolute-difference feature is mandatory and
+has no configuration switch. Metrics record each head's fixed combination.
 
 ## Experimental LoRA model
 
-Select `model qwen3-4b-lora-EXPT` or `model qwen3-4b-lora-EXPT2` using the
-existing `qwen3_4b_lora` section. All three LoRA profiles read the same
-hyperparameters. EXPT and EXPT2 ignore `A/B_swap` and internally fix their
-policy to original-only, while standard LoRA uses the configured mode.
-Separate `qwen3_4b_lora_EXPT` and `qwen3_4b_lora_EXPT2` YAML sections are not
-supported; move any older EXPT section's settings into `qwen3_4b_lora`.
-Both experimental heads always include `C = |A - B|`; EXPT2 derives its tie
-representation from the activated win branches before dropout. See the
+Select `model qwen3-4b-lora-EXPT2` using `qwen3_4b_lora_EXPT2`. EXPT2 ignores
+`A/B_swap` and fixes its internal policy to original-only. It derives the tie
+representation from activated win branches before dropout; see the
 [EXPT2 head definition](lora.md#expt2-equivariant-head).
 
 Warmup, holdout training, and full-data builds select only original rows from
 the existing processed data. Validation and submission execute the head once
 per pair. The shared `warmup` section remains required for its three optimization
-fields and extraction budget; its `A/B_swap` value does not control EXPT or EXPT2.
-EXPT and EXPT2 snapshots omit `A/B_swap` from both sections.
+fields and extraction budget. Standalone warmup uses the same EXPT2 head and
+original-only policy. EXPT2 snapshots omit `A/B_swap` from both sections.
 
-EXPT and EXPT2 each use independent checkpoint and warmup-cache namespaces.
-The existing `configs/` presets and batch scripts keep their current model selection.
+The existing EXPT2 checkpoint and warmup-cache namespaces remain unchanged.
+Batch scripts and token statistics select EXPT2 by default.
 
 ## Standalone warmup
 
-The `warmup` section is required when `qwen3_4b_lora` is present. All three LoRA
-profiles read `warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
-this section; these three keys are rejected inside `qwen3_4b_lora`. Move their
+The `warmup` section is required when `qwen3_4b_lora_EXPT2` is present. EXPT2 reads `warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate` from
+this section; these three keys are rejected inside `qwen3_4b_lora_EXPT2`. Move their
 existing values into `warmup` when migrating an older configuration.
 LoRA warmup also uses `warmup.extraction_budget`, while
-`qwen3_4b_lora.extraction_budget` controls joint-validation and submission
+`qwen3_4b_lora_EXPT2.extraction_budget` controls joint-validation and submission
 extraction. The resolved `warmup_extraction_budget` field is internal and is
 rejected in YAML; it is omitted from configuration snapshots.
 Set `warmup.warmup_epochs: 0` to disable LoRA head warmup and its cache.
@@ -160,15 +154,17 @@ and `label_smoothing` are required; their defaults are `aug` and `0.0`.
 `warmup_epochs` must be nonnegative;
 `model warmup --build` requires it to be strictly positive. The other fields in
 this section configure standalone warmup; LoRA continues to use its own model,
-classifier, weight decay, clipping, seed, workers, `A/B_swap`, and `label_smoothing`
-settings.
+classifier, weight decay, clipping, seed, workers, and `label_smoothing`
+settings. Both commands always select original rows, regardless of `A/B_swap`.
 
-The root preset copies the LoRA warmup settings: Qwen3-4B, `max_length: 13514`,
-a 1024-unit head with dropout 0.1, one warmup epoch, extraction budget 524288,
-training batch size 2048, learning rate 0.001, weight decay 0.01, clipping 1.0,
-seed 42, zero workers, and `A/B_swap: aug`. These are explicit preset values,
-not parser defaults. Shared GPU settings control its single training device
-and precision.
+The root preset uses Qwen3-4B, `max_length: 13514`, a 256-unit EXPT2 head with
+dropout 0.1, two warmup epochs, extraction budget 524288, training batch size
+2048, learning rate 0.001, weight decay 0.01, clipping 1.0, seed 42, and zero
+workers. These are explicit preset values, not parser defaults. Shared GPU
+settings control its single training device and precision. Existing smoothing
+values are retained: the root preset has `warmup.label_smoothing: 0.12` and
+`qwen3_4b_lora_EXPT2.label_smoothing: 0.0`, so those settings do not share a cache
+unless explicitly aligned.
 
 To reuse the result in LoRA, its warmup compatibility fields and actual
 training IDs must match. Warmup extraction and the three shared optimization
@@ -208,11 +204,11 @@ replacing the processed dataset. See [data preparation](data-preparation.md).
 ## Extraction token budgets
 
 `extraction_budget` replaces `extraction_batch_size` in `warmup`, `qwen3_4b`,
-and `qwen3_4b_lora`. It is a required positive integer measured in padded tokens;
+and `qwen3_4b_lora_EXPT2`. It is a required positive integer measured in padded tokens;
 the old key is rejected. The root configuration and all active presets use
 `524288`. Old branch counts such as `32` or `64` are not equivalent token budgets.
 
-`qwen3_4b_lora.extraction_budget` controls backbone extraction
+`qwen3_4b_lora_EXPT2.extraction_budget` controls backbone extraction
 for every joint-validation pass and submissions, including when warmup is
 disabled. `warmup.extraction_budget` controls warmup extraction for all LoRA
 profiles and standalone warmup. `qwen3_4b.extraction_budget` controls extraction
@@ -342,9 +338,9 @@ config, run:
 uv run python scripts/build_all_configs.py
 ```
 
-Both scripts define `MODELS = ("qwen3-4b-lora",)` near the top. Edit each script's
+Both scripts define `MODELS = ("qwen3-4b-lora-EXPT2",)` near the top. Edit each script's
 tuple independently to select models and their execution order; supported model
-selectors are `qwen3-4b` and `qwen3-4b-lora`. Config files run in filename order,
+selectors are `qwen3-4b` and `qwen3-4b-lora-EXPT2`. Config files run in filename order,
 with the selected models running sequentially for each config. The scripts are
 independent: the build script does not run or require holdout validation.
 They locate `configs/` relative to the script's project root and run each model
@@ -355,7 +351,7 @@ Each model's validation run publishes its own `metrics.json` and an adjacent
 `metrics.json` does not store the source config path. `config_total_time` covers
 only that model's holdout validation run under the selected config.
 The full-data build does not produce `metrics.json`. By default, it writes
-`models/qwen3_4b_lora/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
+`models/qwen3_4b_lora_EXPT2/adapter_CONFIG_STEM.pt` for each config; selecting `qwen3-4b`
 also writes `models/qwen3_4b/head_CONFIG_STEM.pt`. Before starting any builds,
 the script rejects config stems that are invalid checkpoint tags or duplicate
 another stem case-insensitively.
@@ -367,7 +363,7 @@ To use a tagged checkpoint for submission inference, pass its config and matchin
 checkpoint tag, for example:
 
 ```shell
-uv run model qwen3-4b-lora --submit --config configs/config_aug_default.yaml --checkpoint-tag config_aug_default
+uv run model qwen3-4b-lora-EXPT2 --submit --config configs/config_aug_default.yaml --checkpoint-tag config_aug_default
 ```
 
 See [LoRA training](lora.md) for context limits, warmup, and token budgets, or the

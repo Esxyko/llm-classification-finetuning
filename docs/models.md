@@ -8,19 +8,15 @@ adapters. See [LoRA training](lora.md) for its objectives and settings.
 Training uses one GPU; submissions use the
 [two-GPU configuration](configuration.md#gpu-configuration).
 
-The frozen and standard LoRA profiles use the same pairwise MLP head. It always concatenates the
-pooled branch embeddings as `[A, B, |A - B|]`, where the absolute difference is
-elementwise and the head input has width `3H` for backbone hidden size `H`.
-This fixed input applies throughout standalone warmup, LoRA warmup, training,
-validation, and submission.
+The frozen profile uses a pairwise MLP head. It concatenates the pooled branch
+embeddings as `[A, B, |A - B|]`, where the absolute difference is elementwise
+and the head input has width `3H` for backbone hidden size `H`.
 
-The `qwen3-4b-lora-EXPT` profile uses a [swap-equivariant head](lora.md#experimental-equivariant-head)
-with shared class readout. It trains and predicts only original rows, without
-A/B augmentation or orientation averaging.
-
-The `qwen3-4b-lora-EXPT2` profile uses the same original-only flow with a
+The `qwen3-4b-lora-EXPT2` profile trains adapters with a swap-equivariant
 [head that derives ties from win representations](lora.md#expt2-equivariant-head).
-It shares configuration with standard LoRA and EXPT and stores separate artifacts.
+It uses the `qwen3_4b_lora_EXPT2` configuration section and trains and predicts
+only original rows, without orientation averaging. Standalone warmup builds
+this same EXPT2 head.
 
 ## Frozen-model holdout validation
 
@@ -136,15 +132,21 @@ base revision used during training.
 
 ## Retired profiles
 
-The retired `qwen3-1.7b`, `qwen3-1.7b-mono-input`, and `qwen3-4b-qlora`
-implementations and configuration sections are retained locally in the
-Git-ignored `src/llm_classification_finetuning/models/archive/` directory.
-QLoRA lives in its `qwen3_4b_qlora/` subdirectory, with historical documentation
-in `README.md`; its settings are in the archive-level `config.yaml`. These
-models are no longer CLI choices or members of `ALL`. The QLoRA configuration
-key is no longer accepted. The shared LoRA quantization branches and
-`bitsandbytes` dependency remain available in the source. Historical results,
-checkpoints, and caches are retained. The archive is not included in a fresh
-clone.
+The retired `qwen3-1.7b`, `qwen3-1.7b-mono-input`, `qwen3-4b-qlora`,
+`qwen3-4b-lora`, and `qwen3-4b-lora-EXPT` implementations are retained locally
+in the Git-ignored `src/llm_classification_finetuning/models/archive/` directory.
+Standard LoRA and EXPT were retired on 2026-10-25. Their subdirectories contain
+source snapshots, configuration/preset snapshots, archival notices, and
+historical workflow/configuration documentation. QLoRA retains its historical
+README and the archive-level configuration.
+
+These profiles are no longer CLI choices or members of `ALL`. The old
+`qwen3_4b_lora`, `qwen3_4b_lora_EXPT`, and `qwen3_4b_qlora` configuration keys
+are rejected. To run EXPT2 with an older configuration, rename the shared
+`qwen3_4b_lora` section to `qwen3_4b_lora_EXPT2`; there is no compatibility alias.
+Historical results, checkpoints, caches, and archived configurations remain at
+their original locations. The archive is not included in a fresh clone.
+Shared legacy head and quantization definitions remain available within the
+EXPT2 implementation, along with the quantization dependencies.
 Source-module ownership is covered by
 [structure.md](../structure.md#package-map).
