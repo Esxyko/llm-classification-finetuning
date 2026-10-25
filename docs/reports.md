@@ -24,6 +24,10 @@ prediction aggregation, timing, and GPU memory metrics.
 Other model sections are omitted; frozen-model snapshots also omit `warmup`.
 The snapshot uses the same YAML field names as the input configuration and can
 be passed to `--config`.
+Historical snapshots retain the section names, parameter values, and resolved
+paths used for that run. Do not replace them with current presets when updating
+configuration or retiring models. Snapshots for retired models require the
+matching historical code version.
 `metrics.json` does not contain a `config` field.
 Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
 list, canonical `source_training_rows` and `validation_rows`, and the actual

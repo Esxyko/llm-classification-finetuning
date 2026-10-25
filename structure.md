@@ -676,7 +676,9 @@ logic depend on a particular timestamped run.
   `concat_a_b_abs_diff` or EXPT2's `sum_signed_diff_abs_diff`
   in metrics only, matching the selected head. EXPT2 and SR2 snapshots omit `A/B_swap`
   from the model and warmup sections; other snapshots retain the selected flags;
-  historical results retain their original contents.
+  historical results retain their original contents. Preset updates and model
+  retirement must not rewrite saved snapshots, including their section names,
+  parameter values, or resolved paths.
   Result synthesis consumes only split=validation. Both LoRA profiles mark
   `original_only` and retain original rows with one vote per ID; the frozen
   profile retains both orientations for A/B alignment. Historical LoRA results
