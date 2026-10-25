@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-All profiles use a shared Qwen3-4B backbone to compare two response branches.
+Each profile uses a Qwen3-4B-family backbone to compare two response branches.
 The frozen profile trains only a pairwise classifier; LoRA also trains
 adapters. See [LoRA training](lora.md) for its objectives and settings.
 Training uses one GPU; submissions use the
@@ -17,6 +17,28 @@ The `qwen3-4b-lora-EXPT2` profile trains adapters with a swap-equivariant
 It uses the `qwen3_4b_lora_EXPT2` configuration section and trains and predicts
 only original rows, without orientation averaging. Standalone warmup builds
 this same EXPT2 head.
+
+## Skywork reward backbone with LoRA
+
+The `SR2-Qwen3-4B-lora` profile reads `SR2_Qwen3_4B_lora` and uses
+[Skywork/Skywork-Reward-V2-Qwen3-4B](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-4B)
+as its backbone. `AutoModel` loads its Transformer weights without the original
+scalar reward head. The pooled hidden representations feed the same EXPT2
+three-class head, trained with LoRA on original rows only.
+Input serialization and last-real-token pooling follow EXPT2, without adding
+a chat template or changing the saved holdout split.
+
+```shell
+uv run model SR2-Qwen3-4B-lora
+uv run model SR2-Qwen3-4B-lora --build
+uv run model SR2-Qwen3-4B-lora --submit
+```
+
+SR2 supports the same checkpoint tags and cache refresh options. Its checkpoints
+use `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt`; validation and submission outputs
+use the `SR2-Qwen3-4B-lora-*` prefix in `results/` and `results/submit/`.
+Its own warmup runs on the Skywork backbone and stores a separate cache;
+see [SR2 LoRA training](lora.md#sr2-reward-backbone-profile).
 
 ## Frozen-model holdout validation
 

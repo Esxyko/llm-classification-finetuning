@@ -12,9 +12,12 @@ current model sections, including default values and resolved data paths. LoRA
 snapshots also include the required `warmup` section, with the three warmup
 optimization fields and internal `warmup_extraction_budget` omitted from
 the current LoRA model section. Each section retains its own `extraction_budget`.
-EXPT2 snapshots omit `A/B_swap` from both the model and warmup sections
-because it always uses original rows and a single prediction per ID.
-The active LoRA model configuration section is `qwen3_4b_lora_EXPT2`.
+EXPT2 and SR2 snapshots omit `A/B_swap` from both the model and warmup sections
+because both use original rows and a single prediction per ID.
+The current LoRA model configuration section is `qwen3_4b_lora_EXPT2` or
+`SR2_Qwen3_4B_lora`. SR2 follows the EXPT2 reporting rules in this guide,
+including the same head and embedding markers, original-only row counts,
+prediction aggregation, timing, and GPU memory metrics.
 Other model sections are omitted; frozen-model snapshots also omit `warmup`.
 The snapshot uses the same YAML field names as the input configuration and can
 be passed to `--config`.

@@ -79,3 +79,35 @@ qwen3_4b_lora_EXPT2:
     - down_proj
   random_state: 42
   dataloader_workers: 0
+
+SR2_Qwen3_4B_lora:
+  A/B_swap: aug
+  label_smoothing: 0.12
+  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  max_length: 13514
+  gradient_checkpointing_threshold: 10752
+  gradient_checkpointing_budget: 131072
+  training_batch_size: 1
+  head_inference_batch_size: 4096
+  gradient_accumulation_steps: 1024
+  epochs: 2
+  extraction_budget: 262144
+  learning_rate: 0.0001
+  head_learning_rate: 0.0001
+  hidden_size: 256
+  weight_decay: 0.01
+  dropout: 0.1
+  max_grad_norm: 1.0
+  lora_dropout: 0.05
+  lora_rank: 32
+  lora_alpha: 64
+  lora_target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  random_state: 42
+  dataloader_workers: 0

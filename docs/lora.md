@@ -1,4 +1,4 @@
-# EXPT2 LoRA training
+# EXPT2 and SR2 LoRA training
 
 [Documentation index](../README.md)
 
@@ -16,10 +16,41 @@ adapters and the EXPT2 classifier train together while original backbone
 parameters remain frozen. Head warmup and joint training use original rows
 with one cross-entropy prediction per pair. Validation and submission run the
 head once per original ID and return one probability row without orientation
-averaging. `A/B_swap` is accepted but ignored for EXPT2 and standalone warmup.
+averaging. `A/B_swap` is accepted but ignored for both LoRA profiles and standalone warmup.
 
 The standard LoRA and EXPT profiles are [retired](models.md#retired-profiles);
 their historical usage is preserved in the local archive.
+
+## SR2 reward-backbone profile
+
+`model SR2-Qwen3-4B-lora` uses `SR2_Qwen3_4B_lora` with
+`model_name: Skywork/Skywork-Reward-V2-Qwen3-4B`. It reuses the EXPT2 pipeline,
+trainer, and comparison head described in this guide. `AutoModel` loads the
+reward-trained Transformer without its scalar reward head; branch serialization,
+pooling, LoRA target modules, precision, batching, and original-only behavior
+follow EXPT2. Training is non-quantized on one GPU; submission uses two GPUs.
+
+```shell
+uv run model SR2-Qwen3-4B-lora
+uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag example
+uv run model SR2-Qwen3-4B-lora --submit --checkpoint-tag example
+```
+
+The root config and each active preset copy their EXPT2 settings into SR2,
+changing only `model_name`. Each profile remains independently configurable.
+SR2 reads the three warmup optimization fields and extraction budget from
+`warmup`; all other warmup model/head settings come from `SR2_Qwen3_4B_lora`.
+It warms up against Skywork features and writes
+`SR2_Qwen3_4B_lora_warmup/<key>.pt` beside the processed data.
+The standalone `model warmup --build` command retains the EXPT2 cache namespace.
+
+SR2 checkpoints use `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt`, and outputs use
+`results/SR2-Qwen3-4B-lora-*/` or
+`results/submit/SR2-Qwen3-4B-lora-*/submission.csv`. Compatibility includes
+the backbone model name and exact Hub revision, preventing reuse of Qwen
+checkpoints or warmup states for Skywork. The head architecture and checkpoint
+and warmup schemas are shared with EXPT2. The workflow below applies to both
+profiles; EXPT2-specific configuration keys and paths refer to that profile.
 
 ## EXPT2 equivariant head
 

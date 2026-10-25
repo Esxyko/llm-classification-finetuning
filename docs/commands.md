@@ -12,6 +12,7 @@ All commands accept [`--config PATH`](configuration.md#configuration-files-and-p
 | `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_validation.parquet` |
 | `uv run model qwen3-4b` | Runs Qwen3-4B holdout validation | `results/qwen3-4b-*/` |
 | `uv run model qwen3-4b-lora-EXPT2` | Runs LoRA with the equivariant head deriving ties from win representations | `results/qwen3-4b-lora-EXPT2-*/` |
+| `uv run model SR2-Qwen3-4B-lora` | Runs Skywork reward-backbone LoRA with the EXPT2 head | `results/SR2-Qwen3-4B-lora-*/` |
 | `uv run model warmup --build` | Builds non-quantized EXPT2 head warmup on the saved train partition | `data/processed/qwen3_4b_lora_EXPT2_warmup/<key>.pt` |
 | `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the classifier and any adapters on all training and validation IDs | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
@@ -24,16 +25,17 @@ see [processed data](data-preparation.md#processed-data).
 
 ## Model selection and execution modes
 
-Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora-EXPT2`, `warmup`, or exact
+Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora-EXPT2`, `SR2-Qwen3-4B-lora`, `warmup`, or exact
 uppercase `ALL`. `--build` and `--submit` are mutually exclusive; without either
 flag, registered profiles run holdout validation. `ALL` runs configured profiles
-in the order `qwen3-4b`, then `qwen3-4b-lora-EXPT2`, and accepts the same
+in the order `qwen3-4b`, `qwen3-4b-lora-EXPT2`, then `SR2-Qwen3-4B-lora`, and accepts the same
 `--build`, `--submit`, and `--refresh-cache` options. If one model fails, the
 remaining models still run; the command exits with status `1` if any failed.
 YAML validation happens before this loop; an invalid field in any present
 section stops the command before any model runs.
-The `qwen3_4b_lora_EXPT2` section enables EXPT2 in `ALL`. EXPT2 and standalone
-warmup ignore `A/B_swap` and always use original rows. The standard LoRA and
+The `qwen3_4b_lora_EXPT2` and `SR2_Qwen3_4B_lora` sections enable their respective
+profiles in `ALL`. Both LoRA profiles and standalone warmup ignore `A/B_swap`
+and always use original rows. The standard LoRA and
 EXPT selectors are [retired](models.md#retired-profiles).
 
 The old `--test` flag is no longer accepted.
@@ -45,7 +47,9 @@ before joint training, with no validation, production checkpoint, or report.
 `ALL` never includes this CLI-only selector. `warmup` accepts `--config` and
 `--refresh-cache`; it rejects validation mode, `--submit`, and `--checkpoint-tag`
 before loading data or configuring a GPU. A cache hit skips backbone-weight
-loading and reports zero executed epochs. See [cache reuse](caching.md#standalone-warmup-build).
+loading and reports zero executed epochs. This command writes the EXPT2 namespace;
+SR2 builds its separate warmup cache during its own validation or full-data build.
+See [cache reuse](caching.md#standalone-warmup-build).
 
 ## Cache refresh
 

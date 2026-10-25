@@ -123,6 +123,7 @@ class AppConfig:
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora_EXPT2: LoRAModelConfig | None = None
 	warmup: WarmupModelConfig | None = None
+	SR2_Qwen3_4B_lora: LoRAModelConfig | None = None
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
@@ -163,6 +164,7 @@ class AppConfig:
 				"gpu",
 				"qwen3_4b",
 				"qwen3_4b_lora_EXPT2",
+				"SR2_Qwen3_4B_lora",
 				"warmup",
 			},
 			"configuration root",
@@ -203,6 +205,11 @@ class AppConfig:
 		qwen3_4b_lora_EXPT2 = (
 			_load_lora_model_config(root, warmup)
 			if "qwen3_4b_lora_EXPT2" in root
+			else None
+		)
+		SR2_Qwen3_4B_lora = (
+			_load_lora_model_config(root, warmup, "SR2_Qwen3_4B_lora")
+			if "SR2_Qwen3_4B_lora" in root
 			else None
 		)
 
@@ -305,6 +312,7 @@ class AppConfig:
 			qwen3_4b=qwen3_4b,
 			qwen3_4b_lora_EXPT2=qwen3_4b_lora_EXPT2,
 			warmup=warmup,
+			SR2_Qwen3_4B_lora=SR2_Qwen3_4B_lora,
 		)
 
 

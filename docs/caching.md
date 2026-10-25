@@ -248,6 +248,12 @@ EXPT2 holdout validation and builds save completed head warmup under
 `qwen3_4b_lora_EXPT2_warmup/<key>.pt` beside the processed Parquet.
 Standalone `model warmup --build` uses the same directory and EXPT2 head with
 the fixed original-only policy, using only the saved train partition.
+SR2 validation and builds use the same cache implementation and head, warming
+up on Skywork features and storing the completed head/optimizer state under
+`SR2_Qwen3_4B_lora_warmup/<key>.pt`. Features remain temporary CPU data.
+The model name and exact backbone revision are part of the identity, so SR2
+does not reuse Qwen warmup states. The standalone command continues to use
+the EXPT2 namespace; SR2 generates its warmup during its own model run.
 Identity follows actual training data and effective settings rather than the
 command. Checkpoint tags do not affect the cache; submission does not use it.
 
