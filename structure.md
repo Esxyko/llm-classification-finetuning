@@ -99,9 +99,9 @@ and print summaries. Business logic belongs below the CLI layer.
   Zero warmup epochs disable LoRA warmup, while the standalone command requires
   positive epochs. EXPT2 reads `qwen3_4b_lora_EXPT2`; SR2 reads
   `SR2_Qwen3_4B_lora` through the same loader. Both are optional. The retired shared
-  `qwen3_4b_lora` section is rejected. Both LoRA profiles and standalone warmup ignore
-  `A/B_swap` through immutable effective copies with the internal policy fixed
-  to `none`, preserving the parsed YAML/config objects.
+  `qwen3_4b_lora` section is rejected. Both LoRA profiles and standalone warmup
+  reject `A/B_swap` in YAML and initialize their internal `ab_swap` policy to
+  `none`; effective profile copies enforce the same original-only policy.
 - `model_storage.py`: Routes config/tokenizer/backbone loads through the shared
   `load_pretrained` wrapper to a persistent native Hub cache at optional
   `MODEL_PATH`, preserving default caching and explicit local model paths.

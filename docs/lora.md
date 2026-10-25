@@ -16,7 +16,8 @@ adapters and the EXPT2 classifier train together while original backbone
 parameters remain frozen. Head warmup and joint training use original rows
 with one cross-entropy prediction per pair. Validation and submission run the
 head once per original ID and return one probability row without orientation
-averaging. `A/B_swap` is accepted but ignored for both LoRA profiles and standalone warmup.
+averaging. Both LoRA profiles and standalone warmup use this fixed policy and
+do not accept an `A/B_swap` setting.
 
 The standard LoRA and EXPT profiles are [retired](models.md#retired-profiles);
 their historical usage is preserved in the local archive.
@@ -81,8 +82,8 @@ returning FP32 logits in A-win, B-win, tie order. Under the same masks, swapping
 A/B exchanges the win scores and preserves the tie score; evaluation disables
 dropout. Parameters remain FP32; BF16 mode uses autocast for head computation.
 
-EXPT2 reads `qwen3_4b_lora_EXPT2` and the shared `warmup` section, ignores
-`A/B_swap`, and uses original-only warmup, joint training, validation, and
+EXPT2 reads `qwen3_4b_lora_EXPT2` and the shared `warmup` section and uses
+original-only warmup, joint training, validation, and
 submission. Its architecture marker is
 `swap_equivariant_tie_from_wins_v1`. Checkpoints use
 `models/qwen3_4b_lora_EXPT2/adapter[_TAG].pt`, and warmup caches use
@@ -463,10 +464,11 @@ Builds atomically save adapters, the classifier, and compatibility metadata in
 `adapter_TAG.pt`. Base weights and optimizer state are not stored. The checkpoint
 records the resolved Hub base revision so inference reloads matching weights
 and tokenizer files. Model name, classifier size and dropout,
-serialization, and LoRA settings must match. `max_length` and `A/B_swap` remain
-recorded in checkpoint metadata. The `training_quantization` marker must also be `none`
+serialization, and LoRA settings must match. `max_length` and the fixed internal
+`ab_swap: none` policy remain recorded in checkpoint metadata. The
+`training_quantization` marker must also be `none`
 (including older checkpoints without the marker); historical quantized
-checkpoints are incompatible. `max_length` and `A/B_swap` are not checked when
+checkpoints are incompatible. `max_length` and `ab_swap` are not checked when
 loading. CUDA index, GPU model, precision, attention implementation, TF32, batch
 sizes, and accumulation settings
 can also change between build and inference. Inputs must still fit the current

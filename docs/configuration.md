@@ -50,8 +50,8 @@ uv run model qwen3-4b --config configs/config_aug_default.yaml
 | `gpu` | Training `device`, two `submit_devices` (default `[cuda:0, cuda:1]`), precision, attention implementation, and TF32, shared by all models |
 | `warmup` | Shared warmup epochs, extraction token budget, training batch size, and learning rate for LoRA and `model warmup --build`; also configures the standalone warmup model, input limit, classifier, and optimizer |
 | `qwen3_4b` | Qwen3-4B model, sequence length, batches, MLP, optimizer, and `A/B_swap` training mode (`aug` or `inf`) |
-| `qwen3_4b_lora_EXPT2` | EXPT2 model, sequence length, training batches, extraction/head inference budgets, gradient checkpointing, accumulation, adapters, and classifier; `A/B_swap` is ignored |
-| `SR2_Qwen3_4B_lora` | Skywork reward-backbone LoRA with the same fields and EXPT2 classifier; `A/B_swap` is ignored |
+| `qwen3_4b_lora_EXPT2` | EXPT2 model, sequence length, training batches, extraction/head inference budgets, gradient checkpointing, accumulation, adapters, and classifier |
+| `SR2_Qwen3_4B_lora` | Skywork reward-backbone LoRA with the same fields and EXPT2 classifier |
 
 Model sections are optional. Explicitly selecting a profile without its section
 reports a configuration error; `ALL` requires at least one configured profile.
@@ -76,11 +76,10 @@ Only these YAML fields have parser defaults when omitted:
 | `validation.validation_fraction` | `0.2` |
 | `validation.max_token_deviation` | `0.005` (strictly less than 0.5% relative to the validation token target) |
 | `gpu.submit_devices` | `[cuda:0, cuda:1]` |
-| `qwen3_4b.A/B_swap` / `qwen3_4b_lora_EXPT2.A/B_swap` / `warmup.A/B_swap` | `aug` (ignored by EXPT2 and standalone warmup) |
+| `qwen3_4b.A/B_swap` | `aug` |
 | `qwen3_4b.label_smoothing` / `qwen3_4b_lora_EXPT2.label_smoothing` / `warmup.label_smoothing` | `0.0` |
 | `qwen3_4b_lora_EXPT2.gradient_checkpointing_threshold` | `0` |
 | `qwen3_4b_lora_EXPT2.gradient_checkpointing_budget` | `0` |
-| `SR2_Qwen3_4B_lora.A/B_swap` | `aug` (ignored; effective policy is original-only) |
 | `SR2_Qwen3_4B_lora.label_smoothing` | `0.0` |
 | `SR2_Qwen3_4B_lora.gradient_checkpointing_threshold` | `0` |
 | `SR2_Qwen3_4B_lora.gradient_checkpointing_budget` | `0` |
@@ -121,8 +120,8 @@ has no configuration switch. Metrics record each head's fixed combination.
 
 ## Experimental LoRA model
 
-Select `model qwen3-4b-lora-EXPT2` using `qwen3_4b_lora_EXPT2`. EXPT2 ignores
-`A/B_swap` and fixes its internal policy to original-only. It derives the tie
+Select `model qwen3-4b-lora-EXPT2` using `qwen3_4b_lora_EXPT2`. EXPT2 uses a
+fixed original-only policy. It derives the tie
 representation from activated win branches before dropout; see the
 [EXPT2 head definition](lora.md#expt2-equivariant-head).
 
@@ -138,6 +137,8 @@ the existing processed data. Validation and submission execute the head once
 per pair. The shared `warmup` section remains required for its three optimization
 fields and extraction budget. Standalone warmup uses the same EXPT2 head and
 original-only policy. Both LoRA profiles' snapshots omit `A/B_swap` from both sections.
+`A/B_swap` is supported only in `qwen3_4b`; remove it from the two LoRA
+sections and `warmup` when migrating older configs, as it is rejected there.
 
 The existing EXPT2 checkpoint and warmup-cache namespaces remain unchanged.
 SR2 has separate checkpoint, warmup-cache, and result namespaces. Batch scripts
@@ -166,13 +167,13 @@ uv run model warmup --build --config config.yaml
 Its fields are `model_name`, `max_length`, `hidden_size`, `dropout`,
 `warmup_epochs`, `extraction_budget`, `warmup_training_batch_size`,
 `warmup_learning_rate`, `weight_decay`, `max_grad_norm`, `random_state`,
-`dataloader_workers`, `A/B_swap`, and `label_smoothing`. All except `A/B_swap`
-and `label_smoothing` are required; their defaults are `aug` and `0.0`.
+`dataloader_workers`, and `label_smoothing`. All except `label_smoothing`
+are required; its default is `0.0`.
 `warmup_epochs` must be nonnegative;
 `model warmup --build` requires it to be strictly positive. The other fields in
 this section configure standalone warmup; LoRA continues to use its own model,
 classifier, weight decay, clipping, seed, workers, and `label_smoothing`
-settings. Both commands always select original rows, regardless of `A/B_swap`.
+settings. Both commands always select original rows.
 SR2's inline warmup uses its own Skywork backbone and head settings. The
 standalone command continues to write the EXPT2 cache namespace; use SR2's
 validation or build command to generate its separate warmup state.

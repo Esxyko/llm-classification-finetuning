@@ -73,7 +73,7 @@
   LoRA checkpoints also check classifier dropout, adapter settings, and
   training quantization; historical quantized checkpoints are incompatible. All
   checkpoint types allow changes to precision, attention implementation, TF32,
-  `max_length`, and `A/B_swap`.
+  and `max_length`. Frozen checkpoints also allow changes to `qwen3_4b.A/B_swap`.
 - **Report rows or aggregation do not match:** Use the processed Parquet and
   saved split corresponding to that run, preserve both orientations in
   `validation.csv`, and keep its holdout `metrics.json`. Old five-fold data and

@@ -333,7 +333,7 @@ that context automatically.
 
 `uv run model warmup --build` uses the `warmup` section and the
 shared data, validation, and GPU settings. It prepares tokens only for train
-IDs, selects original rows regardless of `A/B_swap`, and checks the same
+IDs, selects only original rows, and checks the same
 schema-v5 non-quantized EXPT2 key. A valid cache returns before backbone-weight loading,
 feature extraction, or training; the summary reports zero executed epochs.
 

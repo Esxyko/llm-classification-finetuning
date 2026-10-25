@@ -319,7 +319,7 @@ class AppConfig:
 def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
 	section = _require_mapping(root.get("warmup"), "warmup")
 	keys = set(WarmupModelConfig.__dataclass_fields__) - {"ab_swap"}
-	_reject_unknown_keys(section, keys | {"A/B_swap"}, "warmup")
+	_reject_unknown_keys(section, keys, "warmup")
 	return _load_warmup_fields(section, "warmup")
 
 
@@ -373,9 +373,7 @@ def _load_warmup_fields(
 			section.get("random_state"), field("random_state")
 		),
 		dataloader_workers=workers,
-		ab_swap=_require_choice(
-			section.get("A/B_swap", "aug"), field("A/B_swap"), {"aug", "inf"}
-		),
+		ab_swap="none",
 		label_smoothing=_load_label_smoothing(section, section_name),
 	)
 
@@ -391,7 +389,7 @@ def _load_lora_model_config(
 		"warmup_extraction_budget",
 		*LORA_WARMUP_FIELDS,
 	}
-	_reject_unknown_keys(section, keys | {"A/B_swap"}, section_name)
+	_reject_unknown_keys(section, keys, section_name)
 	if warmup is None:
 		raise ConfigurationError(
 			f"{section_name} requires a 'warmup' section. Move "

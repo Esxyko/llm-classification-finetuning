@@ -34,8 +34,8 @@ remaining models still run; the command exits with status `1` if any failed.
 YAML validation happens before this loop; an invalid field in any present
 section stops the command before any model runs.
 The `qwen3_4b_lora_EXPT2` and `SR2_Qwen3_4B_lora` sections enable their respective
-profiles in `ALL`. Both LoRA profiles and standalone warmup ignore `A/B_swap`
-and always use original rows. The standard LoRA and
+profiles in `ALL`. Both LoRA profiles and standalone warmup always use original
+rows and do not accept `A/B_swap`. The standard LoRA and
 EXPT selectors are [retired](models.md#retired-profiles).
 
 The old `--test` flag is no longer accepted.
