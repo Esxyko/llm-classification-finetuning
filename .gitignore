@@ -38,3 +38,4 @@ models--*.zip
 /src/llm_classification_finetuning/models/archive/
 
 .ipynb_checkpoints/
+colab.ipynb
