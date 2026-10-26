@@ -71,10 +71,12 @@ See [checkpoint flags](commands.md#model-selection-and-execution-modes),
 
 ## Checkpoint compatibility
 
-SR2 retains adapter/head schema v2 and the
-`swap_equivariant_tie_from_wins_v1` architecture. Relocating the implementation
-does not change saved tensor names, artifact paths, or compatibility metadata.
-Existing compatible SR2 checkpoints remain usable. See
+SR2 retains adapter/head schema v2 and uses the
+`swap_equivariant_tie_from_wins_v2` architecture with separate win/tie readout
+biases. The head state adds `readout_bias`; artifact paths remain unchanged.
+The architecture marker rejects v1 checkpoints, which must be rebuilt with the
+matching configuration. Existing v1 warmup files are preserved; v2 selects new
+cache keys and regenerates warmup state. See
 [adapter/head checks](lora.md#checkpoints) for the enforced fields and pinned
 Hub revision. Historical Qwen checkpoints are not converted into SR2 checkpoints.
 

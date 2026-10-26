@@ -9,7 +9,7 @@ from ..common.model import PairwiseClassificationHead
 
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
-EXPT2 = "swap_equivariant_tie_from_wins_v1"
+EXPT2 = "swap_equivariant_tie_from_wins_v2"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -121,6 +121,8 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 		self.activation = nn.GELU()
 		self.dropout = nn.Dropout(dropout)
 		self.readout = nn.Linear(hidden_size, 1, bias=False)
+		# A/B wins share one bias; the tie branch has its own prior.
+		self.readout_bias = nn.Parameter(torch.zeros(2, dtype=torch.float32))
 
 	@classmethod
 	def embedding_combination(cls) -> str:
@@ -150,7 +152,7 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 				)
 				hidden = hidden * mask[:, [0, 0, 1], :]
 			logits = self.readout(hidden).squeeze(-1)
-		return logits.float()
+		return logits.float() + self.readout_bias[[0, 0, 1]]
 
 
 def create_classification_head(

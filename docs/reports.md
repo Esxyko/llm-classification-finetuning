@@ -107,7 +107,7 @@ validation/reporting log loss is unsmoothed.
 
 | Profile | `head_architecture` | `embedding_combination` |
 | --- | --- | --- |
-| SR2 | `swap_equivariant_tie_from_wins_v1` | `sum_signed_diff_abs_diff` |
+| SR2 | `swap_equivariant_tie_from_wins_v2` | `sum_signed_diff_abs_diff` |
 | Historical frozen | `pairwise_mlp` | `concat_a_b_abs_diff` |
 | Historical EXPT2 | `swap_equivariant_tie_from_wins_v1` | `sum_signed_diff_abs_diff` |
 

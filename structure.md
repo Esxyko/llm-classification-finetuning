@@ -205,8 +205,10 @@ present in a fresh checkout.
    chat template. Predictions use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/models.md#build-and-submit).
 3. **Profile objectives:** SR2 uses the tie-from-wins head and original rows
-   only. Preserve shared win dropout, separate tie dropout, FP32 logits, and
-   the existing architecture marker/tensor layout.
+   only. Preserve shared win dropout, separate tie dropout, and FP32 logits.
+   Architecture `swap_equivariant_tie_from_wins_v2` adds zero-initialized FP32
+   `readout_bias` of shape `[2]`: one shared win bias and one tie bias. Its marker
+   isolates warmup caches and rejects incompatible v1 production checkpoints.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen embeddings, plans, warmup,
    and production checkpoints. Map cached entries to current rows/labels; never

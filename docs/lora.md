@@ -24,8 +24,8 @@ and [configuration](configuration.md) for the complete fields and parser default
 | SR2 | `SR2_Qwen3_4B_lora` | `Skywork/Skywork-Reward-V2-Qwen3-4B` | `SR2_Qwen3_4B_lora` / `SR2_Qwen3_4B_lora_warmup` |
 
 SR2 loads Skywork's Transformer through `AutoModel`, omitting its scalar reward
-head. Its comparison head retains the architecture introduced by the retired
-EXPT2 profile; this architecture remains active in SR2. The implementation and
+head. Its comparison head extends the architecture introduced by the retired
+EXPT2 profile with separate win and tie readout biases. The implementation and
 public Python APIs now live in `models/SR2_Qwen3_4B_lora/`. Head size, rank,
 smoothing, rates, and epochs may differ between presets; read their actual values.
 
@@ -50,13 +50,19 @@ $$
 The directional projection has no bias. The tie projection acts on the mean of
 the activated win representations **before dropout**. Win branches share a
 dropout mask; the tie branch has an independent mask. One shared bias-free
-`Linear(h, 1)` scores the three representations, returning FP32 logits in
-A-win, B-win, tie order. Swapping inputs exchanges win logits and preserves the
-tie logit under the same masks; evaluation disables dropout.
+`Linear(h, 1)` scores the three representations. After converting these scores
+to FP32, the head adds `readout_bias`, a trainable FP32 vector of shape `[2]`
+initialized to zero: A-win and B-win share its first element, and tie uses its
+second element. The FP32 logits are returned in A-win, B-win, tie order. The
+relative bias learns the win-versus-tie prior. Swapping inputs exchanges win
+logits and preserves the tie logit under the same masks; evaluation disables
+dropout. Biases use the existing head learning rate and weight decay.
 
 These weights are trained directly. The architecture marker is
-`swap_equivariant_tie_from_wins_v1`; adapter/head checkpoint schema is v2 and
-warmup schema is v5. SR2 rejects incompatible historical model/head states.
+`swap_equivariant_tie_from_wins_v2`; adapter/head checkpoint schema is v2 and
+warmup schema is v5. The new marker selects a different warmup cache key and
+rejects historical v1 checkpoints without converting their weights. Rebuild
+those checkpoints with the matching configuration; warmup is regenerated.
 There is no `A/B_swap` setting or orientation averaging for SR2.
 
 ## Hardware and input limits

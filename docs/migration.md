@@ -55,6 +55,12 @@ adapter/head schema v2, batch-plan schema v4, and warmup schema v5 are unchanged
 The EXPT2 head architecture remains in SR2 even though the EXPT2 profile is retired.
 Compatible existing SR2 checkpoints and caches require no conversion.
 
+The subsequent readout-bias update changes the SR2 head marker to
+`swap_equivariant_tie_from_wins_v2` and adds `readout_bias`, with one shared
+win bias and one tie bias. Storage schemas and artifact namespaces stay the
+same. The v2 head rejects v1 checkpoints; rebuild them with the matching config.
+Warmup uses new cache keys and is regenerated, leaving historical v1 files intact.
+
 `model warmup --build` now uses the SR2 profile and writes
 `SR2_Qwen3_4B_lora_warmup/`. Current presets select
 `Skywork/Skywork-Reward-V2-Qwen3-4B` in `warmup.model_name` and align standalone
