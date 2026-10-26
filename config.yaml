@@ -64,10 +64,10 @@ qwen3_4b_lora_EXPT2:
   dataloader_workers: 0
 
 warmup:
-  label_smoothing: 0.12
+  label_smoothing: 0.0
   model_name: Qwen/Qwen3-4B
   max_length: 13514
-  hidden_size: 256
+  hidden_size: 128
   dropout: 0.1
   warmup_epochs: 1
   extraction_budget: 524288
@@ -79,7 +79,7 @@ warmup:
   dataloader_workers: 0
 
 SR2_Qwen3_4B_lora:
-  label_smoothing: 0.12
+  label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13514
   gradient_checkpointing_threshold: 10752
@@ -87,17 +87,17 @@ SR2_Qwen3_4B_lora:
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 1024
-  epochs: 2
+  epochs: 4
   extraction_budget: 262144
-  learning_rate: 0.0001
-  head_learning_rate: 0.0001
-  hidden_size: 256
+  learning_rate: 0.00015
+  head_learning_rate: 0.00015
+  hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1
   max_grad_norm: 1.0
   lora_dropout: 0.05
-  lora_rank: 32
-  lora_alpha: 64
+  lora_rank: 64
+  lora_alpha: 128
   lora_target_modules:
     - q_proj
     - k_proj
