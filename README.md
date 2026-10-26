@@ -1,46 +1,56 @@
 # LLM Classification Finetuning
 
-Prepare leakage-safe train/validation splits, run frozen or LoRA Qwen pairwise models, and
-generate reports or submissions for Kaggle's
-[LLM Classification Finetuning competition](https://www.kaggle.com/competitions/llm-classification-finetuning).
+Compare two responses to a shared prompt and predict **A wins, B wins, or tie**
+for the [Kaggle competition](https://www.kaggle.com/competitions/llm-classification-finetuning).
 
-## Project overview
+The project provides a saved prompt-grouped holdout, frozen-backbone and LoRA
+classifiers, validation reports, full-data checkpoint builds, and submission
+inference. Training uses **one CUDA GPU**; submission uses **two CUDA GPUs**.
 
-The project compares two model responses to a shared prompt and predicts an A
-win, a B win, or a tie. It supports:
+## Start here
 
-- One shared stratified split grouped by canonical prompt (80/20 in the root
-  preset), with original and A/B-swapped rows saved in both partitions.
-- A frozen Qwen3-4B backbone with a trainable pairwise classifier.
-- Qwen3-4B and Skywork-Reward-V2-Qwen3-4B LoRA adapters trained with the
-  EXPT2 swap-equivariant classifier,
-  which derives ties from its win representations and uses original rows for
-  training and inference.
-- Holdout validation, full-data checkpoints, competition submissions, and
-  confusion-matrix and spreadsheet reports.
+1. [Install the project](docs/getting-started.md) with Python 3.14+ and `uv`.
+2. Use the saved processed split, or [prepare it from raw data](docs/data-preparation.md).
+3. [Validate a model and inspect its report](docs/models.md).
+4. Build a full-data checkpoint, then generate a submission in the
+   [submission environment](docs/getting-started.md#submission-environment-pytorch-211--cuda-128).
 
-The workflow is data preparation → holdout validation and reports → full-data
-build → submission. Training uses one CUDA GPU; submission inference uses two.
-Start with the [installation and quick-start guide](docs/getting-started.md).
+For Colab and the local VS Code notebook workflow, see
+[Colab setup and persistence](docs/colab.md).
+
+## Model profiles
+
+Selectors and YAML section names are case-sensitive.
+
+| CLI selector | YAML section / checkpoint directory | Backbone and classifier |
+| --- | --- | --- |
+| `qwen3-4b` | `qwen3_4b` | Frozen Qwen3-4B; trainable MLP over `[A, B, abs(A - B)]` |
+| `qwen3-4b-lora-EXPT2` | `qwen3_4b_lora_EXPT2` | Qwen3-4B LoRA; swap-equivariant three-class head |
+| `SR2-Qwen3-4B-lora` | `SR2_Qwen3_4B_lora` | Skywork reward-trained Qwen3-4B LoRA; the same EXPT2 head |
+
+All profiles consume the same saved train/validation split. The frozen profile
+supports A/B augmentation or an averaged-probability objective; both LoRA
+profiles train and predict on original rows only. The separate `warmup --build`
+selector prepares an optional EXPT2 head-warmup cache, not a production model.
 
 ## Documentation
 
-| Guide | Contents |
+| Guide | Use it to |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Requirements, dependencies, Kaggle credentials, and initial setup |
-| [Command reference](docs/commands.md) | Entry points, model selection, execution modes, and checkpoint flags |
-| [Data preparation](docs/data-preparation.md) | Downloads, leakage-safe train/validation splits, augmentation, and processed columns |
-| [Model workflows](docs/models.md) | Frozen-model training, A/B objectives, builds, and submissions |
-| [LoRA training](docs/lora.md) | Input limits, measured lengths, warmup, batching, memory, and checkpoints |
-| [Caching and Python APIs](docs/caching.md) | Shared token encodings, frozen embeddings, batch plans, and API examples |
-| [Validation reports](docs/reports.md) | Validation CSV requirements, report outputs, publication, and timing metrics |
-| [Configuration](docs/configuration.md) | YAML paths and sections, GPU settings, and batch experiments |
-| [Troubleshooting](docs/troubleshooting.md) | Setup, configuration, GPU, memory, and input-length errors |
-| [Codebase reference](structure.md) | Runtime flow, module ownership, artifact layout, and development invariants |
+| [Getting started](docs/getting-started.md) | Install dependencies, choose saved or raw data, and run a first validation |
+| [Colab](docs/colab.md) | Set remote paths, persist caches, and understand result copying and shutdown |
+| [Commands](docs/commands.md) | Select modes, checkpoints, cache refresh, and batch validation |
+| [Configuration](docs/configuration.md) | Look up YAML fields, defaults, paths, GPU settings, and token budgets |
+| [Data preparation](docs/data-preparation.md) | Understand grouping, balancing, augmentation, and the processed schema |
+| [Model workflows](docs/models.md) | Validate, build, submit, and understand frozen-model behavior |
+| [LoRA training](docs/lora.md) | Understand the head, warmup, batching, checkpointing, and memory controls |
+| [Caching and Python APIs](docs/caching.md) | Check reuse conditions, multipart storage, and CPU preparation APIs |
+| [Reports](docs/reports.md) | Interpret predictions, configuration snapshots, timings, and GPU peaks |
+| [Troubleshooting](docs/troubleshooting.md) | Diagnose setup, input, cache, GPU, and report failures |
+| [Migration](docs/migration.md) | Update retired selectors, old configuration keys, and five-fold artifacts |
+| [Codebase reference](structure.md) | Locate module ownership and implementation invariants |
 
-## Documentation responsibilities
-
-This README owns the project overview and navigation. `docs/` owns setup,
-usage, configuration, and behavioral references.
-[`structure.md`](structure.md) owns code organization, module responsibilities,
-and invariants to preserve when changing the implementation.
+The executable configuration is [config.yaml](config.yaml); files in
+[configs/](configs/) are independent complete presets. See
+[documentation responsibilities](structure.md#documentation-boundaries) before
+adding implementation or usage details.

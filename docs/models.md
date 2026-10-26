@@ -2,174 +2,150 @@
 
 [Documentation index](../README.md)
 
-Each profile uses a Qwen3-4B-family backbone to compare two response branches.
-The frozen profile trains only a pairwise classifier; LoRA also trains
-adapters. See [LoRA training](lora.md) for its objectives and settings.
-Training uses one GPU; submissions use the
-[two-GPU configuration](configuration.md#gpu-configuration).
+Use the [saved processed split or prepare data](getting-started.md#choose-the-data-source),
+then choose a [configured model profile](../README.md#model-profiles).
+All profiles use the same saved holdout; validation/build uses one GPU and
+submission uses [two GPUs](configuration.md#gpu-configuration).
 
-The frozen profile uses a pairwise MLP head. It concatenates the pooled branch
-embeddings as `[A, B, |A - B|]`, where the absolute difference is elementwise
-and the head input has width `3H` for backbone hidden size `H`.
+## Validate, build, or submit
 
-The `qwen3-4b-lora-EXPT2` profile trains adapters with a swap-equivariant
-[head that derives ties from win representations](lora.md#expt2-equivariant-head).
-It uses the `qwen3_4b_lora_EXPT2` configuration section and trains and predicts
-only original rows, without orientation averaging. Standalone warmup builds
-this same EXPT2 head.
+| Mode | Training data | Main output | Does it save a production checkpoint? |
+| --- | --- | --- | --- |
+| `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Final-epoch `validation.csv`, `metrics.json`, `config.yaml` | No |
+| `model MODEL --build` | All original IDs from both partitions, applying the profile's A/B policy | `head[_TAG].pt` or `adapter[_TAG].pt` | Yes |
+| `model MODEL --submit` | No training; use test inputs and a compatible checkpoint | `submission.csv` | No |
+| `model warmup --build` | Train partition only, original rows | Optional completed EXPT2 warmup cache | No |
 
-## Skywork reward backbone with LoRA
-
-The `SR2-Qwen3-4B-lora` profile reads `SR2_Qwen3_4B_lora` and uses
-[Skywork/Skywork-Reward-V2-Qwen3-4B](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-4B)
-as its backbone. `AutoModel` loads its Transformer weights without the original
-scalar reward head. The pooled hidden representations feed the same EXPT2
-three-class head, trained with LoRA on original rows only.
-Input serialization and last-real-token pooling follow EXPT2, without adding
-a chat template or changing the saved holdout split.
-
-```shell
-uv run model SR2-Qwen3-4B-lora
-uv run model SR2-Qwen3-4B-lora --build
-uv run model SR2-Qwen3-4B-lora --submit
-```
-
-SR2 supports the same checkpoint tags and cache refresh options. Its checkpoints
-use `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt`; validation and submission outputs
-use the `SR2-Qwen3-4B-lora-*` prefix in `results/` and `results/submit/`.
-Its own warmup runs on the Skywork backbone and stores a separate cache;
-see [SR2 LoRA training](lora.md#sr2-reward-backbone-profile).
+Builds have no validation set. Validation publishes final-epoch predictions;
+there is no best-epoch selection. Warmup caches and production checkpoints serve
+different purposes. See [LoRA stages](lora.md#optimization-and-head-warmup).
 
 ## Frozen-model holdout validation
-
-Prepare the [training data](data-preparation.md) first, then run holdout validation:
 
 ```shell
 uv run model qwen3-4b
 ```
 
-The frozen `Qwen/Qwen3-4B` backbone produces cached embeddings; only the
-pairwise MLP head is trained. A validation run writes one competition-format
-`validation.csv`, `metrics.json`, and a `config.yaml` containing the shared and
-current model sections to a timestamped model-named results directory.
-All active profiles consume the same saved split (80/20 in the root preset) and
-initialize one model per profile run. See
-[validation reports and timing metrics](reports.md) for their interpretation.
+The frozen backbone produces [cached branch embeddings](caching.md#frozen-embeddings),
+and only the pairwise MLP is trained. The head uses pooled features
+`[A, B, abs(A - B)]` with width `3H` for backbone hidden size `H`.
 
-Each [serialized conversation branch](data-preparation.md) is tokenized with
-special tokens enabled and right-truncated to `qwen3_4b.max_length` when needed.
-The final non-padding token supplies its pooled feature. The
-[LoRA profile](lora.md#hardware-and-input-limits) rejects over-limit inputs.
+Each [serialized conversation branch](data-preparation.md#processed-data) is
+tokenized with special tokens and right-truncated to `qwen3_4b.max_length` when
+needed. Last-nonpadding-token pooling supplies its feature. Frozen pooled vectors
+are stored as FP16 and used by the head in FP32. LoRA instead
+[rejects over-limit inputs](lora.md#hardware-and-input-limits).
+
+`qwen3_4b.extraction_budget` controls missing backbone branch extraction;
+`qwen3_4b.training_batch_size` controls head training, validation, and submission
+inference. Complete embedding hits skip backbone-weight loading, while still
+checking the hardware and loading config/tokenizer files.
 
 ## A/B training modes
 
-Set `qwen3_4b.A/B_swap` to `aug` (the default) to train on both original and
-A/B-swapped rows, or `inf` to train on original IDs using the loss of their
-averaged original and swapped probabilities. Both modes average the two
-orientations for validation predictions and loss, and for test submissions.
-To train a head with a different objective, rebuild it; loading an existing
-checkpoint does not check `A/B_swap` or change its trained weights. Both modes
-share [embedding caches](caching.md#frozen-embeddings).
+Only the frozen profile accepts `A/B_swap`:
 
-## Training progress
+| Setting | Training objective | Validation and submission |
+| --- | --- | --- |
+| `aug` (default) | Per-row loss on original and swapped training rows | Average the two orientations' class probabilities after restoring A/B order |
+| `inf` | Loss of the averaged original/swapped probabilities for each original ID | The same probability averaging |
 
-Holdout validation and full-data builds print progress at 5% milestones. One
-counter spans all executed stages and epochs of the selected model. Each entry
-identifies model, mode, stage, and epoch on the first line. The second line shows
-`progress: percentage`, `work: processed/total`, and `time: elapsed/estimated total`.
-Both durations use `HH:MM:SS`, with hours allowed to exceed 99. Elapsed time starts
-when the progress counter is created; estimated total time extrapolates elapsed
-time using the completed fraction of weighted work.
+A/B averaging operates on probabilities, not logits. Both modes reuse the same
+branch embeddings. Rebuild a head when intentionally changing its training
+objective; changing the YAML flag at inference does not retrain its weights.
 
-For the frozen model, one training or validation batch counts as one work unit.
-A validation run uses
-`epochs * (ceil(training_rows / training_batch_size) + ceil(validation_rows / training_batch_size))`;
-a build uses only `epochs * ceil(training_rows / training_batch_size)`.
-Training counts use both orientations for `aug` and originals for `inf`;
-validation counts use original IDs with probability averaging inside each batch.
-Short final batches are included. [LoRA progress](lora.md#training-progress)
-uses update groups; warmup updates and warmup validation batches count as half
-a unit each. Reused warmup contributes no historical work.
+EXPT2/SR2 use a [swap-equivariant head](lora.md#expt2-equivariant-head), original
+training rows, and one prediction per ID. They reject `A/B_swap`.
 
-The final epoch's validation completes the same counter. Extraction, preparation,
-cache operations, checkpoint saving, and publication are excluded. A large
-work unit crossing multiple milestones prints one entry with the actual percentage.
-Each model prints 100% once on completion; failure does not force completion.
-Counters stay on the CPU without adding GPU synchronization.
+## Skywork reward backbone with LoRA
+
+```shell
+uv run model SR2-Qwen3-4B-lora
+```
+
+SR2 loads `Skywork/Skywork-Reward-V2-Qwen3-4B` through `AutoModel`, discards its
+scalar reward head, and trains LoRA plus the EXPT2 three-class head. Its
+serialization and pooling remain the same as EXPT2; it does not add a chat
+template or regenerate the split. It has its own model, checkpoint, warmup-cache,
+and result namespace. See [LoRA training](lora.md) for both profiles.
 
 ## Build and submit
 
-To train a production head and generate a submission:
+Build a tagged frozen head on all IDs:
 
 ```shell
-uv run model qwen3-4b --build
-uv run model qwen3-4b --submit
+uv run model qwen3-4b --build --checkpoint-tag experiment
 ```
 
-Build mode uses every original ID from both partitions and replaces the saved classifier head and compatibility metadata. Submit
-mode validates `test.csv` against `sample_submission.csv`, loads that head, and
-writes a timestamped submission. The Qwen backbone is not stored in the
-checkpoint.
+Then, in the [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
+load the corresponding checkpoint with a compatible submission configuration:
 
-Both test files must have the exact column order expected by the loader:
-
-```text
-test.csv: id,prompt,response_a,response_b
-sample_submission.csv: id,winner_model_a,winner_model_b,winner_tie
+```shell
+model qwen3-4b --submit --checkpoint-tag experiment --config path/to/submit.yaml
 ```
 
-IDs must be unique finite integers and match in the same order across the two
-files; the loader does not reorder either file. Submission rows preserve that
-order. Frozen head training, validation, and submission inference all use
-`qwen3_4b.training_batch_size`; backbone extraction uses
-`qwen3_4b.extraction_budget`, a required positive padded-token budget (root and
-active presets: `524288`). It replaces the old `extraction_batch_size` branch
-count. Missing branches are packed by descending length and best fit, with cost
-`branch_count * longest_branch_length <= extraction_budget`; an oversized branch
-runs alone. Extracted features return to their original positions. See
-[extraction budgets](configuration.md#extraction-token-budgets).
+For LoRA, replace the selector with EXPT2 or SR2; the checkpoint contains
+adapters and head. All checkpoint types omit base weights; LoRA production
+checkpoints also omit optimizer state. Transfer the checkpoint when moving to
+another runtime. [Model downloads](caching.md#hugging-face-model-downloads) are
+not the trained checkpoint.
 
-For tagged checkpoints, multi-model execution, and cache refresh options, see
-the [command reference](commands.md). To run every configuration, see
-[batch experiments](configuration.md#batch-experiments).
+Submission requires these raw files under `data.raw_dir`, with exact column order:
+
+| File | Columns |
+| --- | --- |
+| `test.csv` | `id,prompt,response_a,response_b` |
+| `sample_submission.csv` | `id,winner_model_a,winner_model_b,winner_tie` |
+
+IDs must be unique finite integers and match in the same order across both
+files. The loader does not reorder them; output preserves that order.
+Submissions are written under `results/submit/MODEL-<timestamp>/`.
+
+Without a tag, a build replaces `models/SECTION/head.pt` or `adapter.pt`.
+See [checkpoint flags](commands.md#model-selection-and-execution-modes),
+[batch validation](commands.md#batch-validation), and [reports](reports.md).
 
 ## Checkpoint compatibility
 
-The frozen head requires matching model name, serialization format, classifier
-`hidden_size`, schema version, and class count. Inference also checks the
-backbone hidden size. `max_length`, `gpu.precision`,
-`gpu.attention_implementation`, `gpu.allow_tf32`, and `A/B_swap` remain recorded
-in checkpoint metadata but are not checked when loading. Batch sizes and GPU
-indices can also change.
-An incompatible configuration requires rebuilding the head with that config.
+Frozen head schema v3 identifies the `3H` architecture. Loading checks schema,
+model name, serializer, classifier `hidden_size`, and class count; inference
+also checks backbone hidden size. Earlier `2H` heads require a rebuild, while
+per-branch embeddings can remain reusable.
 
-Frozen head schema v3 identifies the `[A, B, |A - B|]` architecture. Earlier
-checkpoints with a `2H` head input require a new `--build`; existing per-branch
-embedding caches remain reusable.
+Frozen metadata records context, precision, attention, TF32, and A/B training
+mode but does not enforce them when loading. GPU placement and batch sizes may
+also change. Such compatibility does not guarantee unchanged predictions.
 
-The head checkpoint does not store a pinned backbone revision or local weight
-fingerprint. Frozen extraction resolves the currently available backbone and
-keys its embeddings by that identity; it does not recover the build's backbone
-revision from the head. [LoRA checkpoints](lora.md#checkpoints) store the Hub
-base revision used during training.
+The frozen head stores neither a pinned backbone revision nor a local-weight
+fingerprint. Extraction resolves the current backbone identity; it cannot recover
+the build's revision from the head. LoRA
+[checkpoints](lora.md#checkpoints) retain the Hub base revision and have stricter
+adapter/head compatibility checks.
+
+## Training progress
+
+One CPU counter spans all executed training and validation epochs, logging
+roughly 5% milestones with model/mode/stage/epoch, percentage, work count, and
+elapsed/estimated total time. Durations use unbounded `HH:MM:SS`; estimates
+extrapolate weighted work rather than predicting exact remaining runtime.
+
+For the frozen profile, each training or validation batch counts as one unit:
+
+- Holdout: `epochs * (ceil(training_rows / batch_size) + ceil(validation_rows / batch_size))`.
+- Build: `epochs * ceil(training_rows / batch_size)`.
+
+Here `batch_size = training_batch_size`; training counts both orientations for
+`aug` and originals for `inf`. Validation counts original IDs, with averaging
+inside each batch. Short final batches count. [LoRA progress](lora.md#training-progress)
+uses optimizer groups, with half-weight warmup work.
+
+Extraction, preparation, caches, saving, and publication are excluded. Thus the
+progress estimate differs from [complete-run timing](reports.md#timing-metrics).
+Successful completion prints 100% once; failures do not force completion.
 
 ## Retired profiles
 
-The retired `qwen3-1.7b`, `qwen3-1.7b-mono-input`, `qwen3-4b-qlora`,
-`qwen3-4b-lora`, and `qwen3-4b-lora-EXPT` implementations are retained locally
-in the Git-ignored `src/llm_classification_finetuning/models/archive/` directory.
-Standard LoRA and EXPT were retired on 2026-10-25. Their subdirectories contain
-source snapshots, configuration/preset snapshots, archival notices, and
-historical workflow/configuration documentation. QLoRA retains its historical
-README and the archive-level configuration.
-
-These profiles are no longer CLI choices or members of `ALL`. The old
-`qwen3_4b_lora`, `qwen3_4b_lora_EXPT`, and `qwen3_4b_qlora` configuration keys
-are rejected. To run EXPT2 with an older configuration, rename the shared
-`qwen3_4b_lora` section to `qwen3_4b_lora_EXPT2`; there is no compatibility alias.
-Historical results, checkpoints, caches, and archived configurations remain at
-their original locations. The archive is not included in a fresh clone.
-Shared legacy head and quantization definitions remain available within the
-EXPT2 implementation, along with the quantization dependencies.
-Source-module ownership is covered by
+Older standard LoRA, EXPT, QLoRA, and Qwen3-1.7B profiles are not registered.
+For old names, local archives, configuration changes, and artifact compatibility,
+see [migration](migration.md). Source ownership is mapped in
 [structure.md](../structure.md#package-map).

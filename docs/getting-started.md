@@ -1,143 +1,134 @@
 # Getting started
 
-[Project overview and documentation index](../README.md)
+[Documentation index](../README.md)
 
 ## Requirements
 
-- Python 3.14 or newer
-- [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
-- A Kaggle account with the competition rules accepted
-- One CUDA GPU for training and two CUDA GPUs for submission inference (data
-  preparation and report generation do not require a GPU)
+- Python **3.14 or newer**, as declared in `pyproject.toml` and `.python-version`.
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
+- One CUDA GPU for model validation, builds, or standalone warmup; two for
+  submission inference. Data preparation and reporting run on the CPU.
+- A Kaggle account and accepted competition rules **only when downloading raw
+  competition files**. The saved processed split can be used without them.
 
-## Quick start
+Run all commands below from the project root. For a remote runtime, start with
+[Colab setup](colab.md).
 
-Run these commands from the project root.
+## Install and configure
 
-1. Install the locked dependencies:
-
-   ```shell
-   uv sync
-   ```
-
-2. Create `.env` from the provided template:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-   On macOS or Linux, run `cp .env.example .env` instead. Generate a token from
-   [Kaggle API settings](https://www.kaggle.com/settings/api), then set it in
-   `.env`:
-
-   ```dotenv
-   KAGGLE_API_TOKEN=your_token_here
-   CACHE_PATH=cache
-   ```
-
-   `.env` is ignored by Git. An existing environment variable takes precedence.
-   `CACHE_PATH` selects the shared training-cache root and defaults to `./cache`
-   when missing or blank. See [configuration paths](configuration.md#configuration-files-and-paths).
-
-3. Download the competition files and prepare the training data:
-
-   ```shell
-   uv run init
-   ```
-
-   The logical output is `data/processed/train_validation.parquet`. Large outputs
-   use a manifest and volumes; see [processed data](data-preparation.md#processed-data).
-
-For `uv run model warmup --build` with the saved default split, use the versioned
-Parquet manifest and all referenced volumes included in the checkout. The loader
-reconstructs the split automatically, so raw competition data is not required:
+Install the committed dependency versions:
 
 ```shell
-uv run model warmup --build
+uv sync --locked
 ```
 
-Install the locked dependencies first. The command downloads the configured
-Hugging Face model and tokenizer as needed; these are not stored in this
-repository. Raw CSVs and token-statistics reports are not warmup inputs.
+The training lock currently selects PyTorch `2.14.0+cu130` from the CUDA 13.0
+index. The separate [submission environment](#submission-environment-pytorch-211--cuda-128)
+uses different pins; do not synchronize the training lock into it.
+
+Copy `.env.example` to `.env` if you need credentials or custom cache paths:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+On Linux, use `cp .env.example .env`. Edit the copy before downloading raw data:
+
+```dotenv
+KAGGLE_API_TOKEN=your_token_here
+MODEL_PATH=
+CACHE_PATH=cache
+```
+
+Get a token from [Kaggle API settings](https://www.kaggle.com/settings/api).
+`.env` is ignored by Git. Existing process environment variables take precedence.
+`MODEL_PATH` selects the downloaded model cache; `CACHE_PATH` selects training
+caches. Neither changes the YAML data paths or the checkpoint/result directories.
+See [path rules](configuration.md#configuration-files-and-paths).
+
+## Choose the data source
+
+| Starting point | Action |
+| --- | --- |
+| Use the saved split in this checkout | Keep the Parquet manifest and every referenced `.part` file; proceed directly to validation |
+| Download raw data and regenerate the split | Run `uv run init` after configuring Kaggle access |
+| Raw CSVs are already available | Run `uv run preprocess` |
+| Download CSVs without preprocessing | Run `uv run data` |
+
+The saved split's logical path is `data/processed/train_validation.parquet`.
+The single `.parquet` file need not exist: loaders reconstruct the versioned
+manifest and volumes automatically. Training still downloads the selected
+backbone and tokenizer when absent; their weights are not included in Git.
+
+Regenerating data replaces the saved logical artifact after successful checks.
+Use the existing split to compare experiments on the same holdout. See
+[data preparation](data-preparation.md) for its schema and balance constraints.
+
+## Validate and report
+
+Choose one configured profile, for example SR2:
+
+```shell
+uv run model SR2-Qwen3-4B-lora
+uv run result
+```
+
+Validation writes `validation.csv`, `metrics.json`, and `config.yaml` together
+under `results/SR2-Qwen3-4B-lora-<timestamp>/`. `result` selects the most recently
+modified eligible run and replaces the report under `results/comprehensive/`.
+Pass a run name explicitly when comparing experiments; see [reports](reports.md).
+
+The shipped presets are experiment settings, not guaranteed memory fits for a
+particular GPU. Set supported [GPU precision](configuration.md#gpu-configuration)
+and use the stage-specific [memory controls](lora.md#memory-tuning) as needed.
+
+Optional `uv run model warmup --build` trains only a head on the saved train
+partition. It is not required before a normal LoRA run. Reuse requires matching
+model/head settings and training IDs; see
+[standalone warmup](configuration.md#standalone-warmup).
 
 ## Hugging Face downloads
 
-When `.env` or the environment specifies a non-empty `MODEL_PATH`, each downloaded
-model and its tokenizer use the native Hub cache directly in that directory,
-for example `<MODEL_PATH>/models--Qwen--Qwen3-4B/`. Downloaded files persist across
-processes without packing or unpacking. Otherwise the standard Hugging Face
-cache settings apply. See the
-[model cache layout](caching.md#hugging-face-model-downloads) for details.
+Project initialization loads the working-directory `.env` before Hugging Face
+imports. It defaults `HF_ENDPOINT` to `https://hf-mirror.com`, preserving an
+existing value. To use the official endpoint, set `HF_ENDPOINT=https://huggingface.co`
+in `.env` or the process environment before starting the command.
 
-Project commands default to
-[`https://hf-mirror.com`](https://hf-mirror.com) for Hugging Face model,
-configuration, and tokenizer files. Package initialization sets `HF_ENDPOINT`
-before importing Hugging Face libraries. An existing `HF_ENDPOINT` environment
-variable takes precedence; set it in `.env` or before starting the command to
-use another endpoint. This default does not require a `.env` entry.
+For the mirror only, initialization defaults `HF_HUB_DISABLE_XET=1` for HTTP
+weight downloads. An explicit value takes precedence; other endpoints retain
+their existing Xet settings. Standard Hugging Face authentication settings are
+preserved. See [model download storage](caching.md#hugging-face-model-downloads).
 
-When the endpoint is `https://hf-mirror.com`, initialization also defaults
-`HF_HUB_DISABLE_XET` to `1` so model weights use HTTP downloads instead of the
-Xet client, avoiding its CAS authorization failures. An existing
-`HF_HUB_DISABLE_XET` value takes precedence; set it to `0` before starting the
-command to opt back into Xet. Other endpoints keep their existing Xet behavior.
-See the [Hugging Face environment variable reference](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhubdisablexet).
-
-For example, to select an endpoint in PowerShell:
-
-```powershell
-$env:HF_ENDPOINT = "https://hf-mirror.com"
-uv run model warmup --build
-```
-
-When using the Python API, import `llm_classification_finetuning` before
-`transformers` or `huggingface_hub` so the download defaults take effect. Restart
-an existing notebook kernel or Python process if those libraries were already
-imported.
+In a Python notebook, import `llm_classification_finetuning` before `transformers`
+or `huggingface_hub` for these defaults to take effect. Restart the kernel if
+those libraries were already imported with different settings.
 
 ## Submission environment: PyTorch 2.11 / CUDA 12.8
 
-For submission inference with **PyTorch 2.11.0+cu128**, **CUDA 12.8**, and
-**Transformers 5.16.1**, install the dedicated requirements from the project root
-in the submission Python environment (Python 3.14 or newer):
+In a separate Python 3.14+ environment, install the submission requirements
+from the project root:
 
 ```shell
 python -m pip install -r requirements-submit.txt
-model qwen3-4b-lora-EXPT2 --submit --config path/to/submit.yaml
+model SR2-Qwen3-4B-lora --submit --config path/to/submit.yaml
 ```
 
-[`requirements-submit.txt`](../requirements-submit.txt) pins both libraries and
-selects the CUDA 12.8 PyTorch build. The normal `uv sync` workflow retains the
-training versions in `uv.lock`. Run the installed `model` command directly in the
-submission environment; `uv run` would synchronize the training lock again.
+[requirements-submit.txt](../requirements-submit.txt) pins PyTorch `2.11.0+cu128`
+and Transformers `5.16.1`, and installs this project. Run the installed `model`
+command directly: `uv run` would synchronize the training lock again.
+Build and transfer the matching checkpoint first; see [build and submit](models.md#build-and-submit).
 
-For two T4 GPUs, use `gpu.precision: fp16`,
+For two T4 GPUs, select `gpu.precision: fp16`,
 `gpu.attention_implementation: sdpa`, and
-`gpu.submit_devices: [cuda:0, cuda:1]` in the selected YAML. The selected model
-section's `extraction_budget` controls padded tokens per backbone micro-batch.
-The root and active presets use `524288` for the frozen model and `262144` for
-both LoRA profiles' submission extraction. Lower the selected model's budget
-if extraction runs out of memory, preserving `max_length`. See
-[extraction budgets](configuration.md#extraction-token-budgets).
-`head_inference_batch_size` for LoRA controls only the head over extracted
-CPU features. All present model sections still need their usual configuration
-fields; see [configuration](configuration.md).
+`gpu.submit_devices: [cuda:0, cuda:1]` in a complete YAML configuration.
+The root preset uses BF16 and therefore needs a precision change for this setup.
 
-All three active model profiles apply submission SDPA compatibility in the
-process that executes `--submit`, before loading backbone weights. Transformers expands K/V
-heads with `repeat_kv`, memory-efficient attention is enabled, and math fallback
-is disabled. Flash and cuDNN attention remain eligible where supported. The GQA
-predicate and SDPA backend flags are restored after success or failure. Explicit
-`eager` attention keeps its existing behavior. The compatibility settings also
-apply to submission subprocesses.
+All active profiles apply their SDPA submission compatibility inside the
+inference process, including subprocesses. It forces K/V-head expansion and
+enables fused attention backends with math fallback disabled, then restores
+the previous settings on exit. Explicit `eager` attention is unchanged.
+The pins and compatibility path still require a run on the target GPUs to
+establish runtime behavior and memory fit.
 
-The dependency pins and SDPA workaround still require a submission run on the
-target Kaggle GPUs to verify runtime behavior and memory use.
-
-## Next steps
-
-- [Prepare training data](data-preparation.md) for the split and augmentation format.
-- [Run models](models.md) for holdout validation, builds, and submissions.
-- [Command reference](commands.md) for all entry points and execution flags.
-- [Configuration](configuration.md) for paths, GPU settings, and batch experiments.
-- [Troubleshooting](troubleshooting.md) for setup and runtime failures.
+Next: [commands](commands.md), [configuration](configuration.md), or
+[troubleshooting](troubleshooting.md).

@@ -2,80 +2,103 @@
 
 [Documentation index](../README.md)
 
-Run commands from the project root after [setup](getting-started.md).
-All commands accept [`--config PATH`](configuration.md#configuration-files-and-paths).
+Run from the project root after [setup](getting-started.md). All entry points
+accept `--config PATH`, defaulting to `config.yaml` in the working directory.
+Use `uv run COMMAND --help` to inspect the installed parser. In the separate
+[submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
+run `model` directly instead of `uv run model`.
 
-| Command | What it does | Main output |
+## Entry points
+
+| Command | Purpose | Output with default paths |
 | --- | --- | --- |
-| `uv run init` | Downloads missing raw files and prepares training data | `data/processed/train_validation.parquet` |
-| `uv run data` | Downloads missing Kaggle files only | `data/raw/*.csv` |
-| `uv run preprocess` | Rebuilds training data from `data/raw/train.csv` | `data/processed/train_validation.parquet` |
-| `uv run model qwen3-4b` | Runs Qwen3-4B holdout validation | `results/qwen3-4b-*/` |
-| `uv run model qwen3-4b-lora-EXPT2` | Runs LoRA with the equivariant head deriving ties from win representations | `results/qwen3-4b-lora-EXPT2-*/` |
-| `uv run model SR2-Qwen3-4B-lora` | Runs Skywork reward-backbone LoRA with the EXPT2 head | `results/SR2-Qwen3-4B-lora-*/` |
-| `uv run model warmup --build` | Builds non-quantized EXPT2 head warmup on the saved train partition | `cache/qwen3_4b_lora_EXPT2_warmup/<key>.pt` |
-| `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
-| `uv run model MODEL --build` | Trains the classifier and any adapters on all training and validation IDs | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
-| `uv run model MODEL --submit` | Creates a submission with the selected model's checkpoint | `results/submit/MODEL-*/submission.csv` |
-| `uv run result [SUBFOLDER]` | Builds reports from a validation run | `results/comprehensive/` |
+| `uv run init` | Download missing raw files and rebuild processed data | `data/processed/train_validation.parquet` |
+| `uv run data` | Download missing Kaggle files only | `data/raw/*.csv` |
+| `uv run preprocess` | Rebuild the split from local `train.csv` | `data/processed/train_validation.parquet` |
+| `uv run model MODEL` | Validate on the saved holdout | `results/MODEL-<timestamp>/` |
+| `uv run model MODEL --build` | Train on IDs from both partitions and save a production checkpoint | `models/SECTION/head.pt` or `adapter.pt` |
+| `uv run model MODEL --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
+| `uv run model warmup --build` | Train/cache an EXPT2 head on the train partition only | `<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/<key>.pt` |
+| `uv run result [RUN]` | Report a selected or latest validation run | `results/comprehensive/` |
+| `uv run python scripts/validate.py` | Execute explicit model/config pairs sequentially | Validation directories and `results/logs/validate-*.log` |
 
-Processed Parquet outputs use the listed logical path. Files at or above 100 MiB
-are stored as a manifest plus volumes of at most 99 MiB and loaded automatically;
-see [processed data](data-preparation.md#processed-data).
-
-Cache paths shown above use the default root; set `CACHE_PATH` in `.env` to
-choose another cache directory.
+The processed `.parquet` path is logical; large files use a manifest and volumes.
+See [multipart storage](caching.md#shared-storage-and-multipart-files).
 
 ## Model selection and execution modes
 
-Set `MODEL` to `qwen3-4b`, `qwen3-4b-lora-EXPT2`, `SR2-Qwen3-4B-lora`, `warmup`, or exact
-uppercase `ALL`. `--build` and `--submit` are mutually exclusive; without either
-flag, registered profiles run holdout validation. `ALL` runs configured profiles
-in the order `qwen3-4b`, `qwen3-4b-lora-EXPT2`, then `SR2-Qwen3-4B-lora`, and accepts the same
-`--build`, `--submit`, and `--refresh-cache` options. If one model fails, the
-remaining models still run; the command exits with status `1` if any failed.
-YAML validation happens before this loop; an invalid field in any present
-section stops the command before any model runs.
-The `qwen3_4b_lora_EXPT2` and `SR2_Qwen3_4B_lora` sections enable their respective
-profiles in `ALL`. Both LoRA profiles and standalone warmup always use original
-rows and do not accept `A/B_swap`. The standard LoRA and
-EXPT selectors are [retired](models.md#retired-profiles).
+`MODEL` is exactly one of `qwen3-4b`, `qwen3-4b-lora-EXPT2`,
+`SR2-Qwen3-4B-lora`, or uppercase `ALL`. Selector spelling differs from the
+[YAML section names](configuration.md#configuration-sections).
 
-The old `--test` flag is no longer accepted.
+| Option | Behavior |
+| --- | --- |
+| No mode flag | Holdout validation; publishes the final epoch's predictions, without saving a production checkpoint |
+| `--build` | Train on all original IDs from both saved partitions, applying the profile's A/B policy |
+| `--submit` | Load the selected checkpoint; requires test files and two configured GPUs |
+| `--refresh-cache` | Rebuild requested token entries and the selected mode's model-specific caches |
+| `--checkpoint-tag TAG` | Choose `head_TAG.pt` or `adapter_TAG.pt`; build/submit only |
 
-`warmup` requires `--build` and its own [configuration section](configuration.md#standalone-warmup).
-It trains only on the saved train partition, using a non-quantized frozen
-backbone without adapters. It uses the EXPT2 head and writes its reusable warmup cache, then stops
-before joint training, with no validation, production checkpoint, or report.
-`ALL` never includes this CLI-only selector. `warmup` accepts `--config` and
-`--refresh-cache`; it rejects validation mode, `--submit`, and `--checkpoint-tag`
-before loading data or configuring a GPU. A cache hit skips backbone-weight
-loading and reports zero executed epochs. This command writes the EXPT2 namespace;
-SR2 builds its separate warmup cache during its own validation or full-data build.
-See [cache reuse](caching.md#standalone-warmup-build).
+`--build` and `--submit` are mutually exclusive. A tag starts with an ASCII
+letter or digit and contains only ASCII letters, digits, `_`, or `-`.
+Without a tag, builds replace `head.pt` or `adapter.pt`. Use the same tag and
+compatible configuration when submitting.
+
+`ALL` runs only profiles present in the YAML, in registry order: frozen Qwen,
+EXPT2, then SR2. It accepts the same mode, refresh, and tag options, continues
+after model failures, and exits with status `1` if any fail. An empty selection
+is an error. The entire YAML is validated before any model runs.
+
+## Standalone warmup
+
+`warmup` is a separate selector requiring `--build`. It accepts `--config` and
+`--refresh-cache`; validation, `--submit`, and `--checkpoint-tag` are unsupported.
+It is excluded from `ALL`.
+
+It prepares only train-partition tokens and trains a non-quantized frozen
+backbone's EXPT2 head without adapters, joint training, validation, or production
+checkpoint publication. A compatible hit skips weight loading and reports zero
+executed epochs. SR2 generates its own warmup during an SR2 validation/build.
+See [warmup configuration](configuration.md#standalone-warmup) and
+[cache reuse](caching.md#standalone-warmup-build).
 
 ## Cache refresh
 
-Add `--refresh-cache` to rebuild requested shared token encodings and
-model-specific frozen embeddings or LoRA batch plans and head-warmup
-states needed by the selected mode. Submission does not prepare joint-training
-plans or use warmup states. For adapter holdout validation/builds with warmup
-enabled, this forces warmup even when a compatible completed state exists.
-Token encodings are shared by all models and by training, validation, and test
-inference. See
-[caching](caching.md) for reuse and compatibility rules.
+`--refresh-cache` affects only entries requested by the selected execution mode.
+For LoRA validation/build with warmup enabled, it forces a new warmup and
+refreshes requested tokens and batch plans. Submission uses neither warmup
+states nor joint-training plans. Refresh is not a checkpoint rebuild or a
+request to delete all existing caches; see [cache identities](caching.md).
 
-For `warmup --build`, refresh rebuilds train-partition LoRA warmup and its
-requested tokens.
+## Batch validation
 
-## Checkpoint selection
+[scripts/validate.py](../scripts/validate.py) selects work through its top-level
+`CONFIG_DIR` and `MODEL_CONFIGS` constants. The current selection is
+`SR2-Qwen3-4B-lora` with `1.yaml` from `configs/`. Edit these constants to
+choose other combinations; there are no script CLI selection flags.
 
-For builds and submission inference, `--checkpoint-tag TAG` selects
-`models/MODEL_SLUG/head_TAG.pt` for the frozen model or `adapter_TAG.pt` for
-LoRA; without it, the checkpoint is `head.pt` or `adapter.pt`, respectively.
-Tags must begin with an ASCII letter or digit and then contain only ASCII
-letters, digits, underscores, or hyphens. `--checkpoint-tag` is rejected during
-holdout validation.
+Each dictionary key is a registered model selector. Its list contains filenames
+relative to `CONFIG_DIR`, which is resolved from the script's project root.
+Only listed files run; newly added YAML files are not selected automatically.
+Models run in dictionary order and filenames in list order. Empty lists skip
+a model; no selected filenames is an error.
 
-See [model workflows](models.md), [LoRA training](lora.md), and
-[validation reports](reports.md) for detailed behavior.
+The script always invokes children from the project root, using
+`uv run model MODEL --config PATH`. It continues after missing configs or failed
+runs, prints a task summary, and exits with status `1` if any task fails.
+
+Each invocation streams script messages and combined child stdout/stderr to
+the terminal and one immediately flushed UTF-8 log under `results/logs/`.
+Unexpected exceptions and keyboard interruptions also write their traceback
+before propagating. A final `CalledProcessError` in a notebook is a wrapper;
+read the earlier model error or this log for the cause.
+
+## Report selection
+
+`RUN` is a direct child directory name under `results/`, not a path to a CSV.
+Without it, discovery selects the most recently modified eligible directory,
+then validates it; it does not search backward for a valid run. Reports always
+replace `results/comprehensive/`, so copy a report if you want to keep several.
+See [report input requirements](reports.md#report-inputs).
+
+For removed selectors and `--test`, see [migration](migration.md).

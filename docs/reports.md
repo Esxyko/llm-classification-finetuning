@@ -1,185 +1,165 @@
-# Generate validation reports
+# Validation reports and metrics
 
 [Documentation index](../README.md)
 
-Run [holdout validation](models.md) first; builds and submissions do not produce
-validation reports. The selected configuration supplies the processed reference.
-Each active model writes the final epoch's holdout probabilities to
-`validation.csv` alongside `metrics.json` and `config.yaml` in one timestamped run
-directory. The three files are staged and published together after training
-succeeds. `config.yaml` records the effective `data`, `validation`, `gpu`, and
-current model sections, including default values and resolved data paths. LoRA
-snapshots also include the required `warmup` section, with the three warmup
-optimization fields and internal `warmup_extraction_budget` and
-`warmup_label_smoothing` omitted from the current LoRA model section. Each section
-retains its own `extraction_budget` and `label_smoothing`; the warmup section's
-smoothing value applies to all head warmup, and the model section's value applies
-to joint training.
-EXPT2 and SR2 snapshots omit `A/B_swap` from both the model and warmup sections
-because both use original rows and a single prediction per ID.
-The current LoRA model configuration section is `qwen3_4b_lora_EXPT2` or
-`SR2_Qwen3_4B_lora`. SR2 follows the EXPT2 reporting rules in this guide,
-including the same head and embedding markers, original-only row counts,
-prediction aggregation, timing, and GPU memory metrics.
-Other model sections are omitted; frozen-model snapshots also omit `warmup`.
-The snapshot uses the same YAML field names as the input configuration and can
-be passed to `--config`.
-Historical snapshots retain the section names, parameter values, and resolved
-paths used for that run. Do not replace them with current presets when updating
-configuration or retiring models. Snapshots for retired models require the
-matching historical code version.
-`metrics.json` does not contain a `config` field.
-Metrics use `validation_strategy: "holdout"`, `validation_loss`, a flat `epochs`
-list, canonical `source_training_rows` and `validation_rows`, and the actual
-A/B-selected `training_rows` for the frozen profile, or original-only
-`training_rows` for EXPT2 and SR2.
-No fold count or cross-fold average is recorded.
+A successful holdout validation publishes one timestamped directory containing
+`validation.csv`, `metrics.json`, and `config.yaml`. Builds and submissions do
+not produce validation reports. Files are staged and exposed together after
+training succeeds; predictions come from the final epoch.
 
-New runs record `embedding_combination` in `metrics.json`:
-`"concat_a_b_abs_diff"` identifies `[A, B, |A - B|]` with an elementwise absolute
-difference for the frozen profile.
-EXPT2 records `"sum_signed_diff_abs_diff"` for its sum, signed
-difference, and absolute difference features. New runs also record `head_architecture`:
-`"pairwise_mlp"` for the frozen classifier,
-and `"swap_equivariant_tie_from_wins_v1"` for EXPT2's head deriving ties from
-the activated win branches.
-This combination marker is kept in metrics only; the
-prediction CSVs, configuration snapshot, terminal summary, and generated reports
-retain their existing formats. Historical standard LoRA and EXPT results retain
-their original markers and remain readable by report synthesis.
-
-Create reports for the latest validation run:
+## Generate a report
 
 ```shell
 uv run result
 ```
 
-Or select a direct subfolder of `results/`:
+Without a run name, discovery selects the most recently modified eligible direct
+child of `results/`, excluding `comprehensive`, `submit`, `logs`, historical
+`test`, and `.comprehensive-*` staging/backup directories. It then validates that
+folder; it does not search backward for the latest valid run.
+
+For a specific run, replace `RUN_NAME` with its directory name:
 
 ```shell
-uv run result qwen3-4b-YYYYMMDD-HHMMSS
+uv run result RUN_NAME --config results/RUN_NAME/config.yaml
 ```
 
-Without an argument, the command selects the most recently modified result
-subfolder, excluding `comprehensive`, `submit`, `logs`, and historical `test`
-directories. It also excludes `.comprehensive-*` staging/backup directories.
-The selected folder is then validated; discovery does not search for the latest
-valid run.
+Use the corresponding processed Parquet, not a newly generated split. Saved
+snapshots can contain absolute paths from another machine; adjust a copy's data
+paths if necessary. Each invocation replaces `results/comprehensive/`, so copy
+reports elsewhere if you want to retain several comparisons.
 
-Report generation requires exactly one top-level CSV named `validation.csv`
-and a `metrics.json` identifying a holdout run. Legacy five-fold runs are
-retained but rejected with a migration message. CSV columns must be:
+## Report inputs
 
-```text
-id,winner_model_a,winner_model_b,winner_tie
-```
+The selected directory must contain exactly one top-level CSV, named
+`validation.csv`, and a `metrics.json` identifying a holdout. Legacy five-fold
+runs are rejected. Required CSV columns, in order, are:
 
-Rows follow the exact ID order of the processed Parquet's `split=validation`
-rows, including original and swapped rows for the frozen model.
-EXPT2 and SR2 write only the original validation rows, preserving their order,
-with one row per ID.
-The processed artifact is still fully validated before selecting those rows.
-Training rows do not enter reports.
-IDs must be finite integers; probabilities must be finite, lie in `[0, 1]`, and
-sum to one within an absolute
-tolerance of `1e-6`.
+`id,winner_model_a,winner_model_b,winner_tie`
+
+| Profile / aggregation | Required validation rows |
+| --- | --- |
+| Frozen / `ab_swap_average` | All saved `split=validation` rows, original and swapped, in processed-data order |
+| EXPT2 or SR2 / `original_only` | Only original validation rows, in processed-data order, one per ID |
+
+The processed artifact is fully validated before selecting rows. Training rows
+do not enter reports. IDs must be finite integers; probabilities must be finite,
+within `[0, 1]`, and sum to one within absolute tolerance `1e-6`.
 
 ## Publication and outputs
 
-Both report files are generated in a staging directory before replacing
-`results/comprehensive/`. A staging or promotion failure leaves the previous
-report in place or restores it. If restoration fails, the command reports the
-path of the retained backup. If backup cleanup fails after promotion, the new
-report remains available and the command reports the backup path. Directory
-replacement uses two renames, so concurrent readers can briefly see the
-directory as unavailable.
-
-| File | Contents |
+| File under `results/comprehensive/` | Contents |
 | --- | --- |
-| `confusion_matrix.png` | 3 × 3 counts and expected-class row percentages, after restoring swapped predictions to the original A/B orientation |
-| `records.xlsx` | One row per source ID with split, expected and actual labels, incorrect count, and log loss |
+| `confusion_matrix.png` | 3-by-3 counts and expected-class row percentages, with swapped predictions restored to original A/B order |
+| `records.xlsx` | One source-ID record with split, expected/actual labels, incorrect count, and log loss |
 
-The workbook supports filtering; its `AVG` row recalculates over visible rows.
-Aggregation is selected by `metrics.json`, rather than the model's name:
+The workbook supports filtering, and its `AVG` row recalculates over visible
+rows. Reports are staged before directory replacement. On a recoverable promotion
+failure, publication restores the previous report; if recovery or backup cleanup
+fails, it reports the retained backup path. The two directory renames can briefly
+make the report path unavailable to concurrent readers.
 
-- `prediction_aggregation: "ab_swap_average"`: Each ID contributes one prediction,
-  one confusion-matrix count, and the log loss of its averaged distribution.
-  Original and A/B-restored swapped probabilities must already match within
-  `1e-6`; the report command validates them and does not average distinct votes.
-  The frozen model publishes this marker; historical standard LoRA also uses it.
-- `prediction_aggregation: "original_only"`: EXPT2 and SR2 supply one original
-  prediction per ID. Each ID contributes one actual label, an `incorrects`
-  value of 0 or 1, one log loss, and one confusion-matrix count. Swapped
-  predictions are neither required nor generated.
-- Missing or null `prediction_aggregation` in a valid holdout `metrics.json`:
-  Each ID contributes two orientation votes to the confusion matrix.
-  `actual_labels` contains both labels, `incorrects` ranges from 0 to 2, and
-  `contributed_loss` is the mean of the two orientation log losses.
+### Aggregation policy
 
-An unknown aggregation marker is rejected. Keep the run's `metrics.json` with
-its CSVs so report synthesis uses the intended policy.
+`metrics.json` selects aggregation; the model directory's name does not.
+
+| `prediction_aggregation` | Votes and loss per source ID |
+| --- | --- |
+| `ab_swap_average` | One prediction, one confusion count, and loss of the averaged distribution; original and restored-swapped probabilities must already match within `1e-6` |
+| `original_only` | One original prediction, one confusion count, `incorrects` of 0 or 1, and one log loss |
+| Missing or `null` in a valid historical holdout | Two orientation votes; `actual_labels` includes both; `incorrects` is 0–2; loss is the mean of the two orientation losses |
+
+Report synthesis validates already-averaged predictions; it does not average
+inconsistent new votes. Unknown markers are rejected. Keep metrics and CSVs
+together so historical runs retain their intended policy.
+
+## Configuration snapshots
+
+The adjacent `config.yaml` uses public input names, includes loaded defaults and
+resolved data paths, and contains only shared sections plus the current model:
+
+| Run | Included sections |
+| --- | --- |
+| Frozen | `data`, `validation`, `gpu`, `qwen3_4b` |
+| EXPT2 | `data`, `validation`, `gpu`, `warmup`, `qwen3_4b_lora_EXPT2` |
+| SR2 | `data`, `validation`, `gpu`, `warmup`, `SR2_Qwen3_4B_lora` |
+
+LoRA snapshots keep shared warmup controls under `warmup`, omit internal resolved
+fields, and omit `A/B_swap` from both model and warmup sections. Each section
+retains its own extraction budget and smoothing value. Other model sections are
+excluded; `metrics.json` has no embedded `config` field or source-config path.
+
+A snapshot can be passed to `--config`, but reproducing a run also needs matching
+data/code/dependencies and model identity. It does not capture `.env` or persist
+`MODEL_PATH`/`CACHE_PATH`. Retain historical snapshots unchanged; old model
+sections may require historical code. See [migration](migration.md).
+
+## Model metrics
+
+Current metrics use `validation_strategy: holdout`, `validation_loss`, and a flat
+`epochs` list. `source_training_rows` and `validation_rows` count canonical IDs;
+`training_rows` counts the rows selected by the profile's A/B policy. There are
+no fold counters or cross-fold means. Training can use label smoothing, but
+validation/reporting log loss is unsmoothed.
+
+| Profile | `head_architecture` | `embedding_combination` |
+| --- | --- | --- |
+| Frozen | `pairwise_mlp` | `concat_a_b_abs_diff` |
+| EXPT2 / SR2 | `swap_equivariant_tie_from_wins_v1` | `sum_signed_diff_abs_diff` |
+
+These markers identify current model behavior; historical results preserve their
+original values. Combination markers are metrics, not additional YAML options.
 
 ## Timing metrics
 
-For frozen, EXPT2, and SR2 validation runs (including LoRA head-warmup epochs),
-`metrics.json` records `training_time`, `validation_time`, and `total_time`
-as `HH:MM:SS` strings rounded
-to whole seconds for every executed epoch and run. Hours can exceed 24.
-Training and validation times measure each phase's elapsed wall time after
-waiting for GPU work to finish. Run totals also include initialization,
-prediction alignment, and LoRA cleanup; epoch totals include epoch setup.
-LoRA warmup feature extraction for training and validation IDs finishes before
-epoch timing starts. It is excluded from epoch training and total times but
-included in complete-run runtime. Each LoRA joint-validation time includes fresh
-backbone extraction followed by head inference; warmup validation reuses the
-existing features. Reused warmup adds no old losses, epoch entries, or timings
-to the new run; joint epoch numbers retain their configured warmup offset.
-Cache loading and saving are excluded from epoch phase timings and included
-in complete-run runtime. Full-data builds do not write `metrics.json`; their
-epoch counts include only epochs executed in the current run.
-Top-level `training_time` and `validation_time` sum the corresponding durations
-of executed epochs. Final `total_time` measures the complete model run, including
-initialization, input loading, embedding preparation, cleanup, and publication.
-`config_total_time` records the same duration for this model and selected config.
-With `model ALL`, each model is timed separately.
-The command also prints each model's duration at completion.
+Times are elapsed wall-clock durations formatted as `HH:MM:SS`, rounded to whole
+seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
+
+| Field / scope | Includes |
+| --- | --- |
+| Epoch `training_time` | That epoch's training phase |
+| Epoch `validation_time` | Validation phase; joint LoRA validation includes fresh extraction plus head inference |
+| Epoch `total_time` | Epoch setup and training/validation; excludes warmup feature extraction performed before epochs |
+| Top-level `training_time`, `validation_time` | Sums of executed epoch phase durations |
+| Final `total_time`, `config_total_time` | Complete successful model run: initialization, input/cache/embedding preparation, training, validation, cleanup, and publication |
+
+Warmup validation reuses its extracted features. Cache work and warmup extraction
+are included in complete-run time, not epoch phases. A warmup hit contributes no
+historical epoch losses or times; joint epoch numbering retains the configured
+warmup offset. `model ALL` times each model separately. Builds do not write
+`metrics.json`; their summaries count only epochs executed in that invocation.
+
+The [progress counter](models.md#training-progress) excludes extraction and
+publication, so its time estimate has a different scope.
 
 ## GPU memory peaks
 
-Holdout validation automatically monitors the configured `gpu.device` for each
-model's complete run. Monitoring begins before pipeline initialization and covers
-model loading, embedding preparation, all executed epochs (including LoRA head
-warmup), training, validation, cleanup, and result publication. All active models,
-`model ALL`, and `scripts/validate.py` use the same monitoring path.
-Builds and submissions do not enable this monitoring.
+Holdout validation resets PyTorch allocator peaks once per model on `gpu.device`
+before pipeline initialization. The interval covers loading, preparation,
+warmup, training, validation, cleanup, and result publication. Epochs share that
+interval. `ALL` and batch validation use this same path; builds/submissions do
+not enable it.
 
-After GPU work finishes, the command prints the model selector, device, and
-allocated/reserved peaks in GiB (`bytes / 1024**3`) with two decimal places. The
-same peaks are atomically recorded with the complete runtime in `metrics.json`
-as integer byte counts:
+The terminal prints allocated/reserved peaks in GiB. Successful runs atomically
+append integer byte counts with complete-run timing, for example:
 
 ```json
-"gpu_memory": {
-  "device": "cuda:0",
-  "peak_allocated_bytes": 123456789,
-  "peak_reserved_bytes": 234567890
+{
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 123456789,
+    "peak_reserved_bytes": 234567890
+  }
 }
 ```
 
-`peak_allocated_bytes` measures memory occupied by PyTorch tensors;
-`peak_reserved_bytes` measures memory managed by PyTorch's caching allocator,
-including unused cached blocks. These are separate maxima and need not occur
-at the same time. They do not measure total GPU usage, other processes, or
-allocations outside PyTorch's allocator. See the
-[PyTorch memory management reference](https://docs.pytorch.org/docs/2.14/notes/cuda.html#memory-management).
+Allocated bytes measure PyTorch tensor memory; reserved bytes measure its caching
+allocator, including unused blocks. They are separate maxima and need not occur
+together. They exclude other processes and allocations outside that allocator.
+Monitoring neither clears caches nor subtracts initial occupancy; resident memory
+at the beginning contributes to the peak, including across sequential runs.
 
-Peaks are reset once per model run, never between epochs or phases.
-Monitoring does not clear cached memory or subtract the starting occupancy:
-memory still resident when a run begins contributes to its absolute peak. This
-also applies to sequential models in `model ALL`; a complete embedding-cache
-hit reports the actual work performed, including head training.
-
-If execution fails after monitoring starts, the command attempts to print the
-peaks observed before failure without waiting for GPU synchronization. Failure
-to read or print those peaks does not replace the original exception. Failed
-execution does not record final GPU peaks or complete runtime metrics.
+On failure, the command attempts an unsynchronized terminal peak summary without
+masking the execution error. It does not append final GPU/runtime metrics for
+the failed execution. Inspect batch [logs](commands.md#batch-validation) for the
+underlying error.

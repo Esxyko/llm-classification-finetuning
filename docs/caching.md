@@ -2,340 +2,220 @@
 
 [Documentation index](../README.md)
 
-Training caches use `CACHE_PATH` from `.env` or the environment, defaulting to
-`./cache` when missing or blank. Relative paths resolve from the working
-directory and `~` expands to the user's home directory. The cache root is
-independent of YAML `data.processed_path` and `MODEL_PATH`; see
-[configuration paths](configuration.md#configuration-files-and-paths).
-Frozen embeddings, shared text encodings, adapter batch plans, and head-warmup
-states have separate compatibility rules. LoRA warmup, joint-validation,
-and submission features stay in temporary CPU memory (BF16 in BF16 mode,
-otherwise FP32) and are not persisted. Uncached warmup reuses its feature
-pool; each joint-validation or submission call extracts fresh features with the
-current model and releases them on return.
+Training caches live under `CACHE_PATH`, defaulting to `./cache`. Downloaded
+model files use optional `MODEL_PATH`. Both follow the
+[working-directory path rules](configuration.md#configuration-files-and-paths).
+Production checkpoints under `models/` are separate artifacts.
 
-Existing caches have moved from `data/processed/` to `cache/` with their
-subdirectory names, keys, manifests, and volumes preserved. For another checkout
-with the old layout, move its `token_cache/`, `embedding_cache/`,
-`adapter_batches/`, and `*_warmup/` directories into the configured cache root
-to reuse them. The processed Parquet stays at its YAML-configured location.
+## Cache overview
+
+| Artifact under `CACHE_PATH` | Reuse depends on | Important exclusions |
+| --- | --- | --- |
+| `token_cache/` | Text, tokenizer content/implementation, encoding options, library/schema versions | IDs, labels, split, source path, model weights, training settings |
+| `embedding_cache/` | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, attention implementation, TF32, extraction budget |
+| `adapter_batches/plans/` | Selected sample identities/orientations and A/B lengths, checkpointing threshold, update-group size, algorithm version | Labels, source order, token content beyond lengths, second-pass budget |
+| `qwen3_4b_lora_EXPT2_warmup/` | Original training ID set and effective EXPT2 warmup identity | Text/labels, validation IDs, precision, joint-training settings |
+| `SR2_Qwen3_4B_lora_warmup/` | Original training ID set and effective SR2 warmup identity | Same exclusions; different backbone/namespace from EXPT2 |
+
+Cache compatibility and production-checkpoint compatibility are independent.
+For example, reusable tokens do not establish that a head or warmup state matches.
+`--refresh-cache` refreshes requested entries and mode-specific caches, not Hub
+base weights or every artifact in the cache root.
+
+LoRA features are temporary CPU tensors: warmup reuses them within that stage;
+each joint-validation/submission call extracts fresh ones with the current
+model and releases them on return. Live LoRA embeddings are never persisted.
 
 ## Hugging Face model downloads
 
-Downloaded base models, tokenizers, and model configurations use a persistent
-native Hub cache when `MODEL_PATH` is non-empty in `.env` or the environment.
-For example, `Qwen/Qwen3-4B` is stored directly at
-`<MODEL_PATH>/models--Qwen--Qwen3-4B/`. Relative paths and `~` follow the
-[configuration path rules](configuration.md#configuration-files-and-paths).
-With no `MODEL_PATH`, Hugging Face keeps its usual cache configuration.
+When `MODEL_PATH` is nonempty, project config/tokenizer/backbone loaders pass
+it as `cache_dir`. `Qwen/Qwen3-4B`, for example, uses
+`<MODEL_PATH>/models--Qwen--Qwen3-4B/` with native refs, snapshots, and blobs.
+Hugging Face manages revisions, locks, and resumable downloads. Files persist
+across processes without archive packing or unpacking.
 
-Project model/config/tokenizer loaders pass `MODEL_PATH` as `cache_dir`.
-Model IDs, refs, snapshots, blobs, negative-cache markers, and commit identities
-retain their native layout. Hugging Face manages download locks and resumable
-downloads. Files remain on disk and are reused across processes without packing
-or unpacking. Explicit local model directories load directly. `HF_HOME` and
-authentication settings are preserved. These native model downloads are outside
-the training-cache multipart policy below.
+Missing/blank `MODEL_PATH` preserves native Hugging Face cache settings.
+Explicit local model directories load directly. `HF_HOME` and authentication
+settings are preserved. Model downloads are outside the multipart policy below;
+see [endpoint defaults](getting-started.md#hugging-face-downloads).
 
 ## Shared storage and multipart files
 
-All four cache types use the common `CacheStorage` file interface. Cache keys,
-SQLite tables, and PyTorch payloads retain their existing formats. Logical paths
-such as `<key>.sqlite3` and `<key>.pt` identify caches even when the corresponding
-single file is replaced by volumes.
+The four training-cache types and processed training Parquet use `CacheStorage`.
+The logical `.sqlite3`, `.pt`, or `.parquet` path stays unchanged in configuration
+and APIs regardless of its physical storage:
 
-The [processed training Parquet](data-preparation.md#processed-data) uses this
-same interface and size policy for pipeline output and input loading. Its
-configured `.parquet` path remains the logical path; the default saved split's
-manifest and volumes are tracked with regular Git storage.
+| Serialized size | Published layout |
+| --- | --- |
+| Below 100 MiB (104,857,600 bytes) | One file at the logical path |
+| At least 100 MiB | `<name>.manifest.json` and `<name>.parts/`, each volume at most 99 MiB (103,809,024 bytes) |
 
-Files smaller than 100 MiB (104,857,600 bytes) remain single files. Files at or
-above that threshold are split into volumes of at most 99 MiB (103,809,024 bytes),
-keeping every published file below GitHub's 100 MiB per-file limit. This rule is
-fixed, without compression or additional configuration, and does not apply to
-production model checkpoints. See [GitHub's file size limits](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
+The rule is fixed and does not compress the serialized payload. It excludes
+production checkpoints and native HF downloads. Processed Parquet itself is
+Zstandard-compressed before this storage rule applies.
 
-A multipart cache uses `<original-name>.manifest.json` and an accompanying
-`<original-name>.parts/` directory. Manifest version 1 records the complete byte
-length and SHA-256, plus an ordered list of volume names, lengths, and SHA-256
-checksums. Volumes are named `000001-<sha256>.part`, `000002-<sha256>.part`, and
-so on. Commit the manifest and all referenced volumes together. Git preserves
-volume bytes without line-ending conversion through `.gitattributes`.
+Manifest v1 records total bytes/SHA-256 and ordered volume names, lengths, and
+SHA-256 checksums. Volumes are named `000001-<sha256>.part`, etc. Keep the manifest
+and **all referenced volumes together** when committing, moving, or copying.
+Keep YAML pointing to the logical `.parquet`, not the manifest. The saved split
+and selected cache directories use regular Git storage; `.gitattributes`
+preserves binary volume bytes.
 
-Reads reconstruct and validate multipart files on disk rather than loading an
-entire serialized file into memory. Each session uses a private subdirectory
-under `.cache-work/` beside the logical cache. The session subdirectory is removed
-on exit; `.cache-work/` and its lock files remain for reuse. These working
-directories are ignored by Git and may temporarily contain files larger than
-the publication limit. Allow disk space for a reconstructed file and newly
-staged volumes when updating large caches.
+Reads reconstruct/checksum large files on disk under `.cache-work/` beside the
+logical artifact, not as one in-memory byte string. Session subdirectories are
+removed on exit; the ignored working directory and locks can remain. Allow space
+for a reconstructed file plus staged volumes during updates, including on Drive
+when `CACHE_PATH` points there.
 
-Sessions hold a per-cache process lock on Windows and Linux, with a 30-second
-lock timeout. Updates operate on private working copies. After serialization
-and all file handles have closed, small files are atomically replaced; multipart
-updates publish all volumes before atomically replacing the manifest. Unchanged
-hits do not rewrite published files. Old volumes are cleaned after publication;
-an interrupted write or unsuccessful cleanup can leave unreferenced volumes,
-which the next successful write removes. A failed publication keeps the previous
-valid cache authoritative.
+Windows/Linux sessions use a per-artifact process lock with a 30-second timeout.
+Updates work on private copies. Small files publish by atomic replacement;
+multipart writes publish volumes before replacing the authoritative manifest.
+Unchanged hits do not republish. A failed publication keeps the previous valid
+artifact authoritative. A successful later write cleans unreferenced volumes
+left by interrupted publication or cleanup.
 
-Missing volumes, invalid metadata, and checksum mismatches archive the multipart
-artifact before reporting a cache miss or rebuilding, according to the cache
-type. SQLite corruption also uses the shared archive operation. Single-file
-archives at or above the threshold are split rather than retained as oversized
-files. Oversized corrupt manifest or volume components are themselves split
-inside the archive, preserving their bytes for inspection through `CacheStorage`.
-Legacy single-file caches remain readable and use the size rule on their
-next write. `--refresh-cache` keeps its existing meaning.
-
-The shared Python interface is exported from `models.common`:
-
-```python
-from pathlib import Path
-
-import torch
-
-from llm_classification_finetuning.config import AppConfig
-from llm_classification_finetuning.models.common import CacheStorage
-
-config = AppConfig.load(Path("config.yaml"))
-storage = CacheStorage(config.cache_dir / "adapter_batches" / "example.pt")
-with storage.open("w") as session:
-    torch.save({"example": 1}, session.path)
-with storage.open("r") as session:
-    payload = torch.load(session.path, map_location="cpu", weights_only=True)
-```
-
-`open("w")` publishes on successful exit; `open("rw")` copies an existing cache
-or prepares a new path and publishes only after `session.mark_dirty()`.
-`open("r")` never publishes. Close SQLite connections or other file handles
-before leaving any session. `exists()` checks logical presence; `archive()`
-quarantines an artifact, and `session.archive()` does so within an existing
-session lock. Missing artifacts raise `FileNotFoundError` on reads; malformed
-multipart artifacts raise `CacheCorruptionError` after archival. These storage
-errors remain subject to each cache's existing recovery policy.
-
-## Frozen embeddings
-
-The frozen model shares content-addressed embeddings between training and test
-under `<CACHE_PATH>/embedding_cache/`. Each SQLite shard
-identifies the model and exact Hub revision (or local checkpoint/configuration
-content), backbone hidden size, precision, pooling, storage format, and
-extraction version. Attention implementation, TF32, and `extraction_budget` do
-not affect cache reuse.
-Individual entries identify the effective token IDs of one branch, after any
-requested truncation. Different compute identities coexist without overwriting
-one another.
-Pooled vectors are stored as FP16 CPU tensors, including when backbone compute
-precision is BF16 or FP32; the classifier consumes them as FP32.
-
-Changing labels, splits, IDs, row order, or dataset file encoding does not
-invalidate existing vectors. Overlapping datasets and A/B branches reuse each
-other's entries; only missing inputs are encoded. Changing `max_length` or the
-serializer also reuses vectors when the resulting token IDs remain identical.
-Cache rows are mapped back to the current canonical IDs and order. When all
-inputs hit, the backbone weights are not loaded. Local checkpoint identities
-require reading the selected weight files to hash their content.
-
-Missing branches are sorted by descending length and best-fit packed within
-`extraction_budget` padded tokens per micro-batch, then independently right-padded.
-Extracted vectors are scattered back to the original branch positions. Changing
-batch composition, attention implementation, or TF32 can change floating-point
-rounding. Precision remains part of the cache identity. Reads validate blob
-length and checksum without scanning vectors for NaN/Inf; newly extracted
-vectors are checked for finite values before caching. Entries with invalid
-lengths or checksums are recomputed, SQLite writes are transactional, and
-corrupt shards are archived before rebuilding. SQLite shards keyed by the
-former attention/TF32 identity are left untouched and are no longer reused.
-Older dataset-wide `.pt`/`.json` embedding caches, including `baseline_*`, are left
-untouched and are no longer read; their metadata cannot establish the new
-backbone/input identities. Embedding reuse does not imply saved-head
-compatibility; see the separate [checkpoint rules](models.md#checkpoint-compatibility).
+Missing volumes, bad metadata, or checksum failures archive the artifact before
+the cache-specific miss/rebuild policy runs. Corrupt processed data requires
+preprocessing again; it is not silently regenerated from raw data by training.
+Legacy single-file artifacts remain readable. See [migration](migration.md) for
+old cache locations and formats.
 
 ## Shared token encodings
 
-`<CACHE_PATH>/token_cache/` is shared by frozen-model extraction,
-LoRA training/warmup/validation, and LoRA test inference. Each SQLite shard
-identifies the tokenizer's encoding content, implementation/library versions,
-encoding options, and cache schema; entries identify individual UTF-8 texts by
-SHA-256. IDs, labels, splits, row order, dataset fingerprints, model names, model
-weight revisions, and training settings are excluded. Only changed or missing
-texts are encoded; duplicates and overlapping datasets reuse existing entries.
-The tokenizer is loaded to fingerprint its actual content, but cache hits do not
-run tokenization. Padding is applied by each caller after cache lookup.
+Each SQLite shard fingerprints actual tokenizer encoding content, implementation
+and library versions, encoding options, and schema. Individual entries use a
+SHA-256 of UTF-8 text. Duplicate texts and overlapping datasets share entries;
+only missing or changed texts are encoded. A tokenizer is still loaded to
+fingerprint it, even on complete hits.
 
-Full untruncated encodings are the common reusable representation. Frozen-model
-extraction additionally caches the tokenizer's exact truncated output for texts
-exceeding its selected length limit, preserving special-token behavior. LoRA
-always validates the full cached lengths against `max_length` and rejects empty
-or over-limit branches without truncation. Changing length limits therefore
-keeps full tokens reusable. Corrupt entries are recomputed; corrupt SQLite
-shards are archived and rebuilt. SQLite transactions publish complete entries.
-Reads validate byte length, token count, and checksum without scanning token
-IDs for negative values; newly encoded IDs are checked before caching.
+The common representation is the full untruncated token sequence in compact
+int32 CPU views. Frozen extraction separately caches exact truncated outputs for
+overflowing texts, preserving the tokenizer's special-token behavior. LoRA checks
+full lengths against `max_length` and rejects empty or oversized inputs. Padding
+happens after lookup.
+
+Reads validate count, byte length, and checksum; newly encoded IDs are checked
+before storage. Invalid entries are recomputed, writes are transactional, and
+corrupt SQLite shards are archived and rebuilt.
+
+## Frozen embeddings
+
+Each SQLite shard identifies the exact Hub revision or local weight/configuration
+content, backbone hidden size, compute precision, pooling, storage format, and
+extraction version. Entries identify a branch's effective token IDs after any
+truncation. Different computation identities coexist. Local identities require
+reading weight files to hash content.
+
+Labels, splits, IDs, row order, and dataset encoding do not invalidate vectors.
+Changing the serializer or length limit still reuses a vector if the effective
+token IDs are identical. Returned features follow current canonical IDs/order.
+Complete hits skip backbone-weight loading, though hardware, config, and tokenizer
+checks still run.
+
+Pooled vectors are stored as FP16 CPU tensors and consumed by the frozen head as
+FP32. Missing branches use [extraction packing](configuration.md#extraction-token-budgets)
+and are scattered back to their requested positions. Batch composition, attention,
+and TF32 can affect rounding, even though the latter two are outside the key.
+
+Reads check blob length/checksum; fresh vectors are checked for finite values.
+Invalid entries are recomputed and corrupt shards archived. Old dataset-wide
+embedding files and shards using retired identities are not read. See
+[frozen checkpoint compatibility](models.md#checkpoint-compatibility).
 
 ## LoRA batch plans
 
-LoRA uses shared `<CACHE_PATH>/adapter_batches/plans/*.pt`.
-Plans identify the sorted selected `(id, is_swapped, A_length, B_length)` rows,
-checkpointing threshold, update group size, and planning algorithm version.
-Labels, split names, reference order,
-text/token content beyond lengths, and unselected validation inputs do not enter
-the plan key. Cached groups store sample identities and are mapped to current
-dataset indices on every read; current labels are always used for training.
-A/B mode and holdout/build selection determine membership before lookup. Changing
-threshold or effective batch size rebuilds plans while reusing tokens. With
-`gradient_checkpointing_threshold: 0`, tokens are cached but no global plan is
-created, and all fixed joint-training batches use gradient checkpointing.
-Plan schema version `4` stores `threshold` instead of the old `budget`
-metadata; older plan versions are not reused and are rebuilt when needed.
-Legacy per-model batch directories and per-model `tokens/*.pt` files are no
-longer read. Identical plan keys remain reusable across configurations and
-training modes. Different thresholds or selected rows still select
-different plans.
+Plans under `adapter_batches/plans/*.pt` use schema v4. Keys contain sorted
+selected `(id, is_swapped, A_length, B_length)` rows, checkpointing threshold,
+update-group size, and planning version. Cached identities map back to current
+dataset indices and labels on each read.
 
-Cached packing groups keep their existing format and membership, including any
-short final group. Each epoch shuffles the full groups, then appends the short
-group's micro-batches to the last shuffled full group for a single merged update.
-An epoch containing only a short group runs it alone. The optional
-`gradient_checkpointing_budget` pass then combines checkpointed singletons
-inside each final update group, before shuffling its micro-batches. That pass
-uses the configured budget and current epoch's merged membership, and is never
-written into the base plan. Changing only this budget therefore reuses the same
-base cache. The merged joint-training update runs last after packing and
-shuffling; cached group membership and warmup ordering remain unchanged.
-A budget of `0` leaves the original micro-batches and their order within each
-update unchanged. With a zero threshold and positive budget, fixed-size initial
-batches are shuffled by `random_state + joint_epoch` and repacked in memory
-without a global plan cache. The reported plan micro-batch count describes the
-base plan; the update count reflects the merged optimizer groups.
-LoRA shares the text-token cache across stages when tokenizer content and
-encoding options match.
+Changing selected rows, lengths, threshold, or effective update size selects a
+new plan. Changing labels, reference order, split names, unselected validation
+inputs, or only `gradient_checkpointing_budget` does not. With threshold `0`,
+there is no persistent global plan; full tokens are still cached.
 
-`--refresh-cache` replaces requested token entries and model-specific caches,
-including head warmup. Shared training encodings remain reusable across stages
-in that run. Warmup
-features and live LoRA encodings are never persisted in these token caches.
+Only base groups are persisted. Epoch shuffling, short-tail merging, and the
+second pass over checkpointed singletons happen in memory. The second-pass
+budget can therefore change while reusing the base plan. Logged plan
+micro-batch counts describe the base plan; update counts follow finalized merged
+groups. See [joint batching](lora.md#optional-token-budget-training-batches).
 
 ## LoRA head warmup
 
-EXPT2 holdout validation and builds save completed head warmup under
-`<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/<key>.pt`.
-Standalone `model warmup --build` uses the same directory and EXPT2 head with
-the fixed original-only policy, using only the saved train partition.
-SR2 validation and builds use the same cache implementation and head, warming
-up on Skywork features and storing the completed head/optimizer state under
-`<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt`. Features remain temporary CPU data.
-The model name and exact backbone revision are part of the identity, so SR2
-does not reuse Qwen warmup states. The standalone command continues to use
-the EXPT2 namespace; SR2 generates its warmup during its own model run.
-Identity follows actual training data and effective settings rather than the
-command. Checkpoint tags do not affect the cache; submission does not use it.
+EXPT2 and standalone warmup write `qwen3_4b_lora_EXPT2_warmup/<key>.pt`; SR2 writes
+`SR2_Qwen3_4B_lora_warmup/<key>.pt` using Skywork features. Both use the EXPT2 head
+architecture and warmup schema v5. Submission does not use warmup caches.
 
-The architecture marker remains `swap_equivariant_tie_from_wins_v1` and warmup
-schema remains v5. Meta-device validation checks the symmetric, directional,
-tie, and readout weights, symmetric/tie biases, and named AdamW states.
-EXPT2 subdirectory names and cache keys remain unchanged. Missing or incompatible
-entries rebuild through the existing miss path. Retired standard MLP and EXPT
-caches cannot be reused by active EXPT2 or SR2 profiles and may be deleted when
-no longer needed for archived workflows.
+### Identity
 
-The data key hashes only the sorted original training ID set. For normal model
-builds this is the full original ID set; for holdout runs and standalone warmup
-it is the saved training partition.
-Validation IDs and split names do not enter the key: validation only measures
-loss and does not update the head or choose an early-stopping checkpoint.
-Changing only the validation set therefore retains a compatible warmup cache.
-Holdout and build calls with the same training IDs and remaining settings can
-reuse the same state. The configured model seed is checked separately.
+| Included in compatibility | Excluded from compatibility |
+| --- | --- |
+| Sorted original training ID set | Validation IDs, holdout/build label, source path/Parquet bytes, row order, training text and labels |
+| Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, quantization, schema | Local path spelling when contents match |
+| Head dropout, A/B objective, warmup epochs/batch size/rate, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
+| Non-quantized training identity for active profiles | LoRA rank/alpha/dropout/targets; joint learning rates, epochs, batch size, accumulation, and token controls |
 
-File paths, Parquet bytes, reference order, text, and labels remain excluded.
-Changing training text or labels while retaining IDs thus reuses the old warmup;
-use `--refresh-cache` to retrain it. Input and token-length checks still run.
+**Editing training text or labels while keeping the same IDs can reuse stale
+warmup state. Use `--refresh-cache` when that state must be retrained.** Tokens
+and input-length checks still follow current content. Changing only validation
+IDs preserves reuse because validation neither updates the head nor selects an
+early-stopping checkpoint.
 
-Other keys identify the model and exact Hub revision or local weight/configuration
-content, backbone/head dimensions, tokenizer content,
-serialization version, quantization mode, head dropout, A/B objective, warmup epochs/training batch
-size/learning rate, effective seed, weight decay, gradient clipping, and cache
-schema. Nonzero `warmup.label_smoothing` also enters the key; zero retains existing
-unsmoothed cache identities. Standalone and inline LoRA warmup both read this
-value; joint-training label smoothing does not affect warmup cache identity.
-Local model paths are excluded when weight/configuration contents
-match. Compute precision, attention implementation, TF32, warmup extraction
-token budget, and all LoRA rank/alpha/dropout/target-module settings are excluded,
-as are joint-training learning rates, epoch count, batch size, accumulation,
-and token budget. Context limits do not enter the key because adapter inputs are never
-truncated and their lengths are checked independently. LoRA lookup requires
-the `training_quantization: none` identity while strictly checking all other
-compatibility fields. Historical quantized warmup caches are not reused by LoRA.
+Normal holdout and standalone warmup use train-partition IDs; full-data builds
+use all original IDs. These normally select different cache keys. Checkpoint tags
+do not enter the identity. Context limits are excluded because inputs are never
+truncated and are independently validated.
 
-After the last warmup validation (or the last warmup training epoch for builds),
-the cache atomically stores FP32 classifier weights, named head AdamW moments
-and step counters, gradient-scaler state, source precision, and Python, NumPy,
-Torch CPU, and selected-device CUDA random states. It contains no adapters or
-features. Reuse restores these states into a freshly initialized model, skips
-all warmup extraction/training/validation, and starts joint training with fresh
-adapters and the configured fixed joint learning rates. Only FP16-to-FP16 reuse
-restores the saved gradient scaler; other transitions initialize it for
-the current precision. Reuse across precision, extraction, or LoRA setting
-changes continues from the original warmup result rather than reproducing a
-fresh warmup under the new settings. Rank/target-module changes can affect
-classification-head initialization through random-number consumption on a
-cache miss; cached heads and named optimizer states remain reusable.
+### Saved state and restoration
 
-Schema v5 validates the EXPT2 head architecture and preserves its existing
-cache paths. Historical MLP and EXPT warmup states are not read by EXPT2.
-The schema retains training-ID identities without a validation-set binding and
-merges a short final batch into the preceding full optimizer update. Legacy
-v1/v2/v3/v4 warmup files are retained and no longer read.
-Shared token encodings, frozen embeddings, and LoRA batch plans retain their
-existing cache identities.
+After the final warmup validation, or final warmup training epoch for builds,
+the cache atomically stores:
 
-Reads use CPU tensor loading and validate metadata, exact head/moment shapes,
-FP32 dtypes, finite weights/moments, and restorable scaler/random states before
-changing the model. Missing, corrupt, and incompatible entries are rebuilt;
-write failures are reported as model execution errors. Logs show rebuild/reuse,
-holdout/build, path, and precision. Skipped warmup contributes no progress work,
-epoch history, or historical timing/validation metrics; joint epoch numbers
-retain their configured warmup offset. Build epoch counts report only epochs
-executed in the current run.
+- FP32 classifier weights and named head AdamW moments/step counters.
+- Gradient-scaler state and source precision.
+- Python, NumPy, Torch CPU, and selected-device CUDA random states.
 
-`warmup_epochs: 0` disables warmup cache reads and writes. `--refresh-cache`
-forces warmup again and atomically replaces the requested entries. Manually
-constructed `PreparedTrainingSplit` objects without the optional
-`warmup_context` retain uncached training; repository-prepared splits supply
-that context automatically.
+It contains no adapters or features. CPU loading validates metadata, exact
+head/moment shapes, FP32 dtypes, finite values, and restorable scaler/RNG states
+before changing the model. Missing/corrupt/incompatible states rebuild; write
+failures are model execution errors. Retired-profile heads and earlier schemas
+are not reused.
+
+A hit restores the head/optimizer/RNG state, skips all warmup feature extraction,
+training, and validation, and starts joint training with fresh adapters and fixed
+joint rates. Only FP16-to-FP16 reuse restores the gradient scaler; other precision
+transitions initialize a scaler for the current mode. Across changed precision
+or LoRA settings, reuse continues the original cached warmup rather than
+reproducing a fresh warmup under the new settings. Adapter initialization can
+consume different RNG draws on a cache miss.
+
+Logs identify reuse/rebuild, source path, and precision. Reused work contributes
+no old epoch metrics or timing; joint epoch numbers retain their warmup offset.
+`warmup_epochs: 0` disables reads/writes. `--refresh-cache` forces replacement.
+Manually constructed `PreparedTrainingSplit` objects without `warmup_context`
+remain uncached; repository-prepared splits supply it.
 
 ### Standalone warmup build
 
-`uv run model warmup --build` uses the `warmup` section and the
-shared data, validation, and GPU settings. It prepares tokens only for train
-IDs, selects only original rows, and checks the same
-schema-v5 non-quantized EXPT2 key. A valid cache returns before backbone-weight loading,
-feature extraction, or training; the summary reports zero executed epochs.
+`model warmup --build` prepares train-only tokens and checks the same
+non-quantized EXPT2 identity. A hit returns before backbone-weight loading and
+reports zero executed epochs. A miss extracts a frozen backbone without adapters
+and trains only the head. There is no validation, joint plan, production
+checkpoint, or result report.
 
-On a miss it loads a frozen, non-quantized backbone without injecting adapters,
-extracts each train ID once into temporary CPU features, and runs only the
-configured head warmup. It saves the same head, named AdamW, scaler, and RNG
-payload after the final training epoch. It performs no validation, creates no
-joint batch plan, and publishes no production checkpoint or report. Because
-there are no adapter-initialization RNG draws, a new standalone warmup may
-differ from a fresh inline LoRA warmup; compatible cached results remain usable
-by LoRA under the existing key rules.
-
-`--refresh-cache` forces standalone warmup to replace its requested LoRA cache
-and refresh train tokens. Reuse logs include the actual source path and
-quantization. A train-partition cache does not match a normal
-full-data build; `warmup.warmup_epochs: 0` disables all LoRA warmup cache I/O.
-Warmup epochs, training batch size, and learning rate are shared through this
-section; its other settings configure standalone warmup. The standalone command
-requires positive warmup epochs.
+Reuse in inline EXPT2 requires matching both training IDs and effective model/head
+settings, not merely using the same cache directory. See
+[standalone configuration](configuration.md#standalone-warmup). Fresh standalone
+and inline runs can differ because standalone skips adapter-initialization RNG
+draws. SR2 builds its own inline cache in its separate namespace.
 
 ## Python APIs
 
-The independent text API accepts arbitrary serialized strings and a shared
-cache directory; an already loaded tokenizer can also be passed to
-`TokenizationCache(cache_dir, tokenizer)`:
+Import public exports rather than private helpers. The examples below run from
+the project root; token/loader preparation may download tokenizer/config files
+but does not load backbone weights or initialize CUDA.
+
+### Text encodings
 
 ```python
 from pathlib import Path
@@ -348,11 +228,12 @@ cache = TokenizationCache.from_pretrained(
     config.cache_dir / "token_cache", "Qwen/Qwen3-4B"
 )
 encoded = cache.encode(["first input", "second input"])
-first_ids = encoded[0]  # Unpadded int32 token IDs, in requested input order.
+first_ids = encoded[0]  # Unpadded int32 IDs, in requested input order.
 ```
 
-The Python API can prepare a CPU loader without loading model weights or
-initializing CUDA:
+An already loaded tokenizer can be passed to `TokenizationCache(cache_dir, tokenizer)`.
+
+### CPU training-loader preparation
 
 ```python
 from pathlib import Path
@@ -364,12 +245,37 @@ from llm_classification_finetuning.models.qwen3_4b_lora_EXPT2 import (
 
 config = AppConfig.load(Path("config.yaml"))
 batches = LoRATrainingBatchRepository.from_config(config)
-training = batches.get_training()  # Saved training partition only.
-# batches.get_training(full_data=True) selects all IDs for a build.
-training.set_epoch(0)  # Zero-based joint epoch; fixed batching keeps its RNG stream.
-loader = training.loader  # Yields PairwiseBatch; training.tokens is shared.
+training = batches.get_training()
+training.set_epoch(0)
+loader = training.loader
 ```
 
-See [LoRA training](lora.md#optional-token-budget-training-batches) for planning
-behavior and effective-batch semantics. The source modules that implement these
-APIs and their development invariants are mapped in [structure.md](../structure.md).
+`get_training(full_data=True)` selects all original IDs for a build. The default
+profile for this Python API is EXPT2. The loader yields `PairwiseBatch`; shared
+tokens are available through `training.tokens`.
+
+### Storage sessions
+
+```python
+from pathlib import Path
+
+import torch
+
+from llm_classification_finetuning.models.common import CacheStorage
+
+storage = CacheStorage(Path("cache/example.pt"))
+with storage.open("w") as session:
+    torch.save({"example": 1}, session.path)
+with storage.open("r") as session:
+    payload = torch.load(session.path, map_location="cpu", weights_only=True)
+```
+
+This example uses an explicit path. Use `AppConfig.cache_dir` for the configured
+root in application code. `open("w")` publishes on successful exit;
+`open("rw")` publishes only after `session.mark_dirty()`; `open("r")` never
+publishes. Close SQLite connections and other handles before leaving the session.
+
+`exists()` checks logical presence; `archive()` quarantines an artifact, and
+`session.archive()` does so under an existing lock. Missing reads raise
+`FileNotFoundError`; malformed multipart files raise `CacheCorruptionError`
+after archival. Each caller owns its recovery policy.
