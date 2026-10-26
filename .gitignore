@@ -36,3 +36,5 @@ models--*.zip
 
 # Locally archived model implementations
 /src/llm_classification_finetuning/models/archive/
+
+.ipynb_checkpoints/

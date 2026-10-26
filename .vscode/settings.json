@@ -1,3 +1,5 @@
 {
-    "python.analysis.autoImportCompletions": true
+	"python.analysis.autoImportCompletions": true,
+	"antigravity.autoOpenFiles": true,
+	"antigravity.autoRecover": true
 }
