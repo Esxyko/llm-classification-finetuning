@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, nn
 from transformers import AutoModel
 
-from ...model_storage import load_pretrained
+from ...model_storage import load_model_weights
 
 
 class PairwiseClassificationHead(nn.Module):
@@ -58,7 +58,7 @@ class PairwiseQwenClassifier(nn.Module):
 	) -> None:
 		super().__init__()
 		self.device = device
-		self.backbone = load_pretrained(
+		self.backbone = load_model_weights(
 			AutoModel.from_pretrained,
 			model_name,
 			revision=revision,

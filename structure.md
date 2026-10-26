@@ -113,6 +113,8 @@ and print summaries. Business logic belongs below the CLI layer.
 - `model_storage.py`: Routes config/tokenizer/backbone loads through the shared
   `load_pretrained` wrapper to a persistent native Hub cache at optional
   `MODEL_PATH`, preserving default caching and explicit local model paths.
+  Backbone loads use `load_model_weights` to print start/completion logs with
+  elapsed time, suppress loading progress bars, and restore prior progress settings.
 - `cli_config.py`: Defines the shared `--config` argument for all CLI parsers.
 - `errors.py`: Shared expected-error hierarchy rooted at `DataPreparationError`.
 - `timing.py`: Formats elapsed durations as unbounded `HH:MM:SS` values.

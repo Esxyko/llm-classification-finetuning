@@ -15,7 +15,7 @@ from transformers import AutoModel, BitsAndBytesConfig
 from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
-from ...model_storage import load_pretrained
+from ...model_storage import load_model_weights
 from ..common import ABSwapAverager, GPUEnvironment
 from .data import BranchBatch, PairwiseBatch
 from .heads import EXPT, EXPT2, create_classification_head
@@ -66,7 +66,7 @@ class LoRAQwenClassifier(nn.Module):
 			if quantize_backbone
 			else None
 		)
-		backbone = load_pretrained(
+		backbone = load_model_weights(
 			AutoModel.from_pretrained,
 			config.model_name,
 			revision=revision,
