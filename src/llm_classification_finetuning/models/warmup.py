@@ -10,7 +10,7 @@ import torch
 from ..config import AppConfig
 from ..errors import ConfigurationError, ModelExecutionError
 from .common import GPUEnvironment, WarmupBuildResult
-from .qwen3_4b_lora_EXPT2 import PROFILE, LoRATrainer, LoRATrainingBatchRepository
+from .SR2_Qwen3_4B_lora import PROFILE, LoRATrainer, LoRATrainingBatchRepository
 
 
 class WarmupModelPipeline:

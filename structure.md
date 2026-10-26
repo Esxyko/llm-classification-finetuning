@@ -32,7 +32,7 @@ flowchart TD
     Data --> Build["Full-data build"]
     Validate --> Run["Predictions, metrics, config"]
     Run --> Report["PNG and XLSX report"]
-    Build --> Checkpoint["Head or adapter checkpoint"]
+    Build --> Checkpoint["SR2 adapter/head checkpoint"]
     Checkpoint --> Submit["Submission inference"]
     Test["Test CSV and template"] --> Submit
     Submit --> CSV["submission.csv"]
@@ -96,19 +96,20 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | --- | --- |
 | `models/__init__.py` | `ModelRegistration` and ordered active registry |
 | `models/profile.py` | Immutable selector/config/artifact identity and effective A/B policy |
-| `models/qwen3_4b/__init__.py` | Frozen-profile identity |
-| `models/qwen3_4b_lora_EXPT2/__init__.py` | EXPT2 registration surface and public LoRA exports |
-| `models/qwen3_4b_lora_EXPT2/profile.py` | EXPT2 identity usable below the registration surface without import cycles |
-| `models/SR2_Qwen3_4B_lora/__init__.py` | Skywork profile identity; separate namespaces over the shared LoRA pipeline |
-| `models/warmup.py` | Train-partition-only standalone warmup, without adapters, validation, joint plans, or production checkpoint |
+| `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports |
+| `models/SR2_Qwen3_4B_lora/profile.py` | SR2 identity usable below the registration surface without import cycles; default for LoRA Python APIs |
+| `models/warmup.py` | Train-partition-only standalone SR2 head warmup, sharing SR2's cache namespace without adapters, validation, joint plans, or production checkpoint |
 
-Registry order is frozen Qwen, EXPT2, then SR2. Optional YAML sections determine
-which profiles `ALL` runs. Retired profiles remain unregistered; local ignored
+SR2 is the only registered model. `ALL` runs it when its YAML section is present;
+`warmup` stays outside the registry. Retired profiles remain unregistered and
+their configuration sections are rejected; local ignored
 archives are outside active imports. See [migration](docs/migration.md#retired-profiles).
 
 ### Shared and frozen-model infrastructure
 
 Paths in this table are under `models/common/`.
+Frozen-model modules remain as retained infrastructure and shared dependencies;
+they do not expose an active frozen CLI profile.
 
 | Module | Owns |
 | --- | --- |
@@ -134,17 +135,17 @@ Paths in this table are under `models/common/`.
 | `publishers.py` | Staged validation/submission publication, effective YAML snapshots, and successful-run timing/peak updates |
 | `pipeline.py` | Frozen validation/build/submit orchestration |
 
-### Shared LoRA implementation
+### SR2 LoRA implementation
 
-Paths in this table are under `models/qwen3_4b_lora_EXPT2/`. EXPT2 and SR2
-register this implementation with distinct identities; Python APIs default to
-EXPT2. Retained legacy quantization/head branches are not active profiles.
+Paths in this table are under `models/SR2_Qwen3_4B_lora/`. SR2 owns the
+implementation previously hosted by the retired EXPT2 profile; Python APIs
+default to SR2. Retained legacy quantization/head branches are not active profiles.
 
 | Module | Owns |
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
-| `heads.py` | Head factory, precision wrapper, EXPT2 tie-from-wins architecture, and retained legacy head definitions |
+| `heads.py` | Head factory, precision wrapper, swap-equivariant tie-from-wins architecture (introduced by EXPT2), and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
 | `trainer.py` | Fixed-rate warmup/joint stages, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
@@ -175,10 +176,7 @@ Default paths assume the root preset and working directory.
 | `data/raw/` | Downloaded raw CSVs |
 | `data/processed/train_validation.parquet` | Logical saved split; single file or manifest plus volumes |
 | `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen-feature, and LoRA base-plan stores |
-| `<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/` | EXPT2/standalone completed warmup |
-| `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Skywork completed warmup |
-| `models/qwen3_4b/head[_TAG].pt` | Frozen production head |
-| `models/qwen3_4b_lora_EXPT2/adapter[_TAG].pt` | EXPT2 production adapter/head |
+| `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Skywork completed warmup, shared by SR2 and standalone warmup |
 | `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt` | SR2 production adapter/head |
 | `results/MODEL-<timestamp>/` | Completed validation CSV, metrics, and YAML snapshot |
 | `results/submit/MODEL-<timestamp>/` | Submission CSV |
@@ -188,7 +186,11 @@ Default paths assume the root preset and working directory.
 Runtime artifact directories are not source modules. The saved default split
 and selected shared caches are tracked with regular Git storage; raw data,
 working files, local notebooks, and local retired-code archives are ignored.
-Historical artifacts may coexist with current ones. Application logic must not
+Historical Qwen checkpoints, results, configs, and warmup caches remain at their
+original locations. Local `models/archive/qwen3_4b/` and
+`models/archive/qwen3_4b_lora_EXPT2/` under the source package retain original
+code/config/docs snapshots and retirement notes; they are reference material,
+not independently runnable packages. Historical artifacts may coexist with current ones. Application logic must not
 depend on a particular timestamped run or assume every artifact directory is
 present in a fresh checkout.
 
@@ -202,10 +204,10 @@ present in a fresh checkout.
    test/template ID order before execution. Serialize aligned turns without a
    chat template. Predictions use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/models.md#build-and-submit).
-3. **Profile objectives:** frozen uses the `3H` absolute-difference MLP and its
-   selected A/B objective; EXPT2/SR2 use the tie-from-wins head and original rows
-   only. Preserve shared win dropout, separate tie dropout, and FP32 logits.
-   See [head definition](docs/lora.md#expt2-equivariant-head).
+3. **Profile objectives:** SR2 uses the tie-from-wins head and original rows
+   only. Preserve shared win dropout, separate tie dropout, FP32 logits, and
+   the existing architecture marker/tensor layout.
+   See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen embeddings, plans, warmup,
    and production checkpoints. Map cached entries to current rows/labels; never
    infer one compatibility from another. Version identities when their actual

@@ -24,7 +24,7 @@ from that working directory without overriding existing environment variables.
 | `data.processed_path` | Required YAML `.parquet` path; root preset `data/processed/train_validation.parquet` | Saved train/validation data, including multipart layout |
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
 | `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen embeddings, LoRA batch plans, and head-warmup states |
-| Production checkpoints | `./models/SECTION/` | Frozen head or LoRA adapter/head files |
+| Production checkpoints | `./models/SR2_Qwen3_4B_lora/` | LoRA adapter/head files |
 | Validation, submissions, reports | `./results/` | Run artifacts and comprehensive report |
 
 Changing `MODEL_PATH` or `CACHE_PATH` does not relocate data, checkpoints, or
@@ -42,15 +42,14 @@ See [cache layout](caching.md) and [Colab persistence](colab.md).
 | `data` | Always | Competition and data paths |
 | `validation` | Always | Saved holdout fraction, seed, and balance tokenizer |
 | `gpu` | Always | Training device, submission devices, precision, and attention |
-| `qwen3_4b` | Selecting `qwen3-4b` | Frozen-backbone classifier |
-| `qwen3_4b_lora_EXPT2` | Selecting `qwen3-4b-lora-EXPT2` | Qwen LoRA and EXPT2 head |
-| `SR2_Qwen3_4B_lora` | Selecting `SR2-Qwen3-4B-lora` | Skywork LoRA and EXPT2 head |
-| `warmup` | Either LoRA section is present, or selecting `warmup --build` | Shared warmup controls and standalone warmup model |
+| `SR2_Qwen3_4B_lora` | Selecting `SR2-Qwen3-4B-lora` | Skywork LoRA and swap-equivariant comparison head |
+| `warmup` | SR2 section is present, or selecting `warmup --build` | Shared warmup controls and standalone warmup model |
 
-A model section may be absent; `model ALL` runs only present profiles in registry
-order and requires at least one. `warmup` is not part of `ALL`.
-Both LoRA sections are independent: neither inherits from the other or from
-`warmup` beyond the five controls listed under [standalone warmup](#standalone-warmup).
+The SR2 section may be absent for data/reporting or standalone warmup;
+`model ALL` requires it. `warmup` is not part of `ALL`.
+SR2 inherits only the five controls listed under
+[standalone warmup](#standalone-warmup) from `warmup`. Retired Qwen model
+sections are unknown keys; see [migration](migration.md#retired-profiles).
 
 ## Required fields and defaults
 
@@ -98,21 +97,20 @@ The following names apply independently inside each relevant section.
 | `random_state` | All model sections and `warmup` | Integer |
 | `dataloader_workers` | All model sections and `warmup` | Integer at least `0` |
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
-| `training_batch_size`, `epochs`, `learning_rate` | Frozen and LoRA sections | Positive integers for batches/epochs; positive number for rate |
-| `A/B_swap` | Frozen `qwen3_4b` only | `aug` or `inf`; default `aug` |
-| `head_inference_batch_size`, `gradient_accumulation_steps` | Both LoRA sections | Positive integers |
-| `head_learning_rate`, `max_grad_norm` | Both LoRA sections | Positive numbers |
-| `lora_rank`, `lora_alpha` | Both LoRA sections | Positive integers |
-| `lora_dropout` | Both LoRA sections | Number in `[0, 1)` |
-| `lora_target_modules` | Both LoRA sections | Nonempty list of unique nonempty strings |
-| `gradient_checkpointing_threshold`, `gradient_checkpointing_budget` | Both LoRA sections | Integers at least `0`; each defaults to `0` |
+| `training_batch_size`, `epochs`, `learning_rate` | SR2 | Positive integers for batches/epochs; positive number for rate |
+| `head_inference_batch_size`, `gradient_accumulation_steps` | SR2 | Positive integers |
+| `head_learning_rate`, `max_grad_norm` | SR2 | Positive numbers |
+| `lora_rank`, `lora_alpha` | SR2 | Positive integers |
+| `lora_dropout` | SR2 | Number in `[0, 1)` |
+| `lora_target_modules` | SR2 | Nonempty list of unique nonempty strings |
+| `gradient_checkpointing_threshold`, `gradient_checkpointing_budget` | SR2 | Integers at least `0`; each defaults to `0` |
 
 `warmup` additionally requires `warmup_epochs` (integer at least `0`),
 `warmup_training_batch_size` (positive integer), `warmup_learning_rate` and
 `max_grad_norm` (positive numbers). It does not accept `training_batch_size`,
 `epochs`, `learning_rate`, or `A/B_swap`.
 
-Both LoRA sections reject `A/B_swap` and the three `warmup_*` optimization keys.
+The SR2 section rejects `A/B_swap` and the three `warmup_*` optimization keys.
 Internal `ab_swap`, `warmup_extraction_budget`, and `warmup_label_smoothing` are
 not YAML fields. See [migration](migration.md) for retired keys.
 
@@ -120,21 +118,20 @@ not YAML fields. See [migration](migration.md) for retired keys.
 
 For three classes, training uses the target
 `(1 - label_smoothing) * one_hot + label_smoothing / 3`.
-This applies to ordinary cross entropy and the frozen `inf` objective over
-averaged A/B probabilities. Validation and reporting use unsmoothed log loss.
+This applies to warmup and joint-training cross entropy.
+Validation and reporting use unsmoothed log loss.
 
 | Setting | Applies to |
 | --- | --- |
-| `qwen3_4b.label_smoothing` | Frozen-head training |
-| A LoRA section's `label_smoothing` | That profile's joint training only |
+| `SR2_Qwen3_4B_lora.label_smoothing` | SR2 joint training only |
 | `warmup.label_smoothing` | All inline and standalone head warmup |
 
-Omitting warmup smoothing gives `0.0` independently of either LoRA section.
+Omitting warmup smoothing gives `0.0` independently of SR2 joint training.
 Nonzero warmup smoothing participates in the warmup cache key.
 
 ## Standalone warmup
 
-Both LoRA profiles take exactly these controls from `warmup`:
+SR2 takes exactly these controls from `warmup`:
 
 | `warmup` field | Effect inside a LoRA run |
 | --- | --- |
@@ -147,18 +144,18 @@ Both LoRA profiles take exactly these controls from `warmup`:
 Inline LoRA warmup uses the selected LoRA section's own `model_name`,
 `max_length`, head width/dropout, weight decay, clipping, seed, and workers.
 The corresponding fields in `warmup` configure **only** `model warmup --build`.
-They do not override either LoRA profile.
+They do not override SR2's model/head settings.
 
 Standalone warmup requires positive `warmup_epochs` and uses the saved train
-partition, the EXPT2 head, and original rows only. It writes the EXPT2 cache
-namespace. SR2 creates its separate warmup during its own validation/build.
+partition, the SR2 comparison head, and original rows only. It writes
+`SR2_Qwen3_4B_lora_warmup/`, sharing the inline SR2 namespace. The shipped
+presets set `warmup.model_name` to `Skywork/Skywork-Reward-V2-Qwen3-4B`.
 
 Matching shared controls is insufficient for cache reuse: model/head settings
-and training IDs must also match. In the current root preset,
-`warmup.hidden_size` is `128` and `qwen3_4b_lora_EXPT2.hidden_size` is `256`, so
-standalone warmup does **not** prewarm that EXPT2 configuration. Align the
-standalone settings in your selected YAML if reuse is intended. A train-partition
-cache also differs from the normal full-data build's training ID set.
+and training IDs must also match. The current root preset and seven experiment
+presets align standalone model/head settings with their SR2 validation settings.
+If editing either section, keep those settings aligned when reuse is intended.
+A train-partition cache differs from the normal full-data build's training ID set.
 See [complete compatibility rules](caching.md#lora-head-warmup).
 
 ## Holdout token balance
@@ -180,7 +177,6 @@ See [data preparation](data-preparation.md#one-shared-trainvalidation-split).
 
 | Setting | Used for |
 | --- | --- |
-| `qwen3_4b.extraction_budget` | Missing frozen branch embeddings |
 | `warmup.extraction_budget` | Inline LoRA and standalone warmup extraction |
 | A LoRA section's `extraction_budget` | Its joint-validation and submission extraction |
 | A LoRA section's `head_inference_batch_size` | Head inference after extraction; counts pairs, not tokens |
@@ -191,9 +187,10 @@ original branch index, then best-fit packs them at cost
 than the budget runs alone, so the budget is **not a hard memory or input-length
 cap**. Features are scattered back to their original pair positions.
 
-Frozen inputs may be truncated to `max_length`; LoRA rejects empty or over-limit
-branches. Extraction plans stay in memory. Changing the extraction budget does
-not invalidate tokens, frozen embeddings, warmup states, or checkpoints.
+LoRA rejects empty or over-limit branches and never truncates. Extraction plans
+stay in memory. Changing the extraction budget does not invalidate tokens,
+warmup states, or checkpoints. Historical frozen caches are described in
+[caching](caching.md#frozen-embeddings).
 
 ## Joint-training packing
 
@@ -221,13 +218,13 @@ Adapters follow their base layers; decoder layers remain intact.
 
 Both submission GPUs must support the selected precision. There is no automatic
 precision change, CPU/disk offload, or single-GPU submission fallback. Hardware
-checks still run on complete frozen-cache hits, though backbone weights are not
-loaded. `ALL` runs sequentially, not as replicas on separate GPUs.
+checks still run on complete warmup-cache hits, though standalone warmup skips
+backbone weights on a hit. `ALL` executes SR2 on the configured device layout.
 
 Device placement can change without invalidating caches or checkpoints.
-Precision changes select a different frozen embedding cache; attention and TF32
-changes preserve its compatibility. Both checkpoint types allow those compute
-changes. See [precision and attention behavior](lora.md#hardware-and-input-limits)
+SR2 checkpoints allow precision, attention, and TF32 changes; compatibility does
+not guarantee identical predictions. See
+[precision and attention behavior](lora.md#hardware-and-input-limits)
 and [submission setup](getting-started.md#submission-environment-pytorch-211--cuda-128).
 
 ## Batch experiments

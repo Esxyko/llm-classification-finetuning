@@ -123,8 +123,6 @@ class AppConfig:
 	validation: ValidationConfig
 	gpu: GPUConfig
 	cache_dir: Path
-	qwen3_4b: ModelConfig | None = None
-	qwen3_4b_lora_EXPT2: LoRAModelConfig | None = None
 	warmup: WarmupModelConfig | None = None
 	SR2_Qwen3_4B_lora: LoRAModelConfig | None = None
 
@@ -165,8 +163,6 @@ class AppConfig:
 				"data",
 				"validation",
 				"gpu",
-				"qwen3_4b",
-				"qwen3_4b_lora_EXPT2",
 				"SR2_Qwen3_4B_lora",
 				"warmup",
 			},
@@ -203,13 +199,7 @@ class AppConfig:
 			},
 			"gpu",
 		)
-		qwen3_4b = _load_model_config(root, "qwen3_4b") if "qwen3_4b" in root else None
 		warmup = _load_warmup_model_config(root) if "warmup" in root else None
-		qwen3_4b_lora_EXPT2 = (
-			_load_lora_model_config(root, warmup)
-			if "qwen3_4b_lora_EXPT2" in root
-			else None
-		)
 		SR2_Qwen3_4B_lora = (
 			_load_lora_model_config(root, warmup, "SR2_Qwen3_4B_lora")
 			if "SR2_Qwen3_4B_lora" in root
@@ -315,8 +305,6 @@ class AppConfig:
 				allow_tf32=allow_tf32,
 				submit_devices=(first_submit_device, second_submit_device),
 			),
-			qwen3_4b=qwen3_4b,
-			qwen3_4b_lora_EXPT2=qwen3_4b_lora_EXPT2,
 			warmup=warmup,
 			SR2_Qwen3_4B_lora=SR2_Qwen3_4B_lora,
 		)
@@ -387,7 +375,7 @@ def _load_warmup_fields(
 def _load_lora_model_config(
 	root: Mapping[str, Any],
 	warmup: WarmupModelConfig | None,
-	section_name: str = "qwen3_4b_lora_EXPT2",
+	section_name: str = "SR2_Qwen3_4B_lora",
 ) -> LoRAModelConfig:
 	section = _require_mapping(root.get(section_name), section_name)
 	keys = set(LoRAModelConfig.__dataclass_fields__) - {

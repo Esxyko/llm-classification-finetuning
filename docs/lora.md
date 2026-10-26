@@ -1,19 +1,19 @@
-# EXPT2 and SR2 LoRA training
+# SR2 LoRA training
 
 [Documentation index](../README.md)
 
-Both active LoRA profiles train adapters and a three-class comparison head over
-one shared Qwen3-family backbone. Original base parameters remain frozen;
+SR2 trains adapters and a three-class comparison head over
+one Skywork reward-trained Qwen3 backbone. Original base parameters remain frozen;
 training is non-quantized on one GPU. Each pair is serialized as separate A and B
 branches and pooled at the last real token. Both stages train on **original rows
 only**; validation/submission make one head prediction per ID.
 
 ```shell
-uv run model qwen3-4b-lora-EXPT2
-uv run model qwen3-4b-lora-EXPT2 --build --checkpoint-tag experiment
+uv run model SR2-Qwen3-4B-lora
+uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag experiment
 ```
 
-Select `SR2-Qwen3-4B-lora` instead for SR2. Both require their own model section
+SR2 requires the `SR2_Qwen3_4B_lora` model section
 and the shared `warmup` section. See [commands](commands.md) for execution modes
 and [configuration](configuration.md) for the complete fields and parser defaults.
 
@@ -21,19 +21,19 @@ and [configuration](configuration.md) for the complete fields and parser default
 
 | Profile | Model section | Backbone in shipped presets | Checkpoint / warmup namespace |
 | --- | --- | --- | --- |
-| EXPT2 | `qwen3_4b_lora_EXPT2` | `Qwen/Qwen3-4B` | `qwen3_4b_lora_EXPT2` / `qwen3_4b_lora_EXPT2_warmup` |
 | SR2 | `SR2_Qwen3_4B_lora` | `Skywork/Skywork-Reward-V2-Qwen3-4B` | `SR2_Qwen3_4B_lora` / `SR2_Qwen3_4B_lora_warmup` |
 
 SR2 loads Skywork's Transformer through `AutoModel`, omitting its scalar reward
-head. It uses the EXPT2 head and the same serialization, pooling, batching,
-precision, and training rules below. The two YAML sections are independent;
-head size, rank, smoothing, rates, and epochs may differ. Read their actual
-preset values rather than assuming only `model_name` changes.
+head. Its comparison head retains the architecture introduced by the retired
+EXPT2 profile; this architecture remains active in SR2. The implementation and
+public Python APIs now live in `models/SR2_Qwen3_4B_lora/`. Head size, rank,
+smoothing, rates, and epochs may differ between presets; read their actual values.
 
-SR2 warms up on Skywork features in its own namespace. The standalone `warmup`
-command uses the EXPT2 namespace; it does not prepare SR2's inline warmup.
+SR2 and the standalone `warmup` command use the same SR2 cache namespace.
+The shipped presets select Skywork for both; reuse additionally requires
+matching training IDs and effective model/head settings.
 
-## EXPT2 equivariant head
+## Swap-equivariant head
 
 For pooled column vectors $A,B$ of width $D$ and classifier width $h$:
 
@@ -56,8 +56,8 @@ tie logit under the same masks; evaluation disables dropout.
 
 These weights are trained directly. The architecture marker is
 `swap_equivariant_tie_from_wins_v1`; adapter/head checkpoint schema is v2 and
-warmup schema is v5. Active profiles reject retired-profile head states.
-There is no `A/B_swap` setting or orientation averaging for EXPT2/SR2.
+warmup schema is v5. SR2 rejects incompatible historical model/head states.
+There is no `A/B_swap` setting or orientation averaging for SR2.
 
 ## Hardware and input limits
 

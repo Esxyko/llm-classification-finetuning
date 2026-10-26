@@ -21,12 +21,15 @@ folder; it does not search backward for the latest valid run.
 For a specific run, replace `RUN_NAME` with its directory name:
 
 ```shell
-uv run result RUN_NAME --config results/RUN_NAME/config.yaml
+uv run result RUN_NAME --config path/to/report.yaml
 ```
 
-Use the corresponding processed Parquet, not a newly generated split. Saved
-snapshots can contain absolute paths from another machine; adjust a copy's data
-paths if necessary. Each invocation replaces `results/comprehensive/`, so copy
+Use a current-format `report.yaml` with the run's original processed Parquet
+and matching validation fraction. It may contain only the required `data`,
+`validation`, and `gpu` sections. Historical snapshots containing retired model
+sections are rejected by the current loader; do not pass them directly or rewrite
+them. Current SR2 snapshots can still be used when their paths resolve correctly.
+Each invocation replaces `results/comprehensive/`, so copy
 reports elsewhere if you want to retain several comparisons.
 
 ## Report inputs
@@ -39,8 +42,9 @@ runs are rejected. Required CSV columns, in order, are:
 
 | Profile / aggregation | Required validation rows |
 | --- | --- |
-| Frozen / `ab_swap_average` | All saved `split=validation` rows, original and swapped, in processed-data order |
-| EXPT2 or SR2 / `original_only` | Only original validation rows, in processed-data order, one per ID |
+| SR2 / `original_only` | Only original validation rows, in processed-data order, one per ID |
+| Historical frozen / `ab_swap_average` | All saved `split=validation` rows, original and swapped, in processed-data order |
+| Historical EXPT2 / `original_only` | Only original validation rows, in processed-data order, one per ID |
 
 The processed artifact is fully validated before selecting rows. Training rows
 do not enter reports. IDs must be finite integers; probabilities must be finite,
@@ -80,8 +84,6 @@ resolved data paths, and contains only shared sections plus the current model:
 
 | Run | Included sections |
 | --- | --- |
-| Frozen | `data`, `validation`, `gpu`, `qwen3_4b` |
-| EXPT2 | `data`, `validation`, `gpu`, `warmup`, `qwen3_4b_lora_EXPT2` |
 | SR2 | `data`, `validation`, `gpu`, `warmup`, `SR2_Qwen3_4B_lora` |
 
 LoRA snapshots keep shared warmup controls under `warmup`, omit internal resolved
@@ -89,10 +91,11 @@ fields, and omit `A/B_swap` from both model and warmup sections. Each section
 retains its own extraction budget and smoothing value. Other model sections are
 excluded; `metrics.json` has no embedded `config` field or source-config path.
 
-A snapshot can be passed to `--config`, but reproducing a run also needs matching
+A current SR2 snapshot can be passed to `--config`, but reproducing a run also needs matching
 data/code/dependencies and model identity. It does not capture `.env` or persist
 `MODEL_PATH`/`CACHE_PATH`. Retain historical snapshots unchanged; old model
-sections may require historical code. See [migration](migration.md).
+sections require historical code to execute; reporting uses a separate current
+configuration as described above. See [migration](migration.md).
 
 ## Model metrics
 
@@ -104,10 +107,11 @@ validation/reporting log loss is unsmoothed.
 
 | Profile | `head_architecture` | `embedding_combination` |
 | --- | --- | --- |
-| Frozen | `pairwise_mlp` | `concat_a_b_abs_diff` |
-| EXPT2 / SR2 | `swap_equivariant_tie_from_wins_v1` | `sum_signed_diff_abs_diff` |
+| SR2 | `swap_equivariant_tie_from_wins_v1` | `sum_signed_diff_abs_diff` |
+| Historical frozen | `pairwise_mlp` | `concat_a_b_abs_diff` |
+| Historical EXPT2 | `swap_equivariant_tie_from_wins_v1` | `sum_signed_diff_abs_diff` |
 
-These markers identify current model behavior; historical results preserve their
+These markers identify model behavior; historical results preserve their
 original values. Combination markers are metrics, not additional YAML options.
 
 ## Timing metrics

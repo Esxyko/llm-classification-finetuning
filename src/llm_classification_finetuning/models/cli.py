@@ -1,4 +1,4 @@
-"""Command-line interface for selectable frozen and LoRA Qwen models."""
+"""Command-line interface for the Skywork LoRA model and head warmup."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"--checkpoint-tag",
 		type=_checkpoint_tag,
 		metavar="TAG",
-		help="Select head_TAG.pt or adapter_TAG.pt (build and submit only).",
+		help="Select adapter_TAG.pt (build and submit only).",
 	)
 	return parser
 

@@ -12,10 +12,12 @@ Production checkpoints under `models/` are separate artifacts.
 | Artifact under `CACHE_PATH` | Reuse depends on | Important exclusions |
 | --- | --- | --- |
 | `token_cache/` | Text, tokenizer content/implementation, encoding options, library/schema versions | IDs, labels, split, source path, model weights, training settings |
-| `embedding_cache/` | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, attention implementation, TF32, extraction budget |
+| `embedding_cache/` (historical frozen model) | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, attention implementation, TF32, extraction budget |
 | `adapter_batches/plans/` | Selected sample identities/orientations and A/B lengths, checkpointing threshold, update-group size, algorithm version | Labels, source order, token content beyond lengths, second-pass budget |
-| `qwen3_4b_lora_EXPT2_warmup/` | Original training ID set and effective EXPT2 warmup identity | Text/labels, validation IDs, precision, joint-training settings |
-| `SR2_Qwen3_4B_lora_warmup/` | Original training ID set and effective SR2 warmup identity | Same exclusions; different backbone/namespace from EXPT2 |
+| `SR2_Qwen3_4B_lora_warmup/` | Original training ID set and effective SR2 warmup identity | Text/labels, validation IDs, precision, joint-training settings |
+
+Retired profiles' caches, including `qwen3_4b_lora_EXPT2_warmup/`, remain
+historical artifacts. SR2 and standalone warmup do not read that namespace.
 
 Cache compatibility and production-checkpoint compatibility are independent.
 For example, reusable tokens do not establish that a head or warmup state matches.
@@ -29,8 +31,8 @@ model and releases them on return. Live LoRA embeddings are never persisted.
 ## Hugging Face model downloads
 
 When `MODEL_PATH` is nonempty, project config/tokenizer/backbone loaders pass
-it as `cache_dir`. `Qwen/Qwen3-4B`, for example, uses
-`<MODEL_PATH>/models--Qwen--Qwen3-4B/` with native refs, snapshots, and blobs.
+it as `cache_dir`. `Skywork/Skywork-Reward-V2-Qwen3-4B`, for example, uses
+`<MODEL_PATH>/models--Skywork--Skywork-Reward-V2-Qwen3-4B/` with native refs, snapshots, and blobs.
 Hugging Face manages revisions, locks, and resumable downloads. Files persist
 across processes without archive packing or unpacking.
 
@@ -89,8 +91,8 @@ only missing or changed texts are encoded. A tokenizer is still loaded to
 fingerprint it, even on complete hits.
 
 The common representation is the full untruncated token sequence in compact
-int32 CPU views. Frozen extraction separately caches exact truncated outputs for
-overflowing texts, preserving the tokenizer's special-token behavior. LoRA checks
+int32 CPU views. Retained historical frozen extraction separately caches exact
+truncated outputs for overflowing texts, preserving special-token behavior. SR2 checks
 full lengths against `max_length` and rejects empty or oversized inputs. Padding
 happens after lookup.
 
@@ -99,6 +101,9 @@ before storage. Invalid entries are recomputed, writes are transactional, and
 corrupt SQLite shards are archived and rebuilt.
 
 ## Frozen embeddings
+
+This section describes retained infrastructure for the retired frozen Qwen
+profile. SR2 uses temporary features and does not read this persistent cache.
 
 Each SQLite shard identifies the exact Hub revision or local weight/configuration
 content, backbone hidden size, compute precision, pooling, storage format, and
@@ -113,14 +118,14 @@ Complete hits skip backbone-weight loading, though hardware, config, and tokeniz
 checks still run.
 
 Pooled vectors are stored as FP16 CPU tensors and consumed by the frozen head as
-FP32. Missing branches use [extraction packing](configuration.md#extraction-token-budgets)
+FP32. Missing branches use the retained best-fit extraction sampler
 and are scattered back to their requested positions. Batch composition, attention,
 and TF32 can affect rounding, even though the latter two are outside the key.
 
 Reads check blob length/checksum; fresh vectors are checked for finite values.
 Invalid entries are recomputed and corrupt shards archived. Old dataset-wide
 embedding files and shards using retired identities are not read. See
-[frozen checkpoint compatibility](models.md#checkpoint-compatibility).
+[historical frozen checkpoint compatibility](migration.md#historical-frozen-model).
 
 ## LoRA batch plans
 
@@ -142,9 +147,11 @@ groups. See [joint batching](lora.md#optional-token-budget-training-batches).
 
 ## LoRA head warmup
 
-EXPT2 and standalone warmup write `qwen3_4b_lora_EXPT2_warmup/<key>.pt`; SR2 writes
-`SR2_Qwen3_4B_lora_warmup/<key>.pt` using Skywork features. Both use the EXPT2 head
-architecture and warmup schema v5. Submission does not use warmup caches.
+SR2 and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
+Skywork features in the shipped presets. Both retain the
+`swap_equivariant_tie_from_wins_v1` head architecture and warmup schema v5.
+The namespace, schema, and cache identities of existing SR2 entries are unchanged.
+Submission does not use warmup caches.
 
 ### Identity
 
@@ -198,16 +205,17 @@ remain uncached; repository-prepared splits supply it.
 ### Standalone warmup build
 
 `model warmup --build` prepares train-only tokens and checks the same
-non-quantized EXPT2 identity. A hit returns before backbone-weight loading and
+non-quantized SR2 identity. A hit returns before backbone-weight loading and
 reports zero executed epochs. A miss extracts a frozen backbone without adapters
 and trains only the head. There is no validation, joint plan, production
 checkpoint, or result report.
 
-Reuse in inline EXPT2 requires matching both training IDs and effective model/head
+Reuse in inline SR2 requires matching both training IDs and effective model/head
 settings, not merely using the same cache directory. See
 [standalone configuration](configuration.md#standalone-warmup). Fresh standalone
 and inline runs can differ because standalone skips adapter-initialization RNG
-draws. SR2 builds its own inline cache in its separate namespace.
+draws. A train-partition standalone cache can prewarm holdout validation; the
+full-data build uses a different set of training IDs and needs its own entry.
 
 ## Python APIs
 
@@ -225,7 +233,7 @@ from llm_classification_finetuning.models.common import TokenizationCache
 
 config = AppConfig.load(Path("config.yaml"))
 cache = TokenizationCache.from_pretrained(
-    config.cache_dir / "token_cache", "Qwen/Qwen3-4B"
+    config.cache_dir / "token_cache", "Skywork/Skywork-Reward-V2-Qwen3-4B"
 )
 encoded = cache.encode(["first input", "second input"])
 first_ids = encoded[0]  # Unpadded int32 IDs, in requested input order.
@@ -239,7 +247,7 @@ An already loaded tokenizer can be passed to `TokenizationCache(cache_dir, token
 from pathlib import Path
 
 from llm_classification_finetuning.config import AppConfig
-from llm_classification_finetuning.models.qwen3_4b_lora_EXPT2 import (
+from llm_classification_finetuning.models.SR2_Qwen3_4B_lora import (
     LoRATrainingBatchRepository,
 )
 
@@ -251,7 +259,7 @@ loader = training.loader
 ```
 
 `get_training(full_data=True)` selects all original IDs for a build. The default
-profile for this Python API is EXPT2. The loader yields `PairwiseBatch`; shared
+profile for this Python API is SR2. The loader yields `PairwiseBatch`; shared
 tokens are available through `training.tokens`.
 
 ### Storage sessions

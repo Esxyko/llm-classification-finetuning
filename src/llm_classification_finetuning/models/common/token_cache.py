@@ -388,7 +388,7 @@ class PairwiseTokenStore:
 		revision: str | None,
 		max_length: int | None = None,
 		refresh_cache: bool = False,
-		max_length_field: str = "qwen3_4b_lora_EXPT2.max_length",
+		max_length_field: str = "max_length",
 	) -> None:
 		self._records = records
 		self._max_length_field = max_length_field

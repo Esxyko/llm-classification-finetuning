@@ -41,14 +41,13 @@ imported those libraries. A Hub authorization failure can still require valid
 | --- | --- |
 | Warmup repeats after standalone warmup | Compare effective model/head settings and original training IDs, not just shared optimization fields; see [standalone warmup](configuration.md#standalone-warmup) |
 | Warmup state survives edited training content | Warmup keys exclude text/labels when IDs are unchanged; use `--refresh-cache` to retrain |
-| A new precision setting rebuilds frozen embeddings | Precision participates in their identity; shared tokens can still be reused |
 | Cache lock timeout | Another process may hold the artifact session; finish that operation before retrying |
 | Checkpoint not found after validation | Validation does not save a production checkpoint; run `--build`, using the intended tag |
 | Checkpoint incompatible | Match architecture/model/input identity or rebuild. LoRA also checks head dropout, adapter settings, and quantization; see [checkpoint rules](lora.md#checkpoints) |
 
 Changing GPU placement or compute settings can be allowed by checkpoint
-compatibility without reproducing the same predictions. Frozen head and LoRA
-rules differ; [embedding reuse](caching.md#frozen-embeddings) is a third identity.
+compatibility without reproducing the same predictions. SR2 warmup cache and
+production-checkpoint compatibility are independent; see [cache identities](caching.md).
 
 ## CUDA, attention, and memory
 
@@ -66,8 +65,6 @@ Match an OOM to its stage before adjusting settings:
 
 | Failing stage | Setting to reduce |
 | --- | --- |
-| Frozen backbone extraction | `qwen3_4b.extraction_budget` |
-| Frozen head training or inference | `qwen3_4b.training_batch_size` |
 | LoRA warmup extraction | `warmup.extraction_budget` |
 | LoRA warmup head | `warmup.warmup_training_batch_size` |
 | LoRA joint training, positive threshold | `gradient_checkpointing_threshold` and/or `gradient_checkpointing_budget` |
@@ -81,17 +78,16 @@ disables singleton merging; a zero threshold enables checkpointing on every
 joint batch. Warmup/inference do not use checkpointing. Oversized individual
 inputs still run alone above a budget and may not fit. See [memory tuning](lora.md#memory-tuning).
 
-For the frozen profile only, lowering `max_length` truncates inputs and can
-reduce extraction memory. LoRA never truncates. Preserve the required input
-content when deciding whether a length change is appropriate.
+LoRA never truncates. Lowering `max_length` rejects inputs above the new limit;
+reduce the stage's batch or token budget when addressing memory use.
 
 ## Reports and Colab
 
 | Symptom | Check / action |
 | --- | --- |
 | Latest report selects an unexpected directory | Select the run by name; discovery uses directory modification time, then validates that directory |
-| CSV rows / aggregation do not match | Use the run's processed split and metrics; frozen predictions include both orientations, EXPT2/SR2 originals only, in the required order |
-| Report config points to another machine | Adjust a copy of its resolved data paths; retain the original snapshot |
+| CSV rows / aggregation do not match | Use the run's processed split and metrics; SR2 originals only, historical frozen both orientations, historical EXPT2 originals only, in the required order |
+| Report config has retired sections or paths from another machine | Supply a separate current-format config pointing to the run's original processed split; retain the original snapshot |
 | Drive results destination remains empty during training | The local notebook copies results only after its batch command returns or raises; caches configured on Drive write during their own stages |
 | Drive path or shortcut is inaccessible | Verify the actual mounted path and destination permissions in the runtime |
 | Runtime checkpoint disappears after cleanup | The local notebook copies `results/`, not `models/`; preserve production checkpoints separately before release |

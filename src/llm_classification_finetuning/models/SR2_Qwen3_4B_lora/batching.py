@@ -423,7 +423,7 @@ class LoRATrainingBatchRepository:
 		cache: _BatchCache,
 		token_cache: TokenizationCache,
 		refresh_cache: bool,
-		model_key: str = "qwen3_4b_lora_EXPT2",
+		model_key: str = "SR2_Qwen3_4B_lora",
 		model_label: str = "LoRA",
 		backbone_hidden_size: int | None = None,
 		local_weights_sha256: str | None = None,

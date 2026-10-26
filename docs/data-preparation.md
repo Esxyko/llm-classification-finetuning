@@ -84,13 +84,14 @@ and prompt groups crossing partitions.
 
 ### Conversation serialization
 
-All active profiles use `aligned-prompt-newline-response-v1`: chronological
+SR2 uses `aligned-prompt-newline-response-v1`: chronological
 `prompt\nresponse` turns joined by blank lines, without a chat template.
 Prompt and response values must be JSON arrays with the same nonzero turn count.
 Prompts must be strings; responses may be strings or `null` (an empty response).
 
-Frozen extraction may right-truncate to its context limit. LoRA rejects empty
-or over-limit branches instead; see [input limits](lora.md#hardware-and-input-limits).
+SR2 rejects empty or over-limit branches and never truncates; see
+[input limits](lora.md#hardware-and-input-limits). Historical frozen-model
+behavior is recorded in [migration](migration.md#historical-frozen-model).
 
 ## Migration from five folds
 

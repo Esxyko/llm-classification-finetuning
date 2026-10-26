@@ -16,9 +16,9 @@ run `model` directly instead of `uv run model`.
 | `uv run data` | Download missing Kaggle files only | `data/raw/*.csv` |
 | `uv run preprocess` | Rebuild the split from local `train.csv` | `data/processed/train_validation.parquet` |
 | `uv run model MODEL` | Validate on the saved holdout | `results/MODEL-<timestamp>/` |
-| `uv run model MODEL --build` | Train on IDs from both partitions and save a production checkpoint | `models/SECTION/head.pt` or `adapter.pt` |
+| `uv run model MODEL --build` | Train on IDs from both partitions and save a production checkpoint | `models/SR2_Qwen3_4B_lora/adapter.pt` |
 | `uv run model MODEL --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
-| `uv run model warmup --build` | Train/cache an EXPT2 head on the train partition only | `<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/<key>.pt` |
+| `uv run model warmup --build` | Train/cache an SR2 head on the train partition only | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt` |
 | `uv run result [RUN]` | Report a selected or latest validation run | `results/comprehensive/` |
 | `uv run python scripts/validate.py` | Execute explicit model/config pairs sequentially | Validation directories and `results/logs/validate-*.log` |
 
@@ -27,25 +27,25 @@ See [multipart storage](caching.md#shared-storage-and-multipart-files).
 
 ## Model selection and execution modes
 
-`MODEL` is exactly one of `qwen3-4b`, `qwen3-4b-lora-EXPT2`,
-`SR2-Qwen3-4B-lora`, or uppercase `ALL`. Selector spelling differs from the
+`MODEL` is `SR2-Qwen3-4B-lora` or uppercase `ALL`; the separate `warmup`
+selector is build-only. Selector spelling differs from the
 [YAML section names](configuration.md#configuration-sections).
 
 | Option | Behavior |
 | --- | --- |
 | No mode flag | Holdout validation; publishes the final epoch's predictions, without saving a production checkpoint |
-| `--build` | Train on all original IDs from both saved partitions, applying the profile's A/B policy |
+| `--build` | Train on all original IDs from both saved partitions |
 | `--submit` | Load the selected checkpoint; requires test files and two configured GPUs |
 | `--refresh-cache` | Rebuild requested token entries and the selected mode's model-specific caches |
-| `--checkpoint-tag TAG` | Choose `head_TAG.pt` or `adapter_TAG.pt`; build/submit only |
+| `--checkpoint-tag TAG` | Choose `adapter_TAG.pt`; build/submit only |
 
 `--build` and `--submit` are mutually exclusive. A tag starts with an ASCII
 letter or digit and contains only ASCII letters, digits, `_`, or `-`.
-Without a tag, builds replace `head.pt` or `adapter.pt`. Use the same tag and
+Without a tag, builds replace `adapter.pt`. Use the same tag and
 compatible configuration when submitting.
 
-`ALL` runs only profiles present in the YAML, in registry order: frozen Qwen,
-EXPT2, then SR2. It accepts the same mode, refresh, and tag options, continues
+`ALL` runs SR2 when its section is present in the YAML. It accepts the same
+mode, refresh, and tag options, continues
 after model failures, and exits with status `1` if any fail. An empty selection
 is an error. The entire YAML is validated before any model runs.
 
@@ -55,10 +55,12 @@ is an error. The entire YAML is validated before any model runs.
 `--refresh-cache`; validation, `--submit`, and `--checkpoint-tag` are unsupported.
 It is excluded from `ALL`.
 
-It prepares only train-partition tokens and trains a non-quantized frozen
-backbone's EXPT2 head without adapters, joint training, validation, or production
+It prepares only train-partition tokens and trains the SR2 comparison head on
+the non-quantized backbone configured in `warmup` (Skywork in the shipped presets),
+without adapters, joint training, validation, or production
 checkpoint publication. A compatible hit skips weight loading and reports zero
-executed epochs. SR2 generates its own warmup during an SR2 validation/build.
+executed epochs. It shares SR2's cache namespace; a validation run can reuse it
+when effective settings and training IDs match. Full-data builds use both partitions.
 See [warmup configuration](configuration.md#standalone-warmup) and
 [cache reuse](caching.md#standalone-warmup-build).
 

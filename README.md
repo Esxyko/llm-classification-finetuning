@@ -3,8 +3,8 @@
 Compare two responses to a shared prompt and predict **A wins, B wins, or tie**
 for the [Kaggle competition](https://www.kaggle.com/competitions/llm-classification-finetuning).
 
-The project provides a saved prompt-grouped holdout, frozen-backbone and LoRA
-classifiers, validation reports, full-data checkpoint builds, and submission
+The project provides a saved prompt-grouped holdout, a Skywork LoRA
+classifier, validation reports, full-data checkpoint builds, and submission
 inference. Training uses **one CUDA GPU**; submission uses **two CUDA GPUs**.
 
 ## Start here
@@ -24,14 +24,12 @@ Selectors and YAML section names are case-sensitive.
 
 | CLI selector | YAML section / checkpoint directory | Backbone and classifier |
 | --- | --- | --- |
-| `qwen3-4b` | `qwen3_4b` | Frozen Qwen3-4B; trainable MLP over `[A, B, abs(A - B)]` |
-| `qwen3-4b-lora-EXPT2` | `qwen3_4b_lora_EXPT2` | Qwen3-4B LoRA; swap-equivariant three-class head |
-| `SR2-Qwen3-4B-lora` | `SR2_Qwen3_4B_lora` | Skywork reward-trained Qwen3-4B LoRA; the same EXPT2 head |
+| `SR2-Qwen3-4B-lora` | `SR2_Qwen3_4B_lora` | Skywork reward-trained Qwen3-4B LoRA; swap-equivariant three-class head |
 
-All profiles consume the same saved train/validation split. The frozen profile
-supports A/B augmentation or an averaged-probability objective; both LoRA
-profiles train and predict on original rows only. The separate `warmup --build`
-selector prepares an optional EXPT2 head-warmup cache, not a production model.
+SR2 is the only active model profile. It consumes the saved train/validation
+split and trains and predicts on original rows only. The separate `warmup --build`
+selector prepares an optional SR2 head-warmup cache. Retired Qwen profiles and
+their historical artifacts are described in [migration](docs/migration.md).
 
 ## Documentation
 
@@ -42,7 +40,7 @@ selector prepares an optional EXPT2 head-warmup cache, not a production model.
 | [Commands](docs/commands.md) | Select modes, checkpoints, cache refresh, and batch validation |
 | [Configuration](docs/configuration.md) | Look up YAML fields, defaults, paths, GPU settings, and token budgets |
 | [Data preparation](docs/data-preparation.md) | Understand grouping, balancing, augmentation, and the processed schema |
-| [Model workflows](docs/models.md) | Validate, build, submit, and understand frozen-model behavior |
+| [Model workflows](docs/models.md) | Validate, build, and submit the SR2 model |
 | [LoRA training](docs/lora.md) | Understand the head, warmup, batching, checkpointing, and memory controls |
 | [Caching and Python APIs](docs/caching.md) | Check reuse conditions, multipart storage, and CPU preparation APIs |
 | [Reports](docs/reports.md) | Interpret predictions, configuration snapshots, timings, and GPU peaks |
