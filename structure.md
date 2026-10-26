@@ -26,7 +26,7 @@ selected YAML config (defaults to config.yaml)
 train_validation.parquet
   -> model MODEL (default) -> validation.csv + metrics -> result -> PNG + XLSX report
   -> model warmup --build (train partition only)
-     -> data/processed/qwen3_4b_lora_EXPT2_warmup/<key>.pt
+     -> cache/qwen3_4b_lora_EXPT2_warmup/<key>.pt
   -> model qwen3-4b --build -> models/qwen3_4b/head.pt
   -> model qwen3-4b --build --checkpoint-tag TAG -> models/qwen3_4b/head_TAG.pt
   -> model qwen3-4b-lora-EXPT2 --build -> models/qwen3_4b_lora_EXPT2/adapter.pt
@@ -34,7 +34,7 @@ train_validation.parquet
      -> models/qwen3_4b_lora_EXPT2/adapter_TAG.pt
   -> model SR2-Qwen3-4B-lora --build [--checkpoint-tag TAG]
      -> models/SR2_Qwen3_4B_lora/adapter[_TAG].pt
-     -> data/processed/SR2_Qwen3_4B_lora_warmup/<key>.pt (when warmup is enabled)
+     -> cache/SR2_Qwen3_4B_lora_warmup/<key>.pt (when warmup is enabled)
 
 head.pt or adapter.pt + data/raw/test.csv + data/raw/sample_submission.csv
   -> model MODEL --submit -> results/submit/MODEL-.../submission.csv
@@ -53,12 +53,17 @@ unpacking. `HF_HOME` and authentication settings are preserved; missing or blank
 `MODEL_PATH` retains native HF caching. Explicit local model directories load
 directly. A relative `MODEL_PATH`
 resolves from the working directory. `DATA_PATH` is no longer used.
+`AppConfig.cache_dir` resolves `CACHE_PATH` from `.env` or the environment,
+defaulting to `./cache` when missing or blank. Relative paths resolve from the
+working directory and `~` expands to the user's home directory. All shared
+token, embedding, adapter batch-plan, and head-warmup caches use this root,
+independently of YAML data paths and `MODEL_PATH`.
 Relative YAML raw/processed paths, model artifacts, and reports resolve from the
 working directory regardless of the config file's location. Absolute YAML data
 paths stay absolute.
-The paths shown in the flow are those in the root preset; raw/processed paths
-follow the selected YAML. The batch validation script instead runs each model
-from the project root derived from its own file location.
+The paths shown in the flow use the root preset and default `CACHE_PATH`;
+raw/processed paths follow the selected YAML. The batch validation script instead
+runs each model from the project root derived from its own file location.
 
 ## Entry points
 
@@ -86,7 +91,8 @@ and print summaries. Business logic belongs below the CLI layer.
   `HF_HUB_DISABLE_XET` to `1` to use HTTP downloads, preserving an explicit
   Xet setting and leaving other endpoints' Xet behavior unchanged.
 - `config.py`: Immutable config value objects, strict YAML validation, `.env`
-  loading, and raw/processed-data path resolution from the working directory.
+  loading, raw/processed-data path resolution, and `CACHE_PATH` resolution into
+  `AppConfig.cache_dir` from the working directory.
   `WarmupModelConfig` owns shared head-warmup fields;
   `LoRAModelConfig` extends it with joint-training and adapter settings. All
   classification heads always include the absolute-difference feature.
@@ -123,6 +129,7 @@ and print summaries. Business logic belongs below the CLI layer.
     group partitions, invokes token balancing and augmentation, summarizes canonical
     token/class counts, and atomically publishes Parquet through `CacheStorage`
     only after balancing succeeds, applying the shared multipart size policy.
+    Receives the shared cache root from orchestration for token balancing.
   - `token_balance.py`: Counts unpadded/untruncated canonical A+B tokens using
     the training serializer and shared token cache, then deterministically swaps
     equal-class whole prompt groups to meet the configured token tolerance.
@@ -322,16 +329,17 @@ exports over importing private helpers across package boundaries.
 | `<MODEL_PATH>/models--*/` | Persistent native Hub repositories, including weights, configurations, tokenizers, refs, and snapshots |
 | `configs/` | Complete YAML configurations for frozen and LoRA profiles with shared training/submission GPU settings |
 | `data/raw/` | Default downloaded competition CSV location, relative to the working directory |
-| `data/processed/` | Default location for train/validation Parquet data, shared tokens, frozen embeddings, and LoRA batch plans |
+| `data/processed/` | Default location for train/validation Parquet data |
 | `data/processed/train_validation.parquet` | Logical path of the saved default train/validation split, required by standalone warmup; large files use `.manifest.json` and `.parts/` with regular Git storage |
-| `data/processed/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
-| `data/processed/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
-| `data/processed/adapter_batches/` | Shared LoRA holdout/build base batch-plan caches, keyed by selected rows, lengths, checkpointing threshold, and update-group size; second-pass checkpointing budgets are excluded |
-| `data/processed/qwen3_4b_lora_warmup/` | Historical standard MLP head-warmup cache namespace; unused by active profiles |
-| `data/processed/qwen3_4b_lora_EXPT_warmup/` | Historical EXPT head-warmup cache namespace; unused by active profiles |
-| `data/processed/qwen3_4b_lora_EXPT2_warmup/` | Completed original-only EXPT2 head warmup, also written by standalone warmup; tracked using the shared cache-storage policy |
-| `data/processed/SR2_Qwen3_4B_lora_warmup/` | Completed SR2 head warmup on the Skywork backbone, isolated from EXPT2 and tracked using the shared cache-storage policy |
-| `data/processed/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup cache namespace; unused by active profiles |
+| `<CACHE_PATH>/` | Shared training-cache root, defaulting to `cache/` |
+| `<CACHE_PATH>/token_cache/` | Shared per-text token encodings for all models and training/test inputs |
+| `<CACHE_PATH>/embedding_cache/` | Per-branch frozen embeddings shared across training/test, with separate computation identities |
+| `<CACHE_PATH>/adapter_batches/` | Shared LoRA holdout/build base batch-plan caches, keyed by selected rows, lengths, checkpointing threshold, and update-group size; second-pass checkpointing budgets are excluded |
+| `<CACHE_PATH>/qwen3_4b_lora_warmup/` | Historical standard MLP head-warmup cache namespace; unused by active profiles |
+| `<CACHE_PATH>/qwen3_4b_lora_EXPT_warmup/` | Historical EXPT head-warmup cache namespace; unused by active profiles |
+| `<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/` | Completed original-only EXPT2 head warmup, also written by standalone warmup; tracked using the shared cache-storage policy |
+| `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Completed SR2 head warmup on the Skywork backbone, isolated from EXPT2 and tracked using the shared cache-storage policy |
+| `<CACHE_PATH>/qwen3_4b_qlora_warmup/` | Historical quantized QLoRA head-warmup cache namespace; unused by active profiles |
 | `models/qwen3_4b/` | Saved classifier head and metadata for the active model |
 | `models/qwen3_4b_lora/` | Historical standard LoRA adapter/head checkpoints; retained |
 | `models/qwen3_4b_lora_EXPT/` | Historical EXPT adapter/head checkpoints; retained |
@@ -347,12 +355,12 @@ exports over importing private helpers across package boundaries.
 | `results/MODEL-YYYYMMDD-HHMMSS/config.yaml` | Effective `data`, `validation`, `gpu`, and current model sections, using input YAML field names, resolved data paths, and loaded defaults |
 | `results/submit/` | Timestamped submission CSVs; report discovery excludes this and historical `results/test/` |
 
-`data/`, `models/`, and `results/` are runtime artifacts rather than source
-modules. Git tracks the default `data/processed/train_validation.parquet` or its
-multipart manifest and volumes, and the shared model-cache directories under
-`data/processed/`, using regular Git storage. Raw competition data, other processed
-outputs, and `.cache-work/` directories remain ignored. Do not make application
-logic depend on a particular timestamped run.
+`data/`, `cache/`, `models/`, and `results/` are runtime artifacts rather than
+source modules. Git tracks the default `data/processed/train_validation.parquet`
+or its multipart manifest and volumes, and the shared model-cache directories
+under the default `cache/` root, using regular Git storage. Raw competition data,
+other processed outputs, and `.cache-work/` directories remain ignored. Do not
+make application logic depend on a particular timestamped run.
 
 ## Invariants to preserve
 

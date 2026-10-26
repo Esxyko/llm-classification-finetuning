@@ -32,9 +32,12 @@ Run these commands from the project root.
 
    ```dotenv
    KAGGLE_API_TOKEN=your_token_here
+   CACHE_PATH=cache
    ```
 
    `.env` is ignored by Git. An existing environment variable takes precedence.
+   `CACHE_PATH` selects the shared training-cache root and defaults to `./cache`
+   when missing or blank. See [configuration paths](configuration.md#configuration-files-and-paths).
 
 3. Download the competition files and prepare the training data:
 

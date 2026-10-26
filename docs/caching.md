@@ -2,16 +2,23 @@
 
 [Documentation index](../README.md)
 
-Training caches sit beside the processed Parquet selected by
-[`data.processed_path`](configuration.md#configuration-files-and-paths).
-Relative processed paths resolve from the working directory independently of
-`MODEL_PATH`, so generated training caches stay there too.
+Training caches use `CACHE_PATH` from `.env` or the environment, defaulting to
+`./cache` when missing or blank. Relative paths resolve from the working
+directory and `~` expands to the user's home directory. The cache root is
+independent of YAML `data.processed_path` and `MODEL_PATH`; see
+[configuration paths](configuration.md#configuration-files-and-paths).
 Frozen embeddings, shared text encodings, adapter batch plans, and head-warmup
 states have separate compatibility rules. LoRA warmup, joint-validation,
 and submission features stay in temporary CPU memory (BF16 in BF16 mode,
 otherwise FP32) and are not persisted. Uncached warmup reuses its feature
 pool; each joint-validation or submission call extracts fresh features with the
 current model and releases them on return.
+
+Existing caches have moved from `data/processed/` to `cache/` with their
+subdirectory names, keys, manifests, and volumes preserved. For another checkout
+with the old layout, move its `token_cache/`, `embedding_cache/`,
+`adapter_batches/`, and `*_warmup/` directories into the configured cache root
+to reuse them. The processed Parquet stays at its YAML-configured location.
 
 ## Hugging Face model downloads
 
@@ -88,9 +95,11 @@ from pathlib import Path
 
 import torch
 
+from llm_classification_finetuning.config import AppConfig
 from llm_classification_finetuning.models.common import CacheStorage
 
-storage = CacheStorage(Path("data/processed/adapter_batches/example.pt"))
+config = AppConfig.load(Path("config.yaml"))
+storage = CacheStorage(config.cache_dir / "adapter_batches" / "example.pt")
 with storage.open("w") as session:
     torch.save({"example": 1}, session.path)
 with storage.open("r") as session:
@@ -109,7 +118,7 @@ errors remain subject to each cache's existing recovery policy.
 ## Frozen embeddings
 
 The frozen model shares content-addressed embeddings between training and test
-under `embedding_cache/` beside the processed Parquet. Each SQLite shard
+under `<CACHE_PATH>/embedding_cache/`. Each SQLite shard
 identifies the model and exact Hub revision (or local checkpoint/configuration
 content), backbone hidden size, precision, pooling, storage format, and
 extraction version. Attention implementation, TF32, and `extraction_budget` do
@@ -145,7 +154,7 @@ compatibility; see the separate [checkpoint rules](models.md#checkpoint-compatib
 
 ## Shared token encodings
 
-`token_cache/` beside the processed Parquet is shared by frozen-model extraction,
+`<CACHE_PATH>/token_cache/` is shared by frozen-model extraction,
 LoRA training/warmup/validation, and LoRA test inference. Each SQLite shard
 identifies the tokenizer's encoding content, implementation/library versions,
 encoding options, and cache schema; entries identify individual UTF-8 texts by
@@ -167,7 +176,7 @@ IDs for negative values; newly encoded IDs are checked before caching.
 
 ## LoRA batch plans
 
-LoRA uses shared `adapter_batches/plans/*.pt` beside the processed Parquet.
+LoRA uses shared `<CACHE_PATH>/adapter_batches/plans/*.pt`.
 Plans identify the sorted selected `(id, is_swapped, A_length, B_length)` rows,
 checkpointing threshold, update group size, and planning algorithm version.
 Labels, split names, reference order,
@@ -211,12 +220,12 @@ features and live LoRA encodings are never persisted in these token caches.
 ## LoRA head warmup
 
 EXPT2 holdout validation and builds save completed head warmup under
-`qwen3_4b_lora_EXPT2_warmup/<key>.pt` beside the processed Parquet.
+`<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/<key>.pt`.
 Standalone `model warmup --build` uses the same directory and EXPT2 head with
 the fixed original-only policy, using only the saved train partition.
 SR2 validation and builds use the same cache implementation and head, warming
 up on Skywork features and storing the completed head/optimizer state under
-`SR2_Qwen3_4B_lora_warmup/<key>.pt`. Features remain temporary CPU data.
+`<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt`. Features remain temporary CPU data.
 The model name and exact backbone revision are part of the identity, so SR2
 does not reuse Qwen warmup states. The standalone command continues to use
 the EXPT2 namespace; SR2 generates its warmup during its own model run.
@@ -226,7 +235,7 @@ command. Checkpoint tags do not affect the cache; submission does not use it.
 The architecture marker remains `swap_equivariant_tie_from_wins_v1` and warmup
 schema remains v5. Meta-device validation checks the symmetric, directional,
 tie, and readout weights, symmetric/tie biases, and named AdamW states.
-Existing EXPT2 paths and cache keys remain unchanged. Missing or incompatible
+EXPT2 subdirectory names and cache keys remain unchanged. Missing or incompatible
 entries rebuild through the existing miss path. Retired standard MLP and EXPT
 caches cannot be reused by active EXPT2 or SR2 profiles and may be deleted when
 no longer needed for archived workflows.
@@ -331,10 +340,12 @@ cache directory; an already loaded tokenizer can also be passed to
 ```python
 from pathlib import Path
 
+from llm_classification_finetuning.config import AppConfig
 from llm_classification_finetuning.models.common import TokenizationCache
 
+config = AppConfig.load(Path("config.yaml"))
 cache = TokenizationCache.from_pretrained(
-    Path("data/processed/token_cache"), "Qwen/Qwen3-4B"
+    config.cache_dir / "token_cache", "Qwen/Qwen3-4B"
 )
 encoded = cache.encode(["first input", "second input"])
 first_ids = encoded[0]  # Unpadded int32 token IDs, in requested input order.

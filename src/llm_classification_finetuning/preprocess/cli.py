@@ -32,7 +32,9 @@ def run(arguments: Sequence[str] | None = None) -> int:
 
 	try:
 		config = AppConfig.load(parsed_arguments.config)
-		result = SplitPreprocessor(config.validation).prepare(
+		result = SplitPreprocessor(
+			config.validation, cache_dir=config.cache_dir
+		).prepare(
 			train_path=config.data.raw_dir / "train.csv",
 			output_path=config.data.processed_path,
 		)

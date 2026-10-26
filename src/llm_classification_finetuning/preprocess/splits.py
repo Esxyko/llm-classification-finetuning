@@ -57,8 +57,9 @@ class SplitPreprocessor:
 		"winner_tie": 2,
 	}
 
-	def __init__(self, config: ValidationConfig) -> None:
+	def __init__(self, config: ValidationConfig, *, cache_dir: Path) -> None:
 		self._config = config
+		self._cache_dir = cache_dir
 		self._augmenter = ABAugmenter()
 		self._token_balancer = SplitTokenBalancer(config)
 
@@ -84,9 +85,7 @@ class SplitPreprocessor:
 
 		unique_groups = int(data["group_id"].nunique())
 		data["split"] = self._assign_split(data)
-		balanced = self._token_balancer.balance(
-			data, output_path.parent / "token_cache"
-		)
+		balanced = self._token_balancer.balance(data, self._cache_dir / "token_cache")
 		data["split"] = balanced.splits
 		data = self._augmenter.augment(data)
 		TrainingInputLoader.validate(

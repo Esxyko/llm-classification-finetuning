@@ -17,6 +17,7 @@ directory, and `~` expands to the user's home directory.
 
 ```dotenv
 MODEL_PATH=D:/models
+CACHE_PATH=cache
 ```
 
 In this example, Qwen3-4B uses `D:/models/models--Qwen--Qwen3-4B/`.
@@ -28,12 +29,20 @@ If `MODEL_PATH` is missing or blank, Hugging Face keeps its usual cache settings
 Explicit local model directories are loaded directly. See
 [model cache layout](caching.md#hugging-face-model-downloads) for existing downloads.
 
+Set `CACHE_PATH` in `.env` to choose the shared training-cache root for token
+encodings, frozen embeddings, adapter batch plans, and head-warmup states.
+A missing or blank value defaults to `./cache`. Relative paths resolve from the
+working directory, `~` expands to the user's home directory, and absolute paths
+stay absolute. Existing environment variables take precedence over `.env`.
+The cache root is independent of YAML data paths and `MODEL_PATH`.
+
 `MODEL_PATH` controls model downloads only. `DATA_PATH` is no longer used.
 Relative YAML `data.raw_dir` and `data.processed_path` values resolve from the
 working directory; absolute YAML paths stay absolute. With the default YAML,
 raw files use `./data/raw`, processed data uses
-`./data/processed/train_validation.parquet`, training caches stay beside that
-Parquet, checkpoints use `./models/`, and reports use `./results/`.
+`./data/processed/train_validation.parquet`, training caches use `./cache/`
+unless `CACHE_PATH` selects another root, checkpoints use `./models/`, and
+reports use `./results/`.
 
 For example, from the project root:
 
@@ -212,7 +221,7 @@ message. Use the new processed path and regenerate data; old artifacts remain
 available on disk. See [migration](data-preparation.md#migration-from-five-folds).
 
 Token counting uses the training conversation serializer, special tokens, and
-the shared `token_cache/` beside the processed Parquet. It excludes padding and
+the shared `<CACHE_PATH>/token_cache/`. It excludes padding and
 truncation and loads no model weights or GPU. `tokenizer_name` accepts a Hub
 name or local tokenizer/model directory. `tokenizer_revision` is optional; pin
 an immutable revision for reproducible counts. The root configuration and

@@ -526,11 +526,11 @@ class LoRATrainingBatchRepository:
 					else None
 				),
 				cache=_BatchCache(
-					config.data.processed_path.parent / "adapter_batches",
+					config.cache_dir / "adapter_batches",
 					model_label,
 				),
 				token_cache=TokenizationCache.from_pretrained(
-					config.data.processed_path.parent / "token_cache",
+					config.cache_dir / "token_cache",
 					model.model_name,
 					revision=revision,
 				),

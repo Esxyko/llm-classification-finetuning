@@ -43,7 +43,7 @@ SR2 reads the three warmup optimization fields, extraction budget, and optional
 label smoothing from `warmup`; its remaining warmup model/head settings come
 from `SR2_Qwen3_4B_lora`.
 It warms up against Skywork features and writes
-`SR2_Qwen3_4B_lora_warmup/<key>.pt` beside the processed data.
+`<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt` (`CACHE_PATH` defaults to `./cache`).
 The standalone `model warmup --build` command retains the EXPT2 cache namespace.
 
 SR2 checkpoints use `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt`, and outputs use
@@ -88,7 +88,7 @@ original-only warmup, joint training, validation, and
 submission. Its architecture marker is
 `swap_equivariant_tie_from_wins_v1`. Checkpoints use
 `models/qwen3_4b_lora_EXPT2/adapter[_TAG].pt`, and warmup caches use
-`qwen3_4b_lora_EXPT2_warmup/<key>.pt` beside the processed data. Validation
+`<CACHE_PATH>/qwen3_4b_lora_EXPT2_warmup/<key>.pt`. Validation
 results use `results/qwen3-4b-lora-EXPT2-*/`; submissions use
 `results/submit/qwen3-4b-lora-EXPT2-*/submission.csv`.
 

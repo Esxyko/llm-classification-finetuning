@@ -63,9 +63,7 @@ class ModelPipeline:
 			validation_fraction=config.validation.validation_fraction,
 		)
 		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
-		self._embedding_cache = EmbeddingCache(
-			config.data.processed_path.parent / "embedding_cache"
-		)
+		self._embedding_cache = EmbeddingCache(config.cache_dir / "embedding_cache")
 		project_root = project_root.resolve()
 		checkpoint_name = f"head_{checkpoint_tag}.pt" if checkpoint_tag else "head.pt"
 		self._checkpoint_store = ModelCheckpointStore(
@@ -193,7 +191,7 @@ class ModelPipeline:
 			gpu_config=self._config.gpu,
 			model_config=self._model_config,
 			device=device,
-			token_cache_dir=self._config.data.processed_path.parent / "token_cache",
+			token_cache_dir=self._config.cache_dir / "token_cache",
 			refresh_cache=refresh_cache,
 			submit_devices=submit_devices,
 		)

@@ -13,7 +13,7 @@ All commands accept [`--config PATH`](configuration.md#configuration-files-and-p
 | `uv run model qwen3-4b` | Runs Qwen3-4B holdout validation | `results/qwen3-4b-*/` |
 | `uv run model qwen3-4b-lora-EXPT2` | Runs LoRA with the equivariant head deriving ties from win representations | `results/qwen3-4b-lora-EXPT2-*/` |
 | `uv run model SR2-Qwen3-4B-lora` | Runs Skywork reward-backbone LoRA with the EXPT2 head | `results/SR2-Qwen3-4B-lora-*/` |
-| `uv run model warmup --build` | Builds non-quantized EXPT2 head warmup on the saved train partition | `data/processed/qwen3_4b_lora_EXPT2_warmup/<key>.pt` |
+| `uv run model warmup --build` | Builds non-quantized EXPT2 head warmup on the saved train partition | `cache/qwen3_4b_lora_EXPT2_warmup/<key>.pt` |
 | `uv run model ALL` | Runs configured models sequentially | Each model's results directory |
 | `uv run model MODEL --build` | Trains the classifier and any adapters on all training and validation IDs | `models/MODEL_SLUG/head.pt` or `adapter.pt` |
 | `uv run model MODEL --submit` | Creates a submission with the selected model's checkpoint | `results/submit/MODEL-*/submission.csv` |
@@ -22,6 +22,9 @@ All commands accept [`--config PATH`](configuration.md#configuration-files-and-p
 Processed Parquet outputs use the listed logical path. Files at or above 100 MiB
 are stored as a manifest plus volumes of at most 99 MiB and loaded automatically;
 see [processed data](data-preparation.md#processed-data).
+
+Cache paths shown above use the default root; set `CACHE_PATH` in `.env` to
+choose another cache directory.
 
 ## Model selection and execution modes
 

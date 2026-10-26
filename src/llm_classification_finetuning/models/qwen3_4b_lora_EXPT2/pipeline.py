@@ -86,7 +86,7 @@ class LoRAModelPipeline:
 				self._model_config,
 				self._config.gpu,
 				device,
-				token_cache_dir=self._config.data.processed_path.parent / "token_cache",
+				token_cache_dir=self._config.cache_dir / "token_cache",
 				refresh_cache=refresh_cache,
 				profile=self._profile,
 			)

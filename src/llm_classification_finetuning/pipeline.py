@@ -22,7 +22,9 @@ class PrepareDataPipeline:
 	def __init__(self, config: AppConfig) -> None:
 		self._config = config
 		self._downloader = CompetitionDataDownloader(config.data)
-		self._preprocessor = SplitPreprocessor(config.validation)
+		self._preprocessor = SplitPreprocessor(
+			config.validation, cache_dir=config.cache_dir
+		)
 
 	def run(
 		self, on_download: Callable[[DownloadResult], None] | None = None

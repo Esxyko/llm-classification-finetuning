@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -121,6 +122,7 @@ class AppConfig:
 	data: DataConfig
 	validation: ValidationConfig
 	gpu: GPUConfig
+	cache_dir: Path
 	qwen3_4b: ModelConfig | None = None
 	qwen3_4b_lora_EXPT2: LoRAModelConfig | None = None
 	warmup: WarmupModelConfig | None = None
@@ -128,7 +130,7 @@ class AppConfig:
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
-		"""Read YAML and .env, resolving data paths from the working directory."""
+		"""Read YAML and .env, resolving data and cache paths from the working directory."""
 		working_dir = Path.cwd()
 		load_dotenv(dotenv_path=working_dir / ".env", override=False)
 		resolved_config_path = config_path.expanduser().resolve()
@@ -217,11 +219,11 @@ class AppConfig:
 		competition = _require_non_empty_string(
 			data_section.get("competition"), "data.competition"
 		)
-		raw_dir = _resolve_data_path(
+		raw_dir = _resolve_path(
 			working_dir,
 			_require_non_empty_string(data_section.get("raw_dir"), "data.raw_dir"),
 		)
-		processed_path = _resolve_data_path(
+		processed_path = _resolve_path(
 			working_dir,
 			_require_non_empty_string(
 				data_section.get("processed_path"), "data.processed_path"
@@ -291,6 +293,9 @@ class AppConfig:
 		allow_tf32 = _require_boolean(gpu_section.get("allow_tf32"), "gpu.allow_tf32")
 
 		return cls(
+			cache_dir=_resolve_path(
+				working_dir, os.environ.get("CACHE_PATH", "").strip() or "cache"
+			),
 			data=DataConfig(
 				competition=competition,
 				raw_dir=raw_dir,
@@ -604,7 +609,7 @@ def _require_choice(value: Any, field_name: str, choices: set[str]) -> str:
 	return choice
 
 
-def _resolve_data_path(base_dir: Path, configured_path: str) -> Path:
+def _resolve_path(base_dir: Path, configured_path: str) -> Path:
 	path = Path(configured_path).expanduser()
 	if not path.is_absolute():
 		path = base_dir / path
