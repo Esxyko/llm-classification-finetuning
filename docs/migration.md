@@ -128,10 +128,20 @@ execute; persistent branch-cache details remain in
 | `DATA_PATH` | Set `data.raw_dir` and `data.processed_path` in YAML |
 | `extraction_batch_size` | `extraction_budget`, measured in padded tokens; old branch counts are not equivalent values |
 | LoRA `inference_batch_size` | `head_inference_batch_size`; keep the head batch count |
+| LoRA `head_learning_rate` | Remove; `learning_rate` now controls both adapters and the classifier head during joint training |
 | LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section |
 | `warmup_ratio` | Choose explicit `warmup.warmup_epochs`, batch size, learning rate, and extraction budget |
 | LoRA/warmup `A/B_swap` | Remove; active LoRA and standalone warmup always use original rows |
 | `training_token_budget` or Boolean `gradient_checkpointing` | Use the two current checkpointing/packing controls below |
+
+Joint training now applies one cosine curve across all joint epochs, with
+`min_lr_ratio` defaulting to `0.125` even when omitted from an older configuration.
+Set `min_lr_ratio: 1` to keep the shared learning rate fixed. Configurations
+containing `head_learning_rate` fail strict unknown-key validation; remove it
+before using current commands. Head warmup remains at its fixed rate, and
+existing warmup cache identities and production checkpoint compatibility are
+unchanged. Historical configuration snapshots are preserved. See
+[cosine decay](lora.md#cosine-learning-rate-decay).
 
 The historical `gradient_checkpointing_budget` used to name what is now
 `gradient_checkpointing_threshold`. The current **budget** is a separate second

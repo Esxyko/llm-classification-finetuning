@@ -44,7 +44,7 @@ SR2_Qwen3_4B_lora:
   epochs: 4
   extraction_budget: 262144
   learning_rate: 0.00015
-  head_learning_rate: 0.00015
+  min_lr_ratio: 0.125
   hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1

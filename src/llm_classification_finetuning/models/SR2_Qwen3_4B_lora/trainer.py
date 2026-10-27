@@ -60,6 +60,41 @@ class LoRATrainingHistory:
 	training_rows: int
 
 
+class _CosineLearningRateSchedule:
+	"""Set one shared rate per planned joint update, including FP16 skips."""
+
+	def __init__(
+		self,
+		optimizer: AdamW,
+		*,
+		learning_rate: float,
+		min_lr_ratio: float,
+		total_steps: int,
+	) -> None:
+		if total_steps <= 0:
+			raise ValueError("Cosine decay requires at least one optimizer update.")
+		self._optimizer = optimizer
+		self._learning_rate = learning_rate
+		self._min_lr_ratio = min_lr_ratio
+		self._total_steps = total_steps
+		self._step_index = 0
+
+	def step(self) -> None:
+		"""Apply the current update's rate before the optimizer attempts its step."""
+		if self._step_index >= self._total_steps:
+			raise RuntimeError("Cosine decay exceeded the planned optimizer updates.")
+		progress = (
+			self._step_index / (self._total_steps - 1) if self._total_steps > 1 else 0.0
+		)
+		multiplier = (
+			self._min_lr_ratio
+			+ (1.0 - self._min_lr_ratio) * (1.0 + math.cos(math.pi * progress)) / 2.0
+		)
+		for group in self._optimizer.param_groups:
+			group["lr"] = self._learning_rate * multiplier
+		self._step_index += 1
+
+
 class LoRATrainer:
 	"""Run adapter optimization on one configured CUDA device."""
 
@@ -270,7 +305,7 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
-		"""Warm up the head, then jointly optimize adapters and head at fixed rates."""
+		"""Warm up the head, then jointly optimize both groups with cosine decay."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		if self._warmup_only and validation is not None:
@@ -312,12 +347,13 @@ class LoRATrainer:
 			)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
+		lr_schedule: _CosineLearningRateSchedule | None = None
 		parameter_groups = [
 			{
 				"params": list(model.classifier.parameters()),
 				"lr": self._config.warmup_learning_rate
 				if self._config.warmup_epochs
-				else self._config.head_learning_rate,
+				else self._config.learning_rate,
 			}
 		]
 		if not self._warmup_only:
@@ -381,12 +417,19 @@ class LoRATrainer:
 				loader = None
 				warmup_validation = None
 				loader = training.loader
-				for group, learning_rate in zip(
-					optimizer.param_groups,
-					(self._config.learning_rate, self._config.head_learning_rate),
-					strict=True,
-				):
-					group["lr"] = learning_rate
+				for group in optimizer.param_groups:
+					group["lr"] = self._config.learning_rate
+				joint_layout = OptimizerGroupLayout(
+					len(reference),
+					self._config.training_batch_size
+					* self._config.gradient_accumulation_steps,
+				)
+				lr_schedule = _CosineLearningRateSchedule(
+					optimizer,
+					learning_rate=self._config.learning_rate,
+					min_lr_ratio=self._config.min_lr_ratio,
+					total_steps=joint_layout.update_count * self._config.epochs,
+				)
 			training_started = self._timestamp()
 			if not head_only:
 				training.set_epoch(epoch - self._config.warmup_epochs - 1)
@@ -399,6 +442,7 @@ class LoRATrainer:
 				optimizer_group_rows=None
 				if head_only
 				else training.optimizer_group_rows,
+				lr_schedule=lr_schedule,
 				progress=progress,
 				description=epoch_description,
 			)
@@ -522,6 +566,7 @@ class LoRATrainer:
 		*,
 		head_only: bool = False,
 		optimizer_group_rows: tuple[int, ...] | None = None,
+		lr_schedule: _CosineLearningRateSchedule | None = None,
 		progress: TrainingProgress | None = None,
 		description: str = "Build",
 	) -> float:
@@ -597,6 +642,8 @@ class LoRATrainer:
 					trainable_parameters,
 					self._config.max_grad_norm,
 				)
+				if lr_schedule is not None:
+					lr_schedule.step()
 				scaler.step(optimizer)
 				scaler.update()
 				optimizer.zero_grad(set_to_none=True)

@@ -158,7 +158,7 @@ offsets/metadata. Current train/test inputs are checked independently.
 | --- | --- | --- |
 | Head warmup, cache miss | Extract frozen eval-mode features with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Holdout validates after each epoch using the same temporary features; save completed head/optimizer/RNG state |
 | Head warmup, cache hit | Restore compatible head and training state | Skip warmup extraction, training, and validation |
-| Joint training | Train adapters and head at fixed `learning_rate` and `head_learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
+| Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
 The shared warmup section supplies epochs, head batch size, learning rate,
@@ -189,6 +189,36 @@ final epoch. Reused warmup contributes no old losses, timings, or executed epoch
 joint epoch numbers retain their configured warmup offset.
 
 For warmup identity and restoration details, see [warmup caches](caching.md#lora-head-warmup).
+
+### Cosine learning-rate decay
+
+Adapters and the classifier head retain separate optimizer parameter groups,
+with the same learning rate throughout joint training. The rate starts at
+`learning_rate` and decays continuously across all joint epochs to
+`learning_rate * min_lr_ratio`. The ratio defaults to `0.125`; `0` reaches zero
+and `1` keeps the rate fixed. For example, `learning_rate: 0.00015` and
+`min_lr_ratio: 0.125` end at `0.00001875`.
+
+Let `N = epochs * max(1, rows // G)`, using the joint optimizer-group size `G`
+above. For planned update index `i` from `0` through `N - 1`, when `N > 1`:
+
+```text
+p = i / (N - 1)
+lr = learning_rate * (min_lr_ratio + (1 - min_lr_ratio) * (1 + cos(pi * p)) / 2)
+```
+
+The first update uses the initial rate and the last uses the minimum. A run
+with only one update uses the initial rate. The schedule applies immediately
+before each complete optimizer group's update attempt and advances once for
+that consumed group, including when FP16 gradient scaling skips the parameter
+update. Micro-batches, validation, and warmup do not advance it. Packing and
+short-tail merging retain the update counts above; epochs do not restart decay.
+
+Head warmup keeps its fixed `warmup_learning_rate`. At the start of joint
+training, both groups switch to `learning_rate` and begin a fresh cosine curve,
+whether warmup was executed, restored from cache, or disabled. The classifier's
+AdamW state is retained. These joint-only settings do not change warmup cache
+identity or production checkpoint compatibility.
 
 ## Two-stage validation and submission
 

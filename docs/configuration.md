@@ -102,7 +102,8 @@ The following names apply independently inside each relevant section.
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
 | `training_batch_size`, `epochs`, `learning_rate` | SR2 | Positive integers for batches/epochs; positive number for rate |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | SR2 | Positive integers |
-| `head_learning_rate`, `max_grad_norm` | SR2 | Positive numbers |
+| `min_lr_ratio` | SR2 | Number in `[0, 1]`; default `0.125`; minimum learning rate as a fraction of `learning_rate` |
+| `max_grad_norm` | SR2 | Positive number |
 | `lora_rank`, `lora_alpha` | SR2 | Positive integers |
 | `lora_dropout` | SR2 | Number in `[0, 1)` |
 | `lora_target_modules` | SR2 | Nonempty list of unique nonempty strings |
@@ -111,11 +112,20 @@ The following names apply independently inside each relevant section.
 `warmup` additionally requires `warmup_epochs` (integer at least `0`),
 `warmup_training_batch_size` (positive integer), `warmup_learning_rate` and
 `max_grad_norm` (positive numbers). It does not accept `training_batch_size`,
-`epochs`, `learning_rate`, or `A/B_swap`.
+`epochs`, `learning_rate`, `min_lr_ratio`, or `A/B_swap`.
 
-The SR2 section rejects `A/B_swap` and the three `warmup_*` optimization keys.
+The SR2 section rejects `head_learning_rate`, `A/B_swap`, and the three
+`warmup_*` optimization keys.
 Internal `ab_swap`, `warmup_extraction_budget`, and `warmup_label_smoothing` are
 not YAML fields. See [migration](migration.md) for retired keys.
+
+Joint training uses `learning_rate` for both adapters and the classifier head.
+One cosine curve spans all joint epochs and reaches
+`learning_rate * min_lr_ratio` on the final planned optimizer update; a run with
+only one update uses the initial rate. `min_lr_ratio: 0` decays to zero, while
+`1` keeps the rate fixed. Omitting the field uses `0.125`. Head warmup retains
+its fixed `warmup.warmup_learning_rate`. See
+[cosine decay](lora.md#cosine-learning-rate-decay) for update counting.
 
 ## Label smoothing
 

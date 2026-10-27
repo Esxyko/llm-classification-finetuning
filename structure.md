@@ -148,7 +148,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, swap-equivariant tie-from-wins architecture (introduced by EXPT2), and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup/joint stages with both branch graphs and one backward pass, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, validation, atomic storage, and restoration |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
@@ -234,7 +234,10 @@ present in a fresh checkout.
    packing passes stay within finalized update boundaries.
    Checkpointing is chosen once per A/B joint micro-batch through backward;
    both branch graphs are retained until one backward pass, and disabling
-   checkpointing removes input-gradient hooks. See
+   checkpointing removes input-gradient hooks. Joint groups share one learning
+   rate and one cosine curve across all joint epochs; each consumed optimizer
+   group advances decay once, including FP16-skipped updates. Warmup stays at a
+   fixed rate. See
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented
