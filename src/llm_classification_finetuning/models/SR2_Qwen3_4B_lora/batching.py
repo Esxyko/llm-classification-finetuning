@@ -32,7 +32,6 @@ from ..profile import ModelProfile
 from .data import (
 	PairwiseBatch,
 	PairwiseCollator,
-	PairwiseTokenCost,
 	PairwiseTokenDataset,
 )
 from .profile import PROFILE
@@ -103,11 +102,11 @@ class TrainingBatchPlan:
 					seen[index] = True
 					a, b = dataset.branch_lengths(index)
 					max_a, max_b = max(max_a, a), max(max_b, b)
-				cost = PairwiseTokenCost(len(batch) * max_a, len(batch) * max_b)
-				if len(batch) > 1 and cost.max_branch_tokens > threshold:
+				cost = len(batch) * (max_a + max_b)
+				if len(batch) > 1 and cost > threshold:
 					raise ValueError("Adapter micro-batch exceeds the token threshold.")
 				group_rows += len(batch)
-				padded_tokens += cost.total_padded_tokens
+				padded_tokens += cost
 			if group_rows != min(group_size, rows - group_index * group_size):
 				raise ValueError(
 					"Adapter batch plan has an invalid packing-group size."
@@ -124,7 +123,7 @@ class TrainingBatchPlan:
 
 
 class _TokenBudgetPacker:
-	"""Minimize added padding under peak branch budgets, retaining oversized rows."""
+	"""Best-fit pack rows by padded A/B cost, retaining oversized singletons."""
 
 	def __init__(
 		self,
@@ -139,27 +138,20 @@ class _TokenBudgetPacker:
 	def pack(self, indices: list[int]) -> tuple[tuple[int, ...], ...]:
 		batches: list[list[int]] = []
 		maxima: list[tuple[int, int]] = []
-		for index in sorted(indices, key=self._sort_key):
+		for index in sorted(
+			indices,
+			key=lambda value: (-sum(self._lengths[value]), *self._identities[value]),
+		):
 			a, b = self._lengths[index]
 			candidates = []
 			for batch_index, (batch, (max_a, max_b)) in enumerate(
 				zip(batches, maxima, strict=True)
 			):
-				cost = PairwiseTokenCost(
-					(len(batch) + 1) * max(a, max_a),
-					(len(batch) + 1) * max(b, max_b),
-				)
-				if cost.max_branch_tokens <= self._budget:
-					previous = PairwiseTokenCost(len(batch) * max_a, len(batch) * max_b)
-					candidates.append(
-						(
-							cost.total_padded_tokens - previous.total_padded_tokens,
-							self._budget - cost.max_branch_tokens,
-							batch_index,
-						)
-					)
+				cost = (len(batch) + 1) * (max(a, max_a) + max(b, max_b))
+				if cost <= self._budget:
+					candidates.append((self._budget - cost, batch_index))
 			if candidates:
-				_, _, batch_index = min(candidates)
+				_, batch_index = min(candidates)
 				batches[batch_index].append(index)
 				max_a, max_b = maxima[batch_index]
 				maxima[batch_index] = max(a, max_a), max(b, max_b)
@@ -168,19 +160,11 @@ class _TokenBudgetPacker:
 				maxima.append((a, b))
 		return tuple(tuple(batch) for batch in batches)
 
-	def _sort_key(self, index: int) -> tuple[int, ...]:
-		cost = PairwiseTokenCost(*self._lengths[index])
-		return (
-			-cost.max_branch_tokens,
-			-cost.total_padded_tokens,
-			*self._identities[index],
-		)
-
 
 class _GlobalBatchPlanner:
-	"""Compare four stable global sorts by total padding, then micro-batch count."""
+	"""Compare three stable global sorts using best-fit packing inside each group."""
 
-	VERSION = 2
+	VERSION = 1
 
 	def __init__(
 		self,
@@ -199,7 +183,7 @@ class _GlobalBatchPlanner:
 
 	def build(self) -> TrainingBatchPlan:
 		best: TrainingBatchPlan | None = None
-		for order in range(4):
+		for order in range(3):
 			indices = sorted(
 				range(len(self._lengths)),
 				key=lambda index: self._sort_key(index, order),
@@ -211,17 +195,18 @@ class _GlobalBatchPlanner:
 			candidate = TrainingBatchPlan(
 				groups,
 				sum(
-					PairwiseTokenCost(
-						len(batch) * max(self._lengths[index][0] for index in batch),
-						len(batch) * max(self._lengths[index][1] for index in batch),
-					).total_padded_tokens
+					len(batch)
+					* sum(
+						max(self._lengths[index][branch] for index in batch)
+						for branch in (0, 1)
+					)
 					for group in groups
 					for batch in group
 				),
 			)
-			if best is None or (candidate.padded_tokens, candidate.batch_count) < (
-				best.padded_tokens,
+			if best is None or (candidate.batch_count, candidate.padded_tokens) < (
 				best.batch_count,
+				best.padded_tokens,
 			):
 				best = candidate
 		if best is None:
@@ -230,9 +215,8 @@ class _GlobalBatchPlanner:
 
 	def _sort_key(self, index: int, order: int) -> tuple[int, ...]:
 		a, b = self._lengths[index]
-		cost = PairwiseTokenCost(a, b)
-		length_key = (a, b, cost.total_padded_tokens, cost.max_branch_tokens)[order]
-		return (length_key, *self._identities[index])
+		length_key = (a, b) if order == 0 else (b, a) if order == 1 else (a + b, a, b)
+		return (*length_key, *self._identities[index])
 
 
 class _TrainingBatchSampler(Sampler[list[int]]):
@@ -314,11 +298,7 @@ class _TrainingBatchSampler(Sampler[list[int]]):
 			batch[0]
 			for batch in group
 			if len(batch) == 1
-			and (
-				self._threshold == 0
-				or PairwiseTokenCost(*self._lengths[batch[0]]).max_branch_tokens
-				> self._threshold
-			)
+			and (self._threshold == 0 or sum(self._lengths[batch[0]]) > self._threshold)
 		]
 		if len(singletons) < 2:
 			return group

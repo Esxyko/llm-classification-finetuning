@@ -137,19 +137,19 @@ embedding files and shards using retired identities are not read. See
 ## LoRA batch plans
 
 Plans under `adapter_batches/plans/*.pt` use schema v4 and planning algorithm
-v2. Keys contain sorted
-selected `(id, is_swapped, A_length, B_length)` rows, checkpointing threshold,
-update-group size, and planning version. Cached identities map back to current
-dataset indices and labels on each read.
+v1. Keys contain sorted selected `(id, is_swapped, A_length, B_length)` rows,
+checkpointing threshold, update-group size, and planning version. Cached
+identities map back to current dataset indices and labels on each read.
 
-Algorithm v2 constrains packing by peak branch load
-`M = rows * max(longest_A, longest_B)`. It compares four global sorts and ranks
-plans by total padded tokens `P = rows * (longest_A + longest_B)`, then
-micro-batch count. Within each group, feasible placements minimize the increase
-in `P`, then remaining branch budget, then micro-batch creation order. The stored
-`padded_tokens` remains the sum of `P` across all micro-batches; validation uses
-`M` for the threshold and `P` for this total. The algorithm version selects a new
-cache key, so v1 plans remain on disk and are rebuilt without migration or reuse.
+Algorithm v1 constrains packing by total padded A/B tokens
+`P = rows * (longest_A + longest_B)`. It compares three global sorts and ranks
+plans by micro-batch count, then total `P`. Within each group, rows are processed
+by descending A+B length and ascending sample identity. Feasible placements
+minimize remaining budget, then micro-batch creation order. The stored
+`padded_tokens` is the sum of `P` across all micro-batches; validation uses `P`
+for both the threshold and this total. Matching historical v1 plans are reused
+after validation. The single-branch algorithm v2 has a separate cache key and
+is not reused or migrated; its files remain on disk.
 
 Changing selected rows, lengths, threshold, or effective update size selects a
 new plan. Changing labels, reference order, split names, unselected validation

@@ -36,22 +36,6 @@ def _labels(reference: pd.DataFrame) -> np.ndarray:
 
 
 @dataclass(frozen=True, slots=True)
-class PairwiseTokenCost:
-	"""Separate peak branch load from total independently padded A/B work."""
-
-	branch_a_tokens: int
-	branch_b_tokens: int
-
-	@property
-	def max_branch_tokens(self) -> int:
-		return max(self.branch_a_tokens, self.branch_b_tokens)
-
-	@property
-	def total_padded_tokens(self) -> int:
-		return self.branch_a_tokens + self.branch_b_tokens
-
-
-@dataclass(frozen=True, slots=True)
 class BranchBatch:
 	"""Right-padded tokens with CPU pooling positions for causal encoding."""
 

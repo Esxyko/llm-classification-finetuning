@@ -17,7 +17,7 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...model_storage import load_model_weights
 from ..common import ABSwapAverager, GPUEnvironment
-from .data import BranchBatch, PairwiseBatch, PairwiseTokenCost
+from .data import BranchBatch, PairwiseBatch
 from .heads import EXPT, EXPT2, create_classification_head
 
 
@@ -145,33 +145,24 @@ class LoRAQwenClassifier(nn.Module):
 
 	def encode(self, batch: PairwiseBatch) -> tuple[Tensor, Tensor]:
 		"""Pool the last real token of each branch, retaining both gradient graphs."""
-		self.configure_joint_checkpointing(batch)
-		# Retain one policy for both branches and the caller's complete backward pass.
-		return self.encode_branch(batch.branch_a), self.encode_branch(batch.branch_b)
-
-	def configure_joint_checkpointing(self, batch: PairwiseBatch) -> bool:
-		"""Choose checkpointing once for an A/B micro-batch, through all backward passes."""
-		cost = PairwiseTokenCost(
-			batch.branch_a.input_ids.numel(), batch.branch_b.input_ids.numel()
+		padded_tokens = (
+			batch.branch_a.input_ids.numel() + batch.branch_b.input_ids.numel()
 		)
 		self._set_gradient_checkpointing(
 			self.training
 			and torch.is_grad_enabled()
 			and (
 				self._gradient_checkpointing_threshold == 0
-				or cost.max_branch_tokens > self._gradient_checkpointing_threshold
+				or padded_tokens > self._gradient_checkpointing_threshold
 			)
 		)
-		return self._gradient_checkpointing_enabled
+		# Retain one policy for both branches and the caller's complete backward pass.
+		return self.encode_branch(batch.branch_a), self.encode_branch(batch.branch_b)
 
 	def encode_branch(self, branch: BranchBatch) -> Tensor:
 		"""Encode one batch of branches for extraction or differentiable training."""
 		if not self.training or not torch.is_grad_enabled():
 			self._set_gradient_checkpointing(False)
-		return self.run_branch(branch)
-
-	def run_branch(self, branch: BranchBatch) -> Tensor:
-		"""Encode one branch under the current checkpointing policy, leaving it unchanged."""
 		input_device = self.backbone.get_input_embeddings().weight.device
 		input_ids = branch.input_ids.to(input_device, non_blocking=True)
 		with (

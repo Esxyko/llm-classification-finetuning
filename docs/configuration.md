@@ -201,9 +201,11 @@ These two LoRA controls serve different purposes:
 
 | Control | `0` | Positive value |
 | --- | --- | --- |
-| `gradient_checkpointing_threshold` | Initial fixed-size micro-batches; checkpoint all joint batches | Pack initial batches by peak branch tokens; checkpoint only batches above the threshold |
-| `gradient_checkpointing_budget` | Disable the second packing pass | Combine checkpointed singletons inside each optimizer update, within this peak branch token budget |
+| `gradient_checkpointing_threshold` | Initial fixed-size micro-batches; checkpoint all joint batches | Pack initial batches by total padded A/B tokens; checkpoint only batches above the threshold |
+| `gradient_checkpointing_budget` | Disable the second packing pass | Combine checkpointed singletons inside each optimizer update, within this total padded A/B token budget |
 
+Both controls use `rows * (longest_A + longest_B)`, with each branch padded
+independently. Joint training retains both branch graphs until one backward pass.
 Joint updates target `training_batch_size * gradient_accumulation_steps` rows.
 A short tail merges into the preceding full update and uses the combined row
 count for loss normalization. With positive token packing, micro-batch sizes can

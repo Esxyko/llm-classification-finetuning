@@ -71,14 +71,9 @@ Validation/build uses `gpu.device`; submission uses the
 [two-GPU layer split](configuration.md#gpu-configuration). All branches are
 right-padded independently without padding masks. Qwen's causal attention
 protects real tokens from right padding, and CPU-computed last-real-token
-positions select pooled features. KV caching is disabled. Joint training uses
-single-branch recompute: A is encoded without a graph (keeping only its features
-and the pre-forward CPU/CUDA RNG state), B and the head run normally, and the
-first backward yields head, B, and A-feature gradients. B's graph is then freed,
-A is recomputed with its RNG state replayed (the training RNG is restored
-afterwards), and the cached feature gradient completes A's backward into the
-shared adapters. Draw order and masks match a two-graph pass; AMP, SDPA scopes,
-and checkpointing are identical across the recompute. A costs one extra forward.
+positions select pooled features. KV caching is disabled. Joint training encodes
+A then B while retaining both gradient graphs. The head consumes both features,
+and one backward pass computes gradients for the head and shared adapters.
 
 LoRA **never truncates**. Token preparation validates full canonical branches
 before training, and inference checks its inputs before encoding. Empty or
@@ -213,15 +208,9 @@ disabled. See [extraction packing](configuration.md#extraction-token-budgets).
 
 Two passes control joint micro-batches, independently of extraction budgets.
 For `n` rows with independently padded branch lengths `L_A` and `L_B`, both use
-the same two costs:
-
-- Peak branch load `M = n * max(L_A, L_B)` constrains packing and determines
-  checkpointing.
-- Total padded tokens `P = n * (L_A + L_B)` measures padding and computation
-  across both branches and ranks packing choices.
-
-Planning, cached-plan validation, and runtime checkpointing share these
-definitions. Runtime costs use each branch's actual padded tensor size.
+the total padded A/B token cost `P = n * (L_A + L_B)`.
+Planning, cached-plan validation, and runtime checkpointing share this cost.
+Runtime adds the two branches' actual padded tensor sizes.
 
 ### Initial plan and checkpointing threshold
 
@@ -230,27 +219,26 @@ With `gradient_checkpointing_threshold: 0`, initial batches use
 checkpointing. A positive threshold enables a reusable global plan:
 
 1. Select original training IDs, or all original IDs for a build.
-2. Compare four stable ascending sorts by `A_length`, `B_length`,
-   `A_length + B_length`, and `max(A_length, B_length)`, breaking ties by sample
-   ID and then orientation.
+2. Compare three stable ascending sorts by `(A_length, B_length)`,
+   `(B_length, A_length)`, and `(A_length + B_length, A_length, B_length)`,
+   breaking ties by sample ID and then orientation.
 3. Divide each candidate into groups of `G` rows and a possible short tail.
-4. Within each group, pack under `M <= threshold` using the shared packing rule
-   below. Choose the candidate with the lowest total `P`, then the fewest
-   micro-batches. Exact ties retain the first candidate in the order above.
+4. Within each group, pack under `P <= threshold` using the shared packing rule
+   below. Choose the candidate with the fewest micro-batches, then the lowest
+   total `P`. Exact ties retain the first candidate in the order above.
 
-Both packing passes process rows by descending `max(A_length, B_length)`, then
-descending total length, then ascending sample identity. For each row, consider
-existing micro-batches whose resulting `M` fits the applicable budget. Choose
-the smallest increase in `P`; ties prefer the smallest remaining branch budget,
-then the earliest-created micro-batch. If none fits, create a new micro-batch.
+Both packing passes process rows by descending `A_length + B_length`, then
+ascending sample identity. For each row, consider existing micro-batches whose
+resulting `P` fits the applicable budget. Choose the smallest remaining budget;
+ties prefer the earliest-created micro-batch. If none fits, create a new
+micro-batch.
 
 This is a heuristic, not a global optimum. A single pair above the threshold
-remains alone. When `M` is at or below a positive threshold, checkpointing is
-disabled; above it, checkpointing is enabled for **both branches through backward**,
-including A's no-grad forward, B's backward, and A's recompute. Because non-checkpointed
-batches store full autograd activations across all backbone layers for one branch
-at a time, setting the threshold too high can exceed GPU memory. Keep the positive
-threshold low enough for non-checkpointed single-branch loads, or set it to `0`
+remains alone. When `P` is at or below a positive threshold, checkpointing is
+disabled; above it, checkpointing is enabled for **both branches through backward**.
+Both branch graphs remain live until the single backward pass. Setting the
+threshold too high can exceed GPU memory because non-checkpointed batches keep
+both branches' full activations. Lower the positive threshold, or set it to `0`
 to force gradient checkpointing on all joint batches.
 Warmup and inference disable checkpointing.
 
@@ -263,10 +251,10 @@ a lone short group runs alone.
 
 A positive `gradient_checkpointing_budget` then combines only checkpointed
 **singleton** micro-batches inside each finalized update, using the shared
-packing rule with `M <= budget`. For positive thresholds, eligible singletons
-have `max(A_length, B_length) > threshold`; combining them keeps checkpointing
+packing rule with `P <= budget`. For positive thresholds, eligible singletons
+have `A_length + B_length > threshold`; combining them keeps checkpointing
 enabled. Existing multi-row batches and non-checkpointed singletons remain
-intact. Neither pass crosses a finalized update boundary. Combined `M` may equal
+intact. Neither pass crosses a finalized update boundary. Combined `P` may equal
 the budget; an oversized pair still runs alone without truncation. For positive
 thresholds, the budget must exceed `2 * threshold` to combine any two singletons;
 a smaller budget leaves all eligible singletons running alone.
@@ -274,7 +262,7 @@ a smaller budget leaves all eligible singletons running alone.
 The second pass also works with threshold `0`: all micro-batches run with
 checkpointing enabled. In this mode, initial micro-batches of size 1 (e.g. from
 `training_batch_size: 1`) are treated as singletons and repacked in memory under
-`M <= budget`; existing multi-row initial batches (`training_batch_size > 1`)
+`P <= budget`; existing multi-row initial batches (`training_batch_size > 1`)
 remain intact. A zero budget disables only this repacking pass. Positive-threshold
 plans still shuffle micro-batches inside each update after repacking. The merged
 update remains last. Epoch batches are memoized so length queries match iteration
@@ -325,9 +313,7 @@ With a positive threshold, keeping `training_batch_size * gradient_accumulation_
 fixed does not lower packing limits; change the token controls instead. A budget
 is not an input cap: oversized single samples still run alone. Keep `max_length`
 large enough for required inputs. FP16/BF16 can reduce memory where supported;
-checkpointing affects joint training only. Single-branch recompute lowers peak
-memory (one branch graph at a time) at the cost of an extra A forward, so
-thresholds and budgets can be raised accordingly. The implementation reports OOM
+checkpointing affects joint training only. The implementation reports OOM
 rather than silently changing precision or shortening inputs.
 
 ## Checkpoints
