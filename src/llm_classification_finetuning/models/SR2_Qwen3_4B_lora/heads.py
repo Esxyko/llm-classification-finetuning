@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import Tensor, nn
 
@@ -11,6 +13,8 @@ PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
 SR2 = "swap_equivariant_harmonic_discrepancy_v2"
+# Bump this version whenever the SR2 initialization policy changes.
+SR2_INITIALIZATION_VERSION = "scaled_uniform_zero_discrepancy_v1"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -184,17 +188,27 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
 		self.activation = nn.GELU()
 		self.dropout = nn.Dropout(dropout)
-		for layer in (
-			self.self_projection,
-			self.cross_projection,
-			self.discrepancy_projection,
-			self.win_readout,
-			self.tie_readout,
-			self.discrepancy_readout,
+		for layer, bound in (
+			(
+				self.self_projection,
+				math.sqrt(3.0 / (2 * self.self_projection.in_features)),
+			),
+			(
+				self.cross_projection,
+				math.sqrt(3.0 / (2 * self.cross_projection.in_features)),
+			),
+			(
+				self.discrepancy_projection,
+				math.sqrt(3.0 / self.discrepancy_projection.in_features),
+			),
+			(self.win_readout, 0.1 * math.sqrt(3.0 / self.win_readout.in_features)),
+			(self.tie_readout, 0.1 * math.sqrt(3.0 / self.tie_readout.in_features)),
 		):
-			nn.init.xavier_uniform_(layer.weight, gain=1.0)
+			nn.init.uniform_(layer.weight, -bound, bound)
 			if layer.bias is not None:
 				nn.init.zeros_(layer.bias)
+		nn.init.zeros_(self.discrepancy_readout.weight)
+		nn.init.zeros_(self.tie_bias)
 
 	@classmethod
 	def embedding_combination(cls) -> str:

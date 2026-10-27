@@ -211,14 +211,20 @@ present in a fresh checkout.
    and a discrepancy correction, on original rows only. Derive both symmetric
    features before dropout; share one win mask and use independent fusion and
    discrepancy masks. Compute the correction once for the tie branch. Architecture
-   `swap_equivariant_harmonic_discrepancy_v2` uses six Xavier-uniform matrices
-   (gain 1.0), zero-initialized hidden biases, and one zero-initialized FP32 scalar
-   tie bias. Harmonic fusion (epsilon `1e-8`) and final logit arithmetic stay FP32.
+   `swap_equivariant_harmonic_discrepancy_v2` uses zero-mean uniform weights with
+   standard deviations `1/sqrt(2D)` for self/cross projections, `1/sqrt(h)` for
+   the discrepancy projection, and `0.1/sqrt(h)` for win/tie readouts, derived
+   from actual layer dimensions. The discrepancy readout, hidden biases, and
+   sole FP32 scalar tie bias start at zero. Harmonic fusion (epsilon `1e-8`)
+   and final logit arithmetic stay FP32.
    Batch A/B projections and the shared win readout; wins have no `q` term and
    tie uses `s - q + b`. V2 removes the v1 factor of two without changing the
    parameter layout; its architecture marker isolates v1 state.
    Its marker and exact parameter structure isolate warmup caches and reject
    earlier tie-from-wins production checkpoints.
+   SR2 warmup additionally versions initialization as
+   `scaled_uniform_zero_discrepancy_v1`, isolating earlier Xavier-initialized
+   states without changing production-checkpoint compatibility.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen embeddings, plans, warmup,
    and production checkpoints. Map cached entries to current rows/labels; never

@@ -186,12 +186,22 @@ tensor names and shapes additionally reject incompatible head structures.
 Warmup is regenerated for the new architecture.
 Submission does not use warmup caches.
 
+SR2 also includes `head_initialization_version` in its warmup metadata, currently
+`scaled_uniform_zero_discrepancy_v1`. The full metadata is hashed with SHA-256
+to form the cache key and must match exactly when loading. Earlier
+Xavier-initialized SR2 entries lack this field and therefore select different
+keys; they remain on disk without reuse or migration. Initialization versioning
+does not change the head architecture, warmup schema v5, production-checkpoint
+compatibility, or other heads' cache identities. New-version entries remain
+shared by standalone and inline SR2 warmup when all identity fields match.
+Token and batch-plan caches retain their own reuse rules.
+
 ### Identity
 
 | Included in compatibility | Excluded from compatibility |
 | --- | --- |
 | Sorted original training ID set | Validation IDs, holdout/build label, source path/Parquet bytes, row order, training text and labels |
-| Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, quantization, schema | Local path spelling when contents match |
+| Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, SR2 initialization version, quantization, schema | Local path spelling when contents match |
 | Head dropout, A/B objective, warmup epochs/batch size/rate, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
 | Non-quantized training identity for active profiles | LoRA rank/alpha/dropout/targets; joint learning rates, epochs, batch size, accumulation, and token controls |
 

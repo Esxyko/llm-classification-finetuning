@@ -52,11 +52,20 @@ $$
 
 Here $L,M\in\mathbb{R}^{D\times h}$, $N\in\mathbb{R}^{h\times h}$, and
 $R,S,T\in\mathbb{R}^{h\times 1}$. PyTorch stores the transposed linear weights.
-The six matrices are initialized independently with Xavier uniform, gain 1.0;
-$L$ and $M$ are shared across A/B branches. The hidden biases $B_1,B_2$ and
-the sole scalar output bias $b$ are trainable and initialized to zero. The head
-has $2Dh+h^2+5h+1$ trainable parameters. Biases use the existing head learning
-rate and weight decay.
+The five nonzero matrices are sampled independently from zero-mean uniform
+distributions $U(-\sqrt{3}\sigma,\sqrt{3}\sigma)$ with these standard deviations:
+
+| Matrices | Standard deviation $\sigma$ |
+| --- | --- |
+| $L,M$ (`self_projection`, `cross_projection`) | $1/\sqrt{2D}$ |
+| $N$ (`discrepancy_projection`) | $1/\sqrt{h}$ |
+| $R,S$ (`win_readout`, `tie_readout`) | $0.1/\sqrt{h}$ |
+
+$T$ (`discrepancy_readout`) is initialized to zero. Each bound is computed from
+the corresponding layer's actual input dimension. $L$ and $M$ are shared across
+A/B branches. The hidden biases $B_1,B_2$ and the sole scalar output bias $b$
+are trainable and initialized to zero. The head has $2Dh+h^2+5h+1$ trainable
+parameters. Biases use the existing head learning rate and weight decay.
 
 Fusion multiplication/division, absolute values, and mask multiplication act
 elementwise. Both $P'$ and $Q$ use **undropped** $P_1,P_2$. Each sample's win
@@ -89,6 +98,11 @@ and warmup schema is v5. The marker selects different warmup cache keys and
 rejects harmonic/discrepancy v1 and earlier tie-from-wins v1/v2 checkpoints
 without converting their weights.
 Rebuild those checkpoints with the matching configuration; warmup is regenerated.
+The initialization policy is versioned separately as
+`scaled_uniform_zero_discrepancy_v1` in the SR2 warmup identity. This isolates
+earlier Xavier-initialized warmup states without changing production-checkpoint
+compatibility or the architecture/schema versions. See
+[warmup identity](caching.md#identity).
 There is no `A/B_swap` setting or orientation averaging for SR2.
 
 ## Hardware and input limits

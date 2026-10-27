@@ -19,7 +19,12 @@ from torch.optim import AdamW
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import CacheStorage
-from .heads import PAIRWISE_MLP, SR2, create_classification_head
+from .heads import (
+	PAIRWISE_MLP,
+	SR2,
+	SR2_INITIALIZATION_VERSION,
+	create_classification_head,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +116,8 @@ class HeadWarmupCache:
 			metadata["label_smoothing"] = label_smoothing
 		if self._head_architecture != PAIRWISE_MLP:
 			metadata["head_architecture"] = self._head_architecture
+		if self._head_architecture == SR2:
+			metadata["head_initialization_version"] = SR2_INITIALIZATION_VERSION
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))
 		if refresh:
 			return entry
