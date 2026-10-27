@@ -71,6 +71,31 @@ as SR2 caches. Matching original training IDs and effective model/head settings
 remain required; full-data builds use both partitions and therefore a different
 warmup entry. See [warmup configuration](configuration.md#standalone-warmup).
 
+## SR2 chat-template inputs
+
+The active serializer is now `sr2-qwen3-chat-template-v1`, replacing
+`aligned-prompt-newline-response-v1`. It renders alternating user/assistant
+messages with the official SR2 tokenizer, including the final assistant's
+default reasoning block, and encodes without additional special tokens.
+System messages are not supplied. See [conversation serialization](data-preparation.md#conversation-serialization).
+
+Use the current presets and run `uv run preprocess` to regenerate the grouped
+holdout and token cache. The SR2 tokenizer is pinned for preprocessing; new
+token counts may change partition membership. Keep a run's original processed
+split when comparing or reporting historical validation predictions.
+
+Existing token shards and batch plans coexist with newly keyed inputs/plans.
+The changed serializer marker makes previous warmup entries miss and rejects
+plain-text production checkpoints, even when their head architecture matches.
+Rebuild those checkpoints with `uv run model SR2-Qwen3-4B-lora --build` and the
+matching configuration before submission. Historical artifacts are not converted.
+Storage schemas and model/head architecture are unchanged.
+
+Python callers must supply a tokenizer to `ConversationSerializer` and pass the
+result as `serializer=` when constructing either model-data repository. Resolve
+the tokenizer revision before serializing, then encode using that same tokenizer
+with `add_special_tokens=False`.
+
 ## Historical frozen model
 
 This section describes the retired `qwen3-4b` profile, not a current CLI option.
@@ -130,6 +155,7 @@ not supported YAML keys. Configure their documented public fields instead.
 | Warmup schemas before v5 or incompatible historical model/head identities | Not reused by active SR2 |
 | Historical frozen head checkpoints, including schemas before v3 | Retained for historical code; no active frozen profile or conversion to SR2 |
 | Adapter/head schema v1 or another head architecture | Rebuild for the current schema-v2 SR2 head |
+| Plain-text SR2 warmup / adapter-head checkpoint | New serializer keys for warmup; retrain production checkpoint for chat-template input |
 | Historical quantized adapter/head checkpoints | Incompatible with active non-quantized LoRA profiles |
 
 Model downloads use a native Hub cache under optional `MODEL_PATH`; they are

@@ -104,13 +104,6 @@ class SplitTokenBalancer:
 		)
 
 	def _count_tokens(self, data: pd.DataFrame, cache_dir: Path) -> np.ndarray:
-		serializer = ConversationSerializer()
-		records = tuple(
-			serializer.serialize_pair(
-				int(row.id), row.prompt, row.response_a, row.response_b
-			)
-			for row in data.itertuples(index=False)
-		)
 		try:
 			base_config = load_pretrained(
 				AutoConfig.from_pretrained,
@@ -124,6 +117,13 @@ class SplitTokenBalancer:
 			cache = TokenizationCache.from_pretrained(
 				cache_dir, self._config.tokenizer_name, revision=revision
 			)
+			serializer = ConversationSerializer(cache.tokenizer)
+			records = tuple(
+				serializer.serialize_pair(
+					int(row.id), row.prompt, row.response_a, row.response_b
+				)
+				for row in data.itertuples(index=False)
+			)
 		except Exception as error:
 			raise DataPreparationError(
 				f"Could not prepare split tokenizer {self._config.tokenizer_name}: {error}"
@@ -134,7 +134,7 @@ class SplitTokenBalancer:
 		)
 		encoded = cache.encode(
 			[text for row in records for text in (row.response_a, row.response_b)],
-			add_special_tokens=True,
+			add_special_tokens=False,
 			truncation=False,
 		)
 		return np.diff(encoded.offsets).reshape(-1, 2).sum(axis=1)

@@ -85,6 +85,13 @@ For Hub backbones, preparation resolves a fixed revision and uses it for the
 tokenizer and weights. Token reuse depends on actual tokenizer content, not
 just the model name/revision.
 
+All stages use [SR2 chat-template inputs](data-preparation.md#conversation-serialization)
+with no system message. Template output includes its terminal newline and is
+encoded without additional special tokens. Submission checks checkpoint
+compatibility first, then loads the tokenizer at the saved base revision and
+validates full input lengths before loading backbone weights. Plain-text
+checkpoints require rebuilding.
+
 | Precision | Backbone / temporary pooled CPU features | Trainable state and head computation |
 | --- | --- | --- |
 | `bf16` | BF16 residuals, checkpoint inputs, and features | FP32 parameters, gradients, and AdamW moments; BF16 head autocast; FP32 logits |
@@ -103,6 +110,27 @@ applies the [T4 compatibility path](getting-started.md#submission-environment-py
 that expands K/V heads. Training/validation keep their native GQA policy.
 
 ## Measured input lengths
+
+The 2026-10-27 SR2 rebuild uses `sr2-qwen3-chat-template-v1` and the official
+Skywork tokenizer at revision `fd958fef475f323f4e6b195930e3dd918485c668`, encoded
+with `add_special_tokens=False` and no truncation. These values cover both A/B
+branches of all original training rows, before augmentation:
+
+| Statistic | SR2 rebuild value |
+| --- | ---: |
+| Original IDs | 57,477 |
+| Median branch | 297 tokens |
+| 99th percentile | 2,231.94 tokens |
+| Longest branch | 13,866 tokens |
+| Canonical A+B token total | 44,873,727 |
+
+The longest branch is A for ID `2995198009`. The local three-row test CSV has a
+maximum branch length of 851 tokens and a total of 2,328 A+B tokens. All current
+presets set both warmup and SR2 `max_length` to 13,866. New competition test data
+must still pass the normal length checks. The matching saved split and its
+fingerprint are documented under [data preparation](data-preparation.md#saved-sr2-split-2026-10-27).
+
+### Historical plain-text inputs
 
 These are **historical measurements**, not a guarantee for the current saved
 split or test inputs. A 2026-10-20 snapshot used

@@ -28,11 +28,13 @@ fractional remainders. Multirow prompt groups are selected deterministically,
 then singleton groups fill the remaining class quotas. Infeasible quotas fail
 rather than splitting a prompt group.
 
-Token counting uses the training conversation serializer, configured tokenizer,
-special tokens, and shared [text cache](caching.md#shared-token-encodings), without
-padding or truncation. Whole groups with identical three-class count vectors
-are exchanged to meet the validation token target. This preserves initial row
-and class counts exactly; at most 1,000 improving exchanges are allowed.
+Token counting uses the training conversation serializer, configured tokenizer's
+chat template, and shared [text cache](caching.md#shared-token-encodings), without
+padding or truncation. Template output is encoded with `add_special_tokens=False`
+because it already contains the control tokens. Whole groups with identical
+three-class count vectors are exchanged to meet the validation token target.
+This preserves initial row and class counts exactly; at most 1,000 improving
+exchanges are allowed.
 
 Both row and token shares are measured **before augmentation**. For validation
 fraction `f`, relative deviation is `abs(validation_share / f - 1)`:
@@ -84,14 +86,55 @@ and prompt groups crossing partitions.
 
 ### Conversation serialization
 
-SR2 uses `aligned-prompt-newline-response-v1`: chronological
-`prompt\nresponse` turns joined by blank lines, without a chat template.
+SR2 uses `sr2-qwen3-chat-template-v1`. Each A/B branch becomes one complete list
+of alternating `user` prompt and `assistant` response messages, rendered with
+the configured tokenizer's `apply_chat_template(tokenize=False,
+add_generation_prompt=False, continue_final_message=False)`. No system message
+or tools are supplied. The complete output, including its trailing newline, is
+encoded with `add_special_tokens=False`.
+
+The [official SR2 template](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-4B/blob/main/chat_template.jinja)
+uses ChatML role/control tokens and inserts a `<think>\n\n</think>\n\n` block before
+the final assistant response when it has no reasoning content. This default
+behavior is retained. Earlier assistant messages use the official template's
+normal multi-turn handling. Missing or unusable templates fail explicitly.
+
 Prompt and response values must be JSON arrays with the same nonzero turn count.
-Prompts must be strings; responses may be strings or `null` (an empty response).
+Prompts must be strings; responses may be strings or `null`. A null response is
+an empty assistant message, retaining its position in the conversation. The
+Parquet stores source arrays rather than materialized chat text; model
+repositories render them with the same tokenizer used for encoding.
+
+Current presets count tokens with `Skywork/Skywork-Reward-V2-Qwen3-4B` at revision
+`fd958fef475f323f4e6b195930e3dd918485c668`. Switching from the old plain-text
+serializer requires rebuilding the split to balance the new token counts; some
+IDs can change partitions even when the fraction and random seed are unchanged.
 
 SR2 rejects empty or over-limit branches and never truncates; see
 [input limits](lora.md#hardware-and-input-limits). Historical frozen-model
 behavior is recorded in [migration](migration.md#historical-frozen-model).
+
+### Saved SR2 split (2026-10-27)
+
+The default saved artifact was rebuilt from all 57,477 source IDs with the
+official template above, validation fraction `0.2`, and seed `42`. It contains
+114,954 augmented rows across 51,734 prompt groups, preserving source ID order.
+Token balancing made nine whole-group exchanges. Compared with the previous
+saved split, two original IDs moved to validation and two moved to training.
+
+| Partition | Original rows | Augmented rows | Prompt groups | Canonical A+B tokens |
+| --- | ---: | ---: | ---: | ---: |
+| Train | 45,982 | 91,964 | 41,436 | 35,855,325 |
+| Validation | 11,495 | 22,990 | 10,298 | 9,018,402 |
+
+The validation row share is 19.999304% and token share is 20.097288%. Their
+relative deviations from the 20% target are 0.003480% and 0.486438%, respectively,
+both strictly below 0.5%. The reconstructed Parquet SHA-256 is
+`2b06417150aea3d9320b0d40032feae154b6f072164fca09b05f58f64faf8f90`.
+The previous artifact's SHA-256 was
+`f2e9efb77dd2888609fb49c64b8b6884fd0deb05418e951151386667a64ab787`.
+See [measured lengths](lora.md#measured-input-lengths) for the matching tokenizer
+statistics and current preset ceiling.
 
 ## Migration from five folds
 

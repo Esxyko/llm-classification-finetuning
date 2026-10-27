@@ -40,7 +40,7 @@ class ValidationConfig:
 
 	validation_fraction: float
 	random_state: int
-	tokenizer_name: str = "Qwen/Qwen3-4B"
+	tokenizer_name: str = "Skywork/Skywork-Reward-V2-Qwen3-4B"
 	tokenizer_revision: str | None = None
 	max_token_deviation: float = 0.005
 
@@ -238,7 +238,9 @@ class AppConfig:
 			"validation.random_state",
 		)
 		tokenizer_name = _require_non_empty_string(
-			validation_section.get("tokenizer_name", "Qwen/Qwen3-4B"),
+			validation_section.get(
+				"tokenizer_name", "Skywork/Skywork-Reward-V2-Qwen3-4B"
+			),
 			"validation.tokenizer_name",
 		)
 		tokenizer_revision = validation_section.get("tokenizer_revision")

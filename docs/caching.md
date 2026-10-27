@@ -90,6 +90,13 @@ SHA-256 of UTF-8 text. Duplicate texts and overlapping datasets share entries;
 only missing or changed texts are encoded. A tokenizer is still loaded to
 fingerprint it, even on complete hits.
 
+SR2 renders complete conversations with its tokenizer's official chat template
+and encodes them with `add_special_tokens=False`. The resulting text hashes and
+encoding options distinguish these entries from historical plain-text inputs.
+The serializer marker `sr2-qwen3-chat-template-v1` also isolates head-warmup
+state and production checkpoints from the previous format. Old shards and
+warmup files remain historical artifacts; no global cache deletion is needed.
+
 The common representation is the full untruncated token sequence in compact
 int32 CPU views. Retained historical frozen extraction separately caches exact
 truncated outputs for overflowing texts, preserving special-token behavior. SR2 checks
@@ -242,6 +249,21 @@ first_ids = encoded[0]  # Unpadded int32 IDs, in requested input order.
 ```
 
 An already loaded tokenizer can be passed to `TokenizationCache(cache_dir, tokenizer)`.
+For model inputs, construct `ConversationSerializer(cache.tokenizer)` and pass it
+as the required `serializer=` argument of `ModelDataRepository` or
+`ModelTestDataRepository`. Encode the returned A/B texts with
+`cache.encode(texts, add_special_tokens=False)`. `PairwiseTokenStore` sets this
+option automatically. Formatting and encoding must use the same tokenizer.
+
+Submission loads the checkpoint compatibility and saved base revision before
+creating its tokenizer and test serializer. `LoRATrainer.prepare_tokens` can
+prepare and validate those inputs with the same token cache on CPU before
+backbone weights are loaded.
+
+Model registration and SR2 pipeline/trainer exports are loaded on demand, so
+importing CPU data/batch preparation does not import PEFT or initialize CUDA
+through bitsandbytes. Requesting an execution class or the model registry loads
+the normal training dependencies.
 
 ### CPU training-loader preparation
 

@@ -13,6 +13,7 @@ from ...config import AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
 from ...model_storage import load_pretrained
 from ..common import (
+	ConversationSerializer,
 	GPUEnvironment,
 	ModelBuildResult,
 	ModelExecutionResult,
@@ -23,6 +24,7 @@ from ..common import (
 	ModelSubmitResult,
 	ModelTestDataRepository,
 	SubmissionAttention,
+	TokenizationCache,
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository
@@ -49,7 +51,6 @@ class LoRAModelPipeline:
 				f"{self._model_label} execution requires a LoRAModelConfig."
 			)
 		self._model_config = model_config
-		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
 		project_root = project_root.resolve()
 		checkpoint_name = (
 			f"adapter_{checkpoint_tag}.pt" if checkpoint_tag else "adapter.pt"
@@ -171,9 +172,22 @@ class LoRAModelPipeline:
 		trainer: LoRATrainer,
 		submit_devices: tuple[torch.device, torch.device],
 	) -> ModelSubmitResult:
-		data = self._test_repository.load()
 		checkpoint = self._checkpoint_store.load(
-			self._compatibility(self._test_repository.serializer_version)
+			self._compatibility(ConversationSerializer.FORMAT_VERSION)
+		)
+		token_cache = TokenizationCache.from_pretrained(
+			self._config.cache_dir / "token_cache",
+			self._model_config.model_name,
+			revision=checkpoint.base_revision,
+		)
+		data = ModelTestDataRepository(
+			self._config.data.raw_dir,
+			serializer=ConversationSerializer(token_cache.tokenizer),
+		).load()
+		trainer.prepare_tokens(
+			data.canonical_texts,
+			token_cache=token_cache,
+			revision=checkpoint.base_revision,
 		)
 		base_config = load_pretrained(
 			AutoConfig.from_pretrained,

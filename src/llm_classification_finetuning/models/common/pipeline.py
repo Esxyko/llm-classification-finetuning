@@ -6,9 +6,11 @@ import gc
 from pathlib import Path
 
 import torch
+from transformers import AutoConfig
 
 from ...config import AppConfig, ModelConfig
 from ...errors import ModelExecutionError
+from ...model_storage import load_pretrained
 from ..profile import ModelProfile
 from .attention import SubmissionAttention
 from .cache import CachedEmbeddings, EmbeddingCache
@@ -22,6 +24,7 @@ from .contracts import (
 	ModelSubmitResult,
 )
 from .data import (
+	ConversationSerializer,
 	ModelData,
 	ModelDataRepository,
 	ModelTestDataRepository,
@@ -31,6 +34,7 @@ from .extractor import QwenEmbeddingExtractor
 from .hardware import GPUEnvironment
 from .predictor import ModelPredictor
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
+from .token_cache import TokenizationCache
 from .trainer import ModelTrainer
 
 
@@ -58,11 +62,24 @@ class ModelPipeline:
 			cache_schema_version=self.CACHE_SCHEMA_VERSION,
 			checkpoint_schema_version=self.CHECKPOINT_SCHEMA_VERSION,
 		)
+		base_config = load_pretrained(
+			AutoConfig.from_pretrained, self._model_config.model_name
+		)
+		self._base_revision = getattr(base_config, "_commit_hash", None)
+		self._token_cache = TokenizationCache.from_pretrained(
+			config.cache_dir / "token_cache",
+			self._model_config.model_name,
+			revision=self._base_revision,
+		)
+		serializer = ConversationSerializer(self._token_cache.tokenizer)
 		self._training_repository = ModelDataRepository(
 			processed_path=config.data.processed_path,
+			serializer=serializer,
 			validation_fraction=config.validation.validation_fraction,
 		)
-		self._test_repository = ModelTestDataRepository(config.data.raw_dir)
+		self._test_repository = ModelTestDataRepository(
+			config.data.raw_dir, serializer=serializer
+		)
 		self._embedding_cache = EmbeddingCache(config.cache_dir / "embedding_cache")
 		project_root = project_root.resolve()
 		checkpoint_name = f"head_{checkpoint_tag}.pt" if checkpoint_tag else "head.pt"
@@ -151,10 +168,10 @@ class ModelPipeline:
 	def _run_submit(self, *, refresh_cache: bool) -> ModelSubmitResult:
 		submit_devices = GPUEnvironment(self._config.gpu).configure_submit()
 		device = submit_devices[0]
-		data = self._test_repository.load()
 		checkpoint = self._checkpoint_store.load(
 			self._compatibility.checkpoint(self._test_repository.serializer_version)
 		)
+		data = self._test_repository.load()
 		embeddings, cache_reused = self._load_or_extract_embeddings(
 			records=data.canonical_texts,
 			refresh_cache=refresh_cache,
@@ -192,6 +209,8 @@ class ModelPipeline:
 			model_config=self._model_config,
 			device=device,
 			token_cache_dir=self._config.cache_dir / "token_cache",
+			token_cache=self._token_cache,
+			revision=self._base_revision,
 			refresh_cache=refresh_cache,
 			submit_devices=submit_devices,
 		)

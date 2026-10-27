@@ -770,6 +770,28 @@ class LoRATrainer:
 			progress.advance(description, stage=progress_stage, weight=progress_weight)
 		return result
 
+	def prepare_tokens(
+		self,
+		records: tuple[PairwiseText, ...],
+		*,
+		token_cache: TokenizationCache,
+		revision: str | None,
+	) -> PairwiseTokenStore:
+		"""Prepare full inputs on CPU using the tokenizer that rendered their template."""
+		if self._model_initialized and revision != self._base_revision:
+			raise ModelExecutionError(
+				f"Prepared {self._model_label} tokens do not match the model's base revision."
+			)
+		self._tokens = PairwiseTokenStore(
+			records,
+			token_cache,
+			revision=revision,
+			max_length=self._config.max_length,
+			refresh_cache=self._refresh_cache,
+			max_length_field=f"{self._config_key}.max_length",
+		)
+		return self._tokens
+
 	def _tokens_for(self, records: tuple[PairwiseText, ...]) -> PairwiseTokenStore:
 		"""Reuse token storage across stages while keeping tokenizer revisions aligned."""
 		if not self._model_initialized:
@@ -784,13 +806,10 @@ class LoRATrainer:
 				self._config.model_name,
 				revision=self._base_revision,
 			)
-			self._tokens = PairwiseTokenStore(
+			self.prepare_tokens(
 				records,
-				cache,
+				token_cache=cache,
 				revision=self._base_revision,
-				max_length=self._config.max_length,
-				refresh_cache=self._refresh_cache,
-				max_length_field=f"{self._config_key}.max_length",
 			)
 		return self._tokens
 

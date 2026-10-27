@@ -66,13 +66,16 @@ Booleans. Unquoted strings such as `bf16`, `sdpa`, and `cuda:0` are valid.
 | `data.processed_path` | Nonempty path ending in `.parquet` |
 | `validation.random_state` | Integer |
 | `validation.validation_fraction` | Number in `(0, 1)`; default `0.2` |
-| `validation.tokenizer_name` | Hub ID or local tokenizer directory; default `Qwen/Qwen3-4B` |
+| `validation.tokenizer_name` | Hub ID or local tokenizer directory with a chat template; default `Skywork/Skywork-Reward-V2-Qwen3-4B` |
 | `validation.tokenizer_revision` | Nonempty revision string or `null`; default `null` |
 | `validation.max_token_deviation` | Number in `(0, 1)`; default `0.005` |
 
 The tokenizer is used for preparation independently of optional model sections.
-The shipped presets pin its revision for reproducible token counts. If you
-change the training tokenizer and rebuild the split, update this tokenizer too.
+The shipped presets select the SR2 tokenizer and pin revision
+`fd958fef475f323f4e6b195930e3dd918485c668` for reproducible chat-template token
+counts. If you change the training tokenizer and rebuild the split, update this
+tokenizer too. Preparation renders the complete conversation before counting,
+without adding a second set of special tokens.
 
 ### GPU fields
 

@@ -1,0 +1,27 @@
+{
+  "parts": [
+    {
+      "name": "000001-8798c6ed96cf80d6c4ffec8c33dff432cb001694100891cac566a4e901b89610.part",
+      "sha256": "8798c6ed96cf80d6c4ffec8c33dff432cb001694100891cac566a4e901b89610",
+      "size": 103809024
+    },
+    {
+      "name": "000002-b20c43df17a0c2de62721536c210b24f04f1e32f8af8e4f21aefca40f322bb84.part",
+      "sha256": "b20c43df17a0c2de62721536c210b24f04f1e32f8af8e4f21aefca40f322bb84",
+      "size": 103809024
+    },
+    {
+      "name": "000003-4ca8767e7fa8c5fed64430c088c60e4d37426069b103962b7a7510465de577a7.part",
+      "sha256": "4ca8767e7fa8c5fed64430c088c60e4d37426069b103962b7a7510465de577a7",
+      "size": 103809024
+    },
+    {
+      "name": "000004-6c9f6c0927c6a8871a8acbfbc8dec1f43b9ebba6443267d7795cf3dfd595dedc.part",
+      "sha256": "6c9f6c0927c6a8871a8acbfbc8dec1f43b9ebba6443267d7795cf3dfd595dedc",
+      "size": 86630400
+    }
+  ],
+  "sha256": "bafeda40ab607493664c2e30b2eef605d3990bf9aef14a61ef03762b285acf0b",
+  "size": 398057472,
+  "version": 1
+}

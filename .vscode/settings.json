@@ -1,4 +1,5 @@
 {
+	"files.eol": "\n",
 	"python.analysis.autoImportCompletions": true,
 	"antigravity.autoOpenFiles": true,
 	"antigravity.autoRecover": true

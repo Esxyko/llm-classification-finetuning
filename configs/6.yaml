@@ -6,8 +6,8 @@ data:
 validation:
   validation_fraction: 0.2
   random_state: 42
-  tokenizer_name: Qwen/Qwen3-4B
-  tokenizer_revision: 1cfa9a7208912126459214e8b04321603b3df60c
+  tokenizer_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  tokenizer_revision: fd958fef475f323f4e6b195930e3dd918485c668
   max_token_deviation: 0.005
 
 gpu:
@@ -20,7 +20,7 @@ gpu:
 warmup:
   label_smoothing: 0.12
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
-  max_length: 13514
+  max_length: 13866
   hidden_size: 256
   dropout: 0.1
   warmup_epochs: 1
@@ -35,7 +35,7 @@ warmup:
 SR2_Qwen3_4B_lora:
   label_smoothing: 0.12
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
-  max_length: 13514
+  max_length: 13866
   gradient_checkpointing_threshold: 10752
   gradient_checkpointing_budget: 131072
   training_batch_size: 1

@@ -31,6 +31,8 @@ class QwenEmbeddingExtractor:
 		device: torch.device,
 		*,
 		token_cache_dir: Path,
+		token_cache: TokenizationCache | None = None,
+		revision: str | None = None,
 		refresh_cache: bool = False,
 		submit_devices: tuple[torch.device, torch.device] | None = None,
 	) -> None:
@@ -41,7 +43,7 @@ class QwenEmbeddingExtractor:
 		self._model: PairwiseQwenClassifier | None = None
 		try:
 			base_config = load_pretrained(
-				AutoConfig.from_pretrained, model_config.model_name
+				AutoConfig.from_pretrained, model_config.model_name, revision=revision
 			)
 			self._device_map = (
 				GPUEnvironment.submission_device_map(base_config, submit_devices)
@@ -60,7 +62,7 @@ class QwenEmbeddingExtractor:
 				raise ModelExecutionError(
 					"Could not resolve an immutable backbone revision for embedding caching."
 				)
-			self._token_cache = TokenizationCache.from_pretrained(
+			self._token_cache = token_cache or TokenizationCache.from_pretrained(
 				token_cache_dir, model_config.model_name, revision=self.base_revision
 			)
 			self._token_cache.tokenizer.truncation_side = "right"
@@ -83,6 +85,7 @@ class QwenEmbeddingExtractor:
 				for record in records
 				for text in (record.response_a, record.response_b)
 			],
+			add_special_tokens=False,
 			truncation=True,
 			max_length=self._config.max_length,
 			refresh_cache=self._refresh_cache,

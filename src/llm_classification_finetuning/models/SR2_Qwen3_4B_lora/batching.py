@@ -21,6 +21,7 @@ from ...errors import ModelExecutionError
 from ...model_storage import load_pretrained
 from ..common import (
 	CacheStorage,
+	ConversationSerializer,
 	LocalBackboneFingerprint,
 	ModelData,
 	ModelDataRepository,
@@ -489,8 +490,18 @@ class LoRATrainingBatchRepository:
 		if profile.ab_swap_override is not None:
 			model = replace(model, ab_swap=profile.ab_swap_override)
 		try:
+			base_config = load_pretrained(AutoConfig.from_pretrained, model.model_name)
+			revision = getattr(base_config, "_commit_hash", None)
+			if revision is None and not Path(model.model_name).is_dir():
+				raise ModelExecutionError(
+					f"Could not resolve a fixed Hub revision for {model_label} token caching."
+				)
+			token_cache = TokenizationCache.from_pretrained(
+				config.cache_dir / "token_cache", model.model_name, revision=revision
+			)
 			repository = ModelDataRepository(
 				config.data.processed_path,
+				serializer=ConversationSerializer(token_cache.tokenizer),
 				validation_fraction=config.validation.validation_fraction,
 			)
 			data = repository.load()
@@ -508,12 +519,6 @@ class LoRATrainingBatchRepository:
 					),
 					fingerprint=data.fingerprint,
 				)
-			base_config = load_pretrained(AutoConfig.from_pretrained, model.model_name)
-			revision = getattr(base_config, "_commit_hash", None)
-			if revision is None and not Path(model.model_name).is_dir():
-				raise ModelExecutionError(
-					f"Could not resolve a fixed Hub revision for {model_label} token caching."
-				)
 			return cls(
 				config=model,
 				data=data,
@@ -529,11 +534,7 @@ class LoRATrainingBatchRepository:
 					config.cache_dir / "adapter_batches",
 					model_label,
 				),
-				token_cache=TokenizationCache.from_pretrained(
-					config.cache_dir / "token_cache",
-					model.model_name,
-					revision=revision,
-				),
+				token_cache=token_cache,
 				refresh_cache=refresh_cache,
 				model_key=model_key,
 				model_label=model_label,

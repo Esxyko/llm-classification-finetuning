@@ -402,6 +402,7 @@ class PairwiseTokenStore:
 				for record in records
 				for text in (record.response_a, record.response_b)
 			],
+			add_special_tokens=False,
 			refresh_cache=refresh_cache,
 		)
 		self.tokens = encoded.tokens

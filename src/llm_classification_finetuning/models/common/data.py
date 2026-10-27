@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from transformers import PreTrainedTokenizerBase
 
 from ...errors import ModelExecutionError
 from .inputs import TestInputLoader, TrainingInputLoader
@@ -41,9 +42,20 @@ class ModelTestData:
 
 
 class ConversationSerializer:
-	"""Serialize aligned prompt/response JSON arrays as chronological turns."""
+	"""Render aligned user/assistant turns with the supplied model's chat template."""
 
-	FORMAT_VERSION = "aligned-prompt-newline-response-v1"
+	FORMAT_VERSION = "sr2-qwen3-chat-template-v1"
+
+	def __init__(self, tokenizer: PreTrainedTokenizerBase) -> None:
+		self._tokenizer = tokenizer
+		try:
+			self._chat_template = tokenizer.get_chat_template()
+			if not self._chat_template:
+				raise ValueError("the tokenizer has no chat template")
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not prepare the conversation chat template: {error}"
+			) from error
 
 	def serialize_pair(
 		self,
@@ -90,21 +102,37 @@ class ConversationSerializer:
 			raise ModelExecutionError(f"Row {row_id} {column} must be a JSON array.")
 		return parsed
 
-	@staticmethod
 	def _serialize_branch(
+		self,
 		row_id: int,
 		prompts: list[Any],
 		responses: list[Any],
 		column: str,
 	) -> str:
-		turns: list[str] = []
+		messages: list[dict[str, str]] = []
 		for turn, (prompt, response) in enumerate(zip(prompts, responses, strict=True)):
 			if response is not None and not isinstance(response, str):
 				raise ModelExecutionError(
 					f"Row {row_id} {column} turn {turn} must be a string or null."
 				)
-			turns.append(f"{prompt}\n{response or ''}")
-		return "\n\n".join(turns)
+			messages.extend(
+				(
+					{"role": "user", "content": prompt},
+					{"role": "assistant", "content": response or ""},
+				)
+			)
+		try:
+			return self._tokenizer.apply_chat_template(
+				messages,
+				chat_template=self._chat_template,
+				tokenize=False,
+				add_generation_prompt=False,
+				continue_final_message=False,
+			)
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not apply the chat template to row {row_id} {column}: {error}"
+			) from error
 
 
 class ModelDataRepository:
@@ -114,12 +142,16 @@ class ModelDataRepository:
 	SWAPPED_LABELS = TrainingInputLoader.SWAPPED_LABELS
 
 	def __init__(
-		self, processed_path: Path, *, validation_fraction: float | None = None
+		self,
+		processed_path: Path,
+		*,
+		serializer: ConversationSerializer,
+		validation_fraction: float | None = None,
 	) -> None:
 		self._loader = TrainingInputLoader(
 			processed_path, validation_fraction=validation_fraction
 		)
-		self._serializer = ConversationSerializer()
+		self._serializer = serializer
 
 	@property
 	def serializer_version(self) -> str:
@@ -156,9 +188,9 @@ class ModelTestDataRepository:
 	TEST_COLUMNS = TestInputLoader.TEST_COLUMNS
 	SUBMISSION_COLUMNS = TestInputLoader.SUBMISSION_COLUMNS
 
-	def __init__(self, raw_dir: Path) -> None:
+	def __init__(self, raw_dir: Path, *, serializer: ConversationSerializer) -> None:
 		self._loader = TestInputLoader(raw_dir)
-		self._serializer = ConversationSerializer()
+		self._serializer = serializer
 
 	@property
 	def serializer_version(self) -> str:

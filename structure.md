@@ -94,9 +94,9 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 
 | Module | Owns |
 | --- | --- |
-| `models/__init__.py` | `ModelRegistration` and ordered active registry |
+| `models/__init__.py` | `ModelRegistration` and lazily loaded ordered active execution registry, keeping CPU data imports independent of PEFT |
 | `models/profile.py` | Immutable selector/config/artifact identity and effective A/B policy |
-| `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports |
+| `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports, deferring pipeline/trainer imports until execution |
 | `models/SR2_Qwen3_4B_lora/profile.py` | SR2 identity usable below the registration surface without import cycles; default for LoRA Python APIs |
 | `models/warmup.py` | Train-partition-only standalone SR2 head warmup, sharing SR2's cache namespace without adapters, validation, joint plans, or production checkpoint |
 
@@ -115,7 +115,7 @@ they do not expose an active frozen CLI profile.
 | --- | --- |
 | `contracts.py` | Execution modes, pipeline interface, and validation/build/submit/warmup result summaries |
 | `inputs.py` | Processed/test table loading, strict split/orientation/ID validation, multipart reads, and reconstructed source fingerprints |
-| `data.py` | Aligned conversation serialization and pairwise training/test repositories |
+| `data.py` | Tokenizer-injected official chat-template serialization and pairwise training/test repositories |
 | `hardware.py` | CUDA/precision validation, direct loading maps, dual-GPU layer placement, and per-run allocator peaks |
 | `attention.py` | Scoped submission K/V-head expansion and fused-SDPA compatibility; restore predicates/backend flags |
 | `backbone.py` | Local weight/configuration content fingerprints for caches |
@@ -148,7 +148,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, swap-equivariant tie-from-wins architecture (introduced by EXPT2), and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
-| `trainer.py` | Fixed-rate warmup/joint stages, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup/joint stages, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, validation, atomic storage, and restoration |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
@@ -201,8 +201,11 @@ present in a fresh checkout.
    infeasible preparation leaves the previous dataset intact. See
    [data preparation](docs/data-preparation.md).
 2. **Input and output order:** validate complete processed orientation pairs and
-   test/template ID order before execution. Serialize aligned turns without a
-   chat template. Predictions use the fixed competition column order with finite
+   test/template ID order before execution. Render alternating user/assistant
+   turns with the tokenizer's official chat template, no system message, and no
+   generation prompt; preserve its default reasoning block and trailing newline.
+   Encode with the same tokenizer and `add_special_tokens=False`. Predictions
+   use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/models.md#build-and-submit).
 3. **Profile objectives:** SR2 uses the tie-from-wins head and original rows
    only. Preserve shared win dropout, separate tie dropout, and FP32 logits.
