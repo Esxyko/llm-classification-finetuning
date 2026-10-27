@@ -257,15 +257,32 @@ checkpointing. A positive threshold enables a reusable global plan:
    below. Choose the candidate with the fewest micro-batches, then the lowest
    total `P`. Exact ties retain the first candidate in the order above.
 
-Both packing passes process rows by descending `A_length + B_length`, then
-ascending sample identity. For each row, consider existing micro-batches whose
-resulting `P` fits the applicable budget. Choose the smallest remaining budget;
-ties prefer the earliest-created micro-batch. If none fits, create a new
-micro-batch.
+Both passes compare two candidates within each group, choosing the fewest
+micro-batches, then the lowest total `P`:
 
-This is a heuristic, not a global optimum. A single pair above the threshold
-remains alone. When `P` is at or below a positive threshold, checkpointing is
-disabled; above it, checkpointing is enabled for **both branches through backward**.
+- A suffix dynamic program finds the optimal contiguous partition of rows that
+  individually fit the applicable limit. The initial pass preserves the current
+  global sort's order within each group; the second pass uses descending
+  `A_length + B_length`, then ascending sample identity. Rows individually above
+  the limit stay alone and do not interrupt the eligible sequence. Interval
+  maxima are updated incrementally; extension stops as soon as `P` exceeds the
+  limit. Equal DP scores retain the first enumerated cut, shortest prefix first.
+- The retained best-fit candidate processes rows by descending
+  `A_length + B_length`, then ascending sample identity. Each row joins the
+  feasible micro-batch with the smallest remaining budget, breaking ties by
+  creation order; if none fits, it starts a new micro-batch. Exact ties between
+  the two candidates retain best-fit.
+
+DP is optimal for contiguous cuts in the specified order; the overall packing
+remains a heuristic for unrestricted assignments. Both candidates use the same
+`P`, with extra DP space linear in group size. The DP and best-fit each take
+quadratic time in the worst case; over-limit intervals and permanently closed
+best-fit batches are skipped. When all eligible rows fit in one micro-batch,
+the packer returns that result directly in best-fit order.
+
+A single pair above the threshold remains alone. When `P` is at or below a
+positive threshold, checkpointing is disabled; above it, checkpointing is enabled
+for **both branches through backward**.
 Both branch graphs remain live until the single backward pass. Setting the
 threshold too high can exceed GPU memory because non-checkpointed batches keep
 both branches' full activations. Lower the positive threshold, or set it to `0`

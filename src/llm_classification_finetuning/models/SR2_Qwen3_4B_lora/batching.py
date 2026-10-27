@@ -123,7 +123,7 @@ class TrainingBatchPlan:
 
 
 class _TokenBudgetPacker:
-	"""Best-fit pack rows by padded A/B cost, retaining oversized singletons."""
+	"""Choose optimal contiguous cuts or best-fit, retaining oversized singletons."""
 
 	def __init__(
 		self,
@@ -132,39 +132,131 @@ class _TokenBudgetPacker:
 		budget: int,
 	) -> None:
 		self._lengths = lengths
-		self._identities = identities
+		self._sort_keys = [
+			(-a - b, *identity)
+			for (a, b), identity in zip(lengths, identities, strict=True)
+		]
 		self._budget = budget
 
-	def pack(self, indices: list[int]) -> tuple[tuple[int, ...], ...]:
-		batches: list[list[int]] = []
-		maxima: list[tuple[int, int]] = []
-		for index in sorted(
-			indices,
-			key=lambda value: (-sum(self._lengths[value]), *self._identities[value]),
-		):
+	def pack(
+		self, indices: list[int], *, preserve_order: bool = False
+	) -> tuple[tuple[int, ...], ...]:
+		if len(indices) < 2:
+			return tuple((index,) for index in indices)
+		ordered = sorted(indices, key=self._sort_keys.__getitem__)
+		eligible: list[int] = []
+		oversized: list[tuple[int, ...]] = []
+		max_a = max_b = 0
+		for index in ordered:
 			a, b = self._lengths[index]
-			candidates = []
-			for batch_index, (batch, (max_a, max_b)) in enumerate(
-				zip(batches, maxima, strict=True)
-			):
-				cost = (len(batch) + 1) * (max(a, max_a) + max(b, max_b))
-				if cost <= self._budget:
-					candidates.append((self._budget - cost, batch_index))
-			if candidates:
-				_, batch_index = min(candidates)
-				batches[batch_index].append(index)
-				max_a, max_b = maxima[batch_index]
-				maxima[batch_index] = max(a, max_a), max(b, max_b)
+			if a + b > self._budget:
+				oversized.append((index,))
 			else:
-				batches.append([index])
-				maxima.append((a, b))
-		return tuple(tuple(batch) for batch in batches)
+				eligible.append(index)
+				max_a, max_b = max(max_a, a), max(max_b, b)
+		if not eligible:
+			return tuple(oversized)
+		if len(eligible) * (max_a + max_b) <= self._budget:
+			# This is also the exact best-fit result, including its row order.
+			return (*oversized, tuple(eligible))
+
+		# Oversized singletons add the same fixed count and cost to both candidates.
+		best_fit, padded_tokens = self._best_fit(eligible)
+		dp_order = eligible
+		if preserve_order:
+			dp_order = (
+				[
+					index
+					for index in indices
+					if sum(self._lengths[index]) <= self._budget
+				]
+				if oversized
+				else indices
+			)
+		candidate = self._pack_contiguous(dp_order, (len(best_fit), padded_tokens))
+		if candidate is None:
+			candidate = tuple(tuple(batch) for batch in best_fit)
+		return tuple(oversized) + candidate
+
+	def _best_fit(self, ordered: list[int]) -> tuple[list[list[int]], int]:
+		"""Pack descending rows, scanning only batches that can still grow."""
+		batches: list[list[int]] = []
+		open_batches: dict[int, tuple[int, int]] = {}
+		padded_tokens = 0
+		budget = self._budget
+		lengths = self._lengths
+		for index in ordered:
+			a, b = lengths[index]
+			best_batch = -1
+			best_cost = -1
+			# Dictionary order retains creation-order ties when maximizing cost.
+			for batch_index, (max_a, max_b) in open_batches.items():
+				cost = (len(batches[batch_index]) + 1) * (max(a, max_a) + max(b, max_b))
+				if best_cost < cost <= budget:
+					best_batch, best_cost = batch_index, cost
+			if best_batch >= 0:
+				batch = batches[best_batch]
+				max_a, max_b = open_batches[best_batch]
+				padded_tokens += best_cost - len(batch) * (max_a + max_b)
+				batch.append(index)
+				max_a, max_b = max(a, max_a), max(b, max_b)
+			else:
+				best_batch = len(batches)
+				batch = [index]
+				batches.append(batch)
+				max_a, max_b = a, b
+				padded_tokens += a + b
+			# Adding rows cannot lower either maximum, so a closed batch stays closed.
+			if (len(batch) + 1) * (max_a + max_b) <= budget:
+				open_batches[best_batch] = max_a, max_b
+			else:
+				open_batches.pop(best_batch, None)
+		return batches, padded_tokens
+
+	def _pack_contiguous(
+		self, indices: list[int], incumbent: tuple[int, int]
+	) -> tuple[tuple[int, ...], ...] | None:
+		"""Reconstruct the optimal feasible suffix cuts only if they beat best-fit."""
+		lengths = [self._lengths[index] for index in indices]
+		rows = len(indices)
+		batch_counts = [0] * (rows + 1)
+		padded_tokens = [0] * (rows + 1)
+		next_cuts = [0] * rows
+		budget = self._budget
+		for start in range(rows - 1, -1, -1):
+			# All supplied rows fit individually; enumerate the singleton cut first.
+			max_a, max_b = lengths[start]
+			best_count = 1 + batch_counts[start + 1]
+			best_tokens = max_a + max_b + padded_tokens[start + 1]
+			best_cut = start + 1
+			for end in range(start + 1, rows):
+				a, b = lengths[end]
+				max_a, max_b = max(max_a, a), max(max_b, b)
+				cost = (end - start + 1) * (max_a + max_b)
+				if cost > budget:
+					break
+				count = 1 + batch_counts[end + 1]
+				tokens = cost + padded_tokens[end + 1]
+				if count < best_count or (count == best_count and tokens < best_tokens):
+					best_count, best_tokens, best_cut = count, tokens, end + 1
+			batch_counts[start] = best_count
+			padded_tokens[start] = best_tokens
+			next_cuts[start] = best_cut
+		if (batch_counts[0], padded_tokens[0]) >= incumbent:
+			return None
+		batches: list[tuple[int, ...]] = []
+		start = 0
+		while start < rows:
+			stop = next_cuts[start]
+			batches.append(tuple(indices[start:stop]))
+			start = stop
+		return tuple(batches)
 
 
 class _GlobalBatchPlanner:
-	"""Compare three stable global sorts using best-fit packing inside each group."""
+	"""Compare three stable global sorts with contiguous DP and best-fit candidates."""
 
-	VERSION = 1
+	VERSION = 3
 
 	def __init__(
 		self,
@@ -189,7 +281,9 @@ class _GlobalBatchPlanner:
 				key=lambda index: self._sort_key(index, order),
 			)
 			groups = tuple(
-				self._packer.pack(indices[start : start + self._group_size])
+				self._packer.pack(
+					indices[start : start + self._group_size], preserve_order=True
+				)
 				for start in range(0, len(indices), self._group_size)
 			)
 			candidate = TrainingBatchPlan(

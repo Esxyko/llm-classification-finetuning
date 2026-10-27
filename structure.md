@@ -228,8 +228,12 @@ present in a fresh checkout.
    per finalized group, short-tail merging, and the merged joint update last.
    Epoch length queries must match iteration without changing RNG state.
    Packing and checkpointing use total independently padded A/B tokens
-   (`rows * (longest_A + longest_B)`); placements minimize remaining budget,
-   and plans minimize micro-batch count before total padded tokens.
+   (`rows * (longest_A + longest_B)`). Both passes compare optimal contiguous
+   DP cuts with best-fit, minimizing micro-batch count before total padded
+   tokens and retaining best-fit on exact ties. DP preserves each global sort
+   in the initial pass and descending A+B order in the second; individually
+   oversized rows stay alone outside the eligible sequence. Best-fit placements
+   minimize remaining budget, then creation order.
    Planning, plan validation, and runtime share this cost definition. Both
    packing passes stay within finalized update boundaries.
    Checkpointing is chosen once per A/B joint micro-batch through backward;

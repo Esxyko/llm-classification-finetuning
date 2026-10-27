@@ -137,19 +137,22 @@ embedding files and shards using retired identities are not read. See
 ## LoRA batch plans
 
 Plans under `adapter_batches/plans/*.pt` use schema v4 and planning algorithm
-v1. Keys contain sorted selected `(id, is_swapped, A_length, B_length)` rows,
+v3. Keys contain sorted selected `(id, is_swapped, A_length, B_length)` rows,
 checkpointing threshold, update-group size, and planning version. Cached
 identities map back to current dataset indices and labels on each read.
 
-Algorithm v1 constrains packing by total padded A/B tokens
+Algorithm v3 constrains packing by total padded A/B tokens
 `P = rows * (longest_A + longest_B)`. It compares three global sorts and ranks
-plans by micro-batch count, then total `P`. Within each group, rows are processed
-by descending A+B length and ascending sample identity. Feasible placements
-minimize remaining budget, then micro-batch creation order. The stored
+plans by micro-batch count, then total `P`. Within each group, a suffix DP finds
+the optimal contiguous partition of threshold-eligible rows in that global
+sort's order; oversized rows stay alone. It is compared with the retained
+descending-A+B best-fit candidate using the same objective, retaining best-fit
+on exact ties. Best-fit placements minimize remaining budget, then micro-batch
+creation order; exact global-plan ties retain the first sort. The stored
 `padded_tokens` is the sum of `P` across all micro-batches; validation uses `P`
-for both the threshold and this total. Matching historical v1 plans are reused
-after validation. The single-branch algorithm v2 has a separate cache key and
-is not reused or migrated; its files remain on disk.
+for both the threshold and this total. Historical best-fit v1 and single-branch
+v2 plans have separate cache keys and are not reused or migrated; their files
+remain on disk. Matching v3 plans are reused after validation.
 
 Changing selected rows, lengths, threshold, or effective update size selects a
 new plan. Changing labels, reference order, split names, unselected validation
@@ -157,10 +160,12 @@ inputs, or only `gradient_checkpointing_budget` does not. With threshold `0`,
 there is no persistent global plan; full tokens are still cached.
 
 Only base groups are persisted. Epoch shuffling, short-tail merging, and the
-second pass over checkpointed singletons happen in memory. The second-pass
-budget can therefore change while reusing the base plan. Logged plan
-micro-batch counts describe the base plan; update counts follow finalized merged
-groups. See [joint batching](lora.md#optional-token-budget-training-batches).
+second pass over checkpointed singletons happen in memory. The second pass
+compares DP cuts in descending A+B order with best-fit under the second-pass
+budget, within each finalized update. That budget can therefore change while
+reusing the base plan. Logged plan micro-batch counts describe the base plan;
+update counts follow finalized merged groups. See
+[joint batching](lora.md#optional-token-budget-training-batches).
 
 ## LoRA head warmup
 
