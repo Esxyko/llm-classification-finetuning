@@ -21,10 +21,10 @@ warmup:
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
-  hidden_size: 256
+  hidden_size: 128
   dropout: 0.1
   warmup_epochs: 2
-  extraction_budget: 1048576
+  extraction_budget: 1081344
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.0015
   weight_decay: 0.01
@@ -36,8 +36,8 @@ SR2_Qwen3_4B_lora:
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
-  gradient_checkpointing_threshold: 12288
-  gradient_checkpointing_budget: 147456
+  gradient_checkpointing_threshold: 11776
+  gradient_checkpointing_budget: 141312
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 1024
@@ -45,7 +45,7 @@ SR2_Qwen3_4B_lora:
   extraction_budget: 786432
   learning_rate: 0.00015
   min_lr_ratio: 0.125
-  hidden_size: 256
+  hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1
   max_grad_norm: 1.0
