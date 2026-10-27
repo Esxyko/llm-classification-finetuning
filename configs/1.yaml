@@ -24,7 +24,7 @@ warmup:
   hidden_size: 256
   dropout: 0.1
   warmup_epochs: 2
-  extraction_budget: 540672
+  extraction_budget: 786432
   warmup_training_batch_size: 2048
   warmup_learning_rate: 0.0015
   weight_decay: 0.01

@@ -200,10 +200,23 @@ See [data preparation](data-preparation.md#one-shared-trainvalidation-split).
 | A LoRA section's `head_inference_batch_size` | Head inference after extraction; counts pairs, not tokens |
 
 Extraction sorts individual A/B branches by descending length, breaking ties by
-original branch index, then best-fit packs them at cost
-`branch_count * longest_branch_length`. Equality is allowed. A branch longer
-than the budget runs alone, so the budget is **not a hard memory or input-length
-cap**. Features are scattered back to their original pair positions.
+original branch index. Batch cost is `branch_count * longest_branch_length`;
+equality with the budget is allowed. A branch longer than the budget runs alone,
+so the budget is **not a hard memory or input-length cap**. The remaining branches
+are packed by comparing two candidates, minimizing micro-batch count first and
+then total padded tokens:
+
+- A suffix dynamic program finds the optimal contiguous partition in the sorted
+  order. Equal DP scores retain the first enumerated cut, shortest prefix first.
+- The retained best-fit candidate greedily fills batches in descending branch
+  order. Exact ties between candidates retain best-fit.
+
+Oversized singletons contribute the same fixed count and cost to both candidates.
+When all eligible branches fit in one batch, that result is returned directly.
+The DP uses linear extra space and quadratic time in the worst case; descending
+lengths make each interval's maximum its first length and bound feasible cuts by
+the budget. This shared sampler also handles retained frozen-model extraction.
+Features are scattered back to their original pair positions.
 
 LoRA rejects empty or over-limit branches and never truncates. Extraction plans
 stay in memory. Changing the extraction budget does not invalidate tokens,

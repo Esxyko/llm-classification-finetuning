@@ -125,9 +125,13 @@ Complete hits skip backbone-weight loading, though hardware, config, and tokeniz
 checks still run.
 
 Pooled vectors are stored as FP16 CPU tensors and consumed by the frozen head as
-FP32. Missing branches use the retained best-fit extraction sampler
-and are scattered back to their requested positions. Batch composition, attention,
-and TF32 can affect rounding, even though the latter two are outside the key.
+FP32. Missing branches use the shared extraction sampler, comparing descending
+contiguous DP cuts with best-fit by micro-batch count, then total padded branch
+tokens; exact ties retain best-fit. Features are scattered back to their requested
+positions. Extraction plans stay in memory and this packing choice does not
+change cache identities. Batch composition, attention, and TF32 can affect
+rounding, even though the latter two are outside the key. See
+[extraction packing](configuration.md#extraction-token-budgets).
 
 Reads check blob length/checksum; fresh vectors are checked for finite values.
 Invalid entries are recomputed and corrupt shards archived. Old dataset-wide

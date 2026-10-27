@@ -123,7 +123,7 @@ they do not expose an active frozen CLI profile.
 | `cache_storage.py` | Locked file sessions, atomic/multipart publication, checksums, and corruption archives |
 | `token_cache.py` | Content-addressed text encodings, compact CPU views, canonical pair tokens, and context validation |
 | `cache.py` | Per-branch SQLite frozen embeddings and rebinding to current rows |
-| `extraction_batching.py` | Deterministic best-fit branch extraction plans and stable length/iteration behavior |
+| `extraction_batching.py` | Deterministic branch extraction plans comparing contiguous DP with best-fit by batch count, then padded tokens; stable length/iteration behavior |
 | `extractor.py` | CPU identity preparation and lazy GPU encoding of missing frozen branches |
 | `model.py` | Frozen backbone, last-real-token pooling, and `3H` pairwise MLP |
 | `orientation.py` | A/B probability averaging and validation-row alignment |
