@@ -24,7 +24,7 @@ warmup:
   hidden_size: 128
   dropout: 0.1
   warmup_epochs: 1
-  extraction_budget: 591840
+  extraction_budget: 516096
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   weight_decay: 0.01
@@ -37,7 +37,7 @@ SR2_Qwen3_4B_lora:
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
   gradient_checkpointing_threshold: 10752
-  gradient_checkpointing_budget: 12330
+  gradient_checkpointing_budget: 129024
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 2048
