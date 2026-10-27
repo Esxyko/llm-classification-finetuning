@@ -1,0 +1,56 @@
+Saving validation log to /content/llm-classification-finetuning/results/logs/validate-20261027-020458-709510.log
+Running holdout validation for 1.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Created LoRA batch plan (holdout): 45,982 rows, 44 updates, 2,127 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/0e58ccb58e89b12401f71d5fc2d109f3a473754cbbb962b640c8739d9a41e020.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+[transformers] [1mQwen3Model LOAD REPORT[0m from: Skywork/Skywork-Reward-V2-Qwen3-4B
+Key          | Status     |  | 
+-------------+------------+--+-
+score.weight | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:15).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 133,120,386 trainable parameters.
+Reused LoRA head warmup (Validation run): skipping 1 warmup epochs; source_precision=bf16, source_quantization=none, precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/9708dbb21f11ccea937515d5eab0d56b4105446238d2ab3d475b2237332bb9e0.pt
+SR2_Qwen3_4B_lora validation joint training Validation run epoch 1/2 (total 2/3):
+progress: 5.3% work: 5.0/94.0 time: 00:04:39/01:27:25
+SR2_Qwen3_4B_lora validation joint training Validation run epoch 1/2 (total 2/3):
+progress: 10.6% work: 10.0/94.0 time: 00:14:02/02:11:56
+SR2_Qwen3_4B_lora validation joint training Validation run epoch 1/2 (total 2/3):
+progress: 16.0% work: 15.0/94.0 time: 00:23:04/02:24:33
+SR2_Qwen3_4B_lora validation joint training Validation run epoch 1/2 (total 2/3):
+progress: 20.2% work: 19.0/94.0 time: 00:32:45/02:42:00
+SR2_Qwen3_4B_lora validation joint training Validation run epoch 1/2 (total 2/3):
+progress: 25.5% work: 24.0/94.0 time: 00:39:20/02:34:03
+SR2_Qwen3_4B_lora validation joint training Validation run epoch 1/2 (total 2/3):
+progress: 30.9% work: 29.0/94.0 time: 00:45:09/02:26:22
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 70, in _validate
+    for line in process.stdout:
+                ^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 102, in main
+    return _validate()
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 58, in _validate
+    with subprocess.Popen(
+         ~~~~~~~~~~~~~~~~^
+    	command,
+     ^^^^^^^^
+    ...<7 lines>...
+    	env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as process:
+    ^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 1124, in __exit__
+    self._wait(timeout=self._sigint_wait_secs)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 2078, in _wait
+    time.sleep(delay)
+    ~~~~~~~~~~^^^^^^^
+KeyboardInterrupt
