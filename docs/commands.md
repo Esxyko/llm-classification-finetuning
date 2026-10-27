@@ -20,7 +20,7 @@ run `model` directly instead of `uv run model`.
 | `uv run model MODEL --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
 | `uv run model warmup --build` | Train/cache an SR2 head on the train partition only | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt` |
 | `uv run result [RUN]` | Report a selected or latest validation run | `results/comprehensive/` |
-| `uv run python scripts/validate.py` | Execute explicit model/config pairs sequentially | Validation directories and `results/logs/validate-*.log` |
+| `uv run python scripts/validate.py` | Execute explicit model/config pairs sequentially, including standalone warmup | Validation directories, warmup caches, and `results/logs/validate-*.log` |
 
 The processed `.parquet` path is logical; large files use a manifest and volumes.
 See [multipart storage](caching.md#shared-storage-and-multipart-files).
@@ -79,15 +79,27 @@ request to delete all existing caches; see [cache identities](caching.md).
 `SR2-Qwen3-4B-lora` with `1.yaml` from `configs/`. Edit these constants to
 choose other combinations; there are no script CLI selection flags.
 
-Each dictionary key is a registered model selector. Its list contains filenames
-relative to `CONFIG_DIR`, which is resolved from the script's project root.
+Each dictionary key is a registered model selector or `warmup`. Its list
+contains filenames relative to `CONFIG_DIR`, which is resolved from the script's
+project root.
 Only listed files run; newly added YAML files are not selected automatically.
 Models run in dictionary order and filenames in list order. Empty lists skip
 a model; no selected filenames is an error.
 
 The script always invokes children from the project root, using
-`uv run model MODEL --config PATH`. It continues after missing configs or failed
-runs, prints a task summary, and exits with status `1` if any task fails.
+`uv run model MODEL --config PATH`, adding `--build` for `warmup` to create or
+reuse the train-partition head-warmup cache. For example, this selection runs
+warmup before holdout validation:
+
+```python
+MODEL_CONFIGS: dict[str, list[str]] = {
+    "warmup": ["1.yaml"],
+    "SR2-Qwen3-4B-lora": ["1.yaml"],
+}
+```
+
+It continues after missing configs or failed runs, prints a task summary, and
+exits with status `1` if any task fails.
 
 Each invocation streams script messages and combined child stdout/stderr to
 the terminal and one immediately flushed UTF-8 log under `results/logs/`.
