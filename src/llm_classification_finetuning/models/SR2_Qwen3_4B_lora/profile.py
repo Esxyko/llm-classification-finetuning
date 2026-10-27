@@ -7,7 +7,7 @@ PROFILE = ModelProfile(
 	config_key="SR2_Qwen3_4B_lora",
 	artifact_stem="SR2_Qwen3_4B_lora",
 	result_prefix="SR2-Qwen3-4B-lora",
-	head_architecture="swap_equivariant_harmonic_discrepancy_v1",
+	head_architecture="swap_equivariant_harmonic_discrepancy_v2",
 	ab_swap_override="none",
 )
 

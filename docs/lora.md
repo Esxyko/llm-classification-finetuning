@@ -44,8 +44,8 @@ P_2 &= \operatorname{GELU}(BL+AM+B_1),\\
 P' &= \frac{2P_1\odot P_2}{|P_1|+|P_2|+10^{-8}},\\
 Q &= \operatorname{GELU}(|P_1-P_2|N+B_2),\\
 q &= (Q\odot m_Q)T,\\
-\operatorname{logit}_A &= (P_1\odot m_P)R+q,\\
-\operatorname{logit}_B &= (P_2\odot m_P)R+q,\\
+\operatorname{logit}_A &= (P_1\odot m_P)R,\\
+\operatorname{logit}_B &= (P_2\odot m_P)R,\\
 \operatorname{logit}_{tie} &= (P'\odot m_{P'})S-q+b.
 \end{aligned}
 $$
@@ -62,20 +62,32 @@ Fusion multiplication/division, absolute values, and mask multiplication act
 elementwise. Both $P'$ and $Q$ use **undropped** $P_1,P_2$. Each sample's win
 branches share $m_P$; $m_P,m_{P'},m_Q$ are mutually independent standard dropout
 masks with $1/(1-p)$ scaling. Evaluation disables dropout. The correction $q$
-is computed once and reused. Swapping inputs exchanges win logits and preserves
+is computed once for the tie branch. Swapping inputs exchanges win logits and preserves
 the tie logit under the same masks.
+
+The implementation batches A/B as `[batch, 2, D]`, applying each of L and M once
+and reversing M's branch axis before addition. GELU, shared-mask multiplication,
+and the R readout operate on both win branches together. This reduces linear
+calls from nine to six without changing the trainable parameter layout.
+
+The tie logit uses `s - q + b`, with unit correction magnitude. Win logits have
+no $q$ term. This replaces the harmonic/discrepancy v1 relative output
+$[r_A,r_B,s-2q+b]$; it changes predictions for the same weights, rather than
+applying a common logit shift. The v2 architecture marker isolates v1 warmup
+states and rejects v1 production checkpoints without converting historical files.
 
 Before harmonic fusion, $P_1,P_2$ are converted to FP32 inside a region with
 autocast disabled; the entire fusion formula, including the fixed epsilon
 $10^{-8}$, stays FP32 through dropout. Other matrix multiplications retain the
-existing head precision policy. The three main readouts and $q$ are converted
-to FP32 before final addition/subtraction, and $b$ is FP32. Returned FP32 logits
-are ordered A-win, B-win, tie.
+existing head precision policy. Both win readouts are converted to FP32 together;
+$s$ and $q$ are FP32 before the tie calculation, and $b$ is FP32.
+Returned FP32 logits are ordered A-win, B-win, tie.
 
 These weights are trained directly. The architecture marker is
-`swap_equivariant_harmonic_discrepancy_v1`; adapter/head checkpoint schema is v2
+`swap_equivariant_harmonic_discrepancy_v2`; adapter/head checkpoint schema is v2
 and warmup schema is v5. The marker selects different warmup cache keys and
-rejects earlier tie-from-wins v1/v2 checkpoints without converting their weights.
+rejects harmonic/discrepancy v1 and earlier tie-from-wins v1/v2 checkpoints
+without converting their weights.
 Rebuild those checkpoints with the matching configuration; warmup is regenerated.
 There is no `A/B_swap` setting or orientation averaging for SR2.
 

@@ -10,7 +10,7 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_harmonic_discrepancy_v1"
+SR2 = "swap_equivariant_harmonic_discrepancy_v2"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -202,7 +202,7 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
-		"""Return FP32 A-win, B-win, and tie logits with shared win dropout."""
+		"""Return FP32 logits with batched win readout and a unit tie correction."""
 		if h_a.shape != h_b.shape or h_a.ndim != 2:
 			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
 		with torch.autocast(
@@ -210,30 +210,30 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 			dtype=torch.bfloat16,
 			enabled=self._compute_dtype == torch.bfloat16,
 		):
-			p1 = self.activation(self.self_projection(h_a) + self.cross_projection(h_b))
-			p2 = self.activation(self.self_projection(h_b) + self.cross_projection(h_a))
+			# Batch both branches so L and M each require only one linear call.
+			branches = torch.stack((h_a, h_b), dim=1)
+			wins = self.activation(
+				self.self_projection(branches) + self.cross_projection(branches).flip(1)
+			)
+			p1, p2 = wins.unbind(dim=1)
 			# Both derived representations use the undropped win features.
 			with torch.autocast(device_type=h_a.device.type, enabled=False):
-				p1_fp32, p2_fp32 = p1.float(), p2.float()
+				p1_fp32, p2_fp32 = wins.float().unbind(dim=1)
 				denominator = p1_fp32.abs() + p2_fp32.abs() + self.EPSILON
 				fused = 2 * p1_fp32 * p2_fp32 / denominator
 			discrepancy = self.activation(self.discrepancy_projection((p1 - p2).abs()))
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(p1))
-				p1, p2 = p1 * win_mask, p2 * win_mask
+				wins = wins * win_mask.unsqueeze(1)
 			# Separate dropout calls draw independent fusion and discrepancy masks.
 			fused = self.dropout(fused)
 			discrepancy = self.dropout(discrepancy)
-			win_a = self.win_readout(p1).squeeze(-1)
-			win_b = self.win_readout(p2).squeeze(-1)
-			tie = self.tie_readout(fused).squeeze(-1)
-			q = self.discrepancy_readout(discrepancy).squeeze(-1)
-		q = q.float()
-		return torch.stack(
-			(win_a.float() + q, win_b.float() + q, tie.float() - q + self.tie_bias),
-			dim=-1,
-		)
+			win_logits = self.win_readout(wins).squeeze(-1).float()
+			s = self.tie_readout(fused).float()
+			q = self.discrepancy_readout(discrepancy).float()
+		tie = s - q + self.tie_bias
+		return torch.cat((win_logits, tie), dim=-1)
 
 
 def create_classification_head(

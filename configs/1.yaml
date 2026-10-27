@@ -25,7 +25,7 @@ warmup:
   dropout: 0.1
   warmup_epochs: 2
   extraction_budget: 540672
-  warmup_training_batch_size: 4096
+  warmup_training_batch_size: 2048
   warmup_learning_rate: 0.0015
   weight_decay: 0.01
   max_grad_norm: 1.0
@@ -41,7 +41,7 @@ SR2_Qwen3_4B_lora:
   training_batch_size: 1
   head_inference_batch_size: 4096
   gradient_accumulation_steps: 4096
-  epochs: 2
+  epochs: 3
   extraction_budget: 360448
   learning_rate: 0.00015
   min_lr_ratio: 0.125

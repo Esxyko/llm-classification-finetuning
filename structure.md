@@ -210,10 +210,13 @@ present in a fresh checkout.
 3. **Profile objectives:** SR2 uses shared cross projections with harmonic fusion
    and a discrepancy correction, on original rows only. Derive both symmetric
    features before dropout; share one win mask and use independent fusion and
-   discrepancy masks. Compute the correction once and reuse it. Architecture
-   `swap_equivariant_harmonic_discrepancy_v1` uses six Xavier-uniform matrices
+   discrepancy masks. Compute the correction once for the tie branch. Architecture
+   `swap_equivariant_harmonic_discrepancy_v2` uses six Xavier-uniform matrices
    (gain 1.0), zero-initialized hidden biases, and one zero-initialized FP32 scalar
    tie bias. Harmonic fusion (epsilon `1e-8`) and final logit arithmetic stay FP32.
+   Batch A/B projections and the shared win readout; wins have no `q` term and
+   tie uses `s - q + b`. V2 removes the v1 factor of two without changing the
+   parameter layout; its architecture marker isolates v1 state.
    Its marker and exact parameter structure isolate warmup caches and reject
    earlier tie-from-wins production checkpoints.
    See [head definition](docs/lora.md#swap-equivariant-head).

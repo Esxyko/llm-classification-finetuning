@@ -61,7 +61,7 @@ win bias and one tie bias. Storage schemas and artifact namespaces stay the
 same. The v2 head rejects v1 checkpoints; rebuild them with the matching config.
 Warmup uses new cache keys and is regenerated, leaving historical v1 files intact.
 
-The current head replacement uses `swap_equivariant_harmonic_discrepancy_v1`:
+The harmonic/discrepancy head replacement introduced `swap_equivariant_harmonic_discrepancy_v1`:
 shared cross projections feed harmonic fusion and an absolute-difference
 correction, with separate R/S/T readouts and only one scalar output bias. All six
 matrices use Xavier uniform with gain 1.0; hidden and output biases start at zero.
@@ -71,6 +71,14 @@ and require rebuilding. Warmup selects new cache keys; exact parameter/moment
 structure checks also reject old states with relabeled metadata. Historical
 weights, caches, results, and configuration snapshots are not converted or edited.
 See the [current head definition](lora.md#swap-equivariant-head).
+
+The current marker is `swap_equivariant_harmonic_discrepancy_v2`. Batched A/B
+projections and the shared win readout are retained, while the relative tie
+correction changes from `s - 2q + b` to `s - q + b`; win logits contain no `q`.
+Parameter names/shapes and storage schemas are unchanged, but predictions for
+the same weights change. V2 selects new warmup keys and rejects v1 production
+checkpoints through the architecture marker. Rebuild for v2; historical v1
+artifacts are preserved without automatic weight conversion.
 
 `model warmup --build` now uses the SR2 profile and writes
 `SR2_Qwen3_4B_lora_warmup/`. Current presets select
