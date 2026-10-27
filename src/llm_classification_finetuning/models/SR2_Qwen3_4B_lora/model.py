@@ -7,7 +7,7 @@ from contextlib import AbstractContextManager, contextmanager
 
 import torch
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
-from peft.helpers import disable_input_dtype_casting
+from peft.tuners.tuners_utils import BaseTunerLayer
 from torch import Tensor, nn
 from torch.nn import functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
@@ -107,6 +107,12 @@ class LoRAQwenClassifier(nn.Module):
 				# Keep adapter parameters, their gradients, and AdamW moments in FP32.
 				autocast_adapter_dtype=True,
 			)
+			if self.dtype == torch.bfloat16:
+				# Fix the input policy once for forward and checkpoint recomputation.
+				# Autocast handles adapter matmuls with FP32 adapter parameters.
+				for module in self.backbone.modules():
+					if isinstance(module, BaseTunerLayer):
+						module.cast_input_dtype_enabled = False
 		self._gradient_checkpointing_enabled = self.backbone.is_gradient_checkpointing
 		self._set_gradient_checkpointing(False)
 		self.classifier = create_classification_head(
@@ -213,19 +219,13 @@ class LoRAQwenClassifier(nn.Module):
 
 	@contextmanager
 	def _backbone_context(self) -> Iterator[None]:
-		"""Let BF16 autocast handle adapter matmuls without upcasting their inputs."""
-		with (
-			self._attention_context(),
-			disable_input_dtype_casting(
-				self.backbone,
-				active=self.dtype == torch.bfloat16 and not self.warmup_only,
-			),
-		):
+		"""Scope fused attention; adapter input dtypes are fixed at initialization."""
+		with self._attention_context():
 			yield
 
 	def _checkpoint_contexts(
 		self,
 	) -> tuple[AbstractContextManager[object], AbstractContextManager[object]]:
-		"""Restore fused attention and the forward adapter dtype policy on recompute."""
-		# Checkpoint forwards inherit the outer backbone context; backward runs later.
+		"""Restore fused attention for checkpoint forward and recomputation."""
+		# Checkpoint forwards inherit the outer attention context; backward runs later.
 		return self._attention_context(), self._backbone_context()

@@ -139,9 +139,12 @@ checkpoints require rebuilding.
 | `fp16` | FP16 backbone compute; FP32 pooled features | FP32 head/state with gradient scaling |
 | `fp32` | FP32 | FP32 head/state |
 
-BF16 support is checked on each selected GPU. BF16 adapter encoding and
-checkpoint recomputation disable PEFT's input dtype upcasting while preserving
-FP32 adapter parameters. RMSNorm retains FP32 variance calculation.
+BF16 support is checked on each selected GPU. BF16 LoRA models disable PEFT's
+input dtype upcasting once after adapter initialization, fixing the policy for
+the model instance across encoding and checkpoint recomputation without repeated
+model traversal. Adapter parameters remain FP32. Other precisions and standalone
+warmup retain their existing input dtype behavior. RMSNorm retains FP32 variance
+calculation.
 Harmonic feature fusion and final logit arithmetic remain FP32 in every mode.
 
 With `sdpa`, LoRA permits Flash, memory-efficient, and cuDNN backends and disables

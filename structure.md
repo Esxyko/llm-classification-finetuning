@@ -260,7 +260,10 @@ present in a fresh checkout.
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented
-   policy; submission disables gradient checkpointing. See [precision](docs/lora.md#hardware-and-input-limits).
+   policy. BF16 LoRA input dtype upcasting is disabled once after adapter
+   initialization for the model instance; forward and checkpoint recomputation
+   do not traverse the model to change that policy. Submission disables gradient
+   checkpointing. See [precision](docs/lora.md#hardware-and-input-limits).
 9. **Warmup state:** publish only completed compatible head/optimizer/scaler/RNG
    states, validate them before restoration, and retain current training-ID
    semantics. Each executed warmup epoch evaluates its complete training set with
