@@ -71,8 +71,14 @@ Validation/build uses `gpu.device`; submission uses the
 [two-GPU layer split](configuration.md#gpu-configuration). All branches are
 right-padded independently without padding masks. Qwen's causal attention
 protects real tokens from right padding, and CPU-computed last-real-token
-positions select pooled features. KV caching is disabled. Joint training encodes
-A then B while retaining both gradient graphs.
+positions select pooled features. KV caching is disabled. Joint training uses
+single-branch recompute: A is encoded without a graph (keeping only its features
+and the pre-forward CPU/CUDA RNG state), B and the head run normally, and the
+first backward yields head, B, and A-feature gradients. B's graph is then freed,
+A is recomputed with its RNG state replayed (the training RNG is restored
+afterwards), and the cached feature gradient completes A's backward into the
+shared adapters. Draw order and masks match a two-graph pass; AMP, SDPA scopes,
+and checkpointing are identical across the recompute. A costs one extra forward.
 
 LoRA **never truncates**. Token preparation validates full canonical branches
 before training, and inference checks its inputs before encoding. Empty or
@@ -223,7 +229,8 @@ checkpointing. A positive threshold enables a reusable global plan:
 
 This is a heuristic, not a global optimum. A single pair above the threshold
 remains alone. At or below a positive threshold, checkpointing is disabled;
-above it, checkpointing is enabled for **both branches through backward**.
+above it, checkpointing is enabled for **both branches through backward**,
+including A's no-grad forward, B's backward, and A's recompute.
 Warmup and inference disable checkpointing.
 
 ### Epoch groups and the second packing pass
@@ -291,7 +298,9 @@ With a positive threshold, keeping `training_batch_size * gradient_accumulation_
 fixed does not lower packing limits; change the token controls instead. A budget
 is not an input cap: oversized single samples still run alone. Keep `max_length`
 large enough for required inputs. FP16/BF16 can reduce memory where supported;
-checkpointing affects joint training only. The implementation reports OOM
+checkpointing affects joint training only. Single-branch recompute lowers peak
+memory (one branch graph at a time) at the cost of an extra A forward, so
+thresholds and budgets can be raised accordingly. The implementation reports OOM
 rather than silently changing precision or shortening inputs.
 
 ## Checkpoints

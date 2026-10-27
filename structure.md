@@ -146,9 +146,10 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
 | `heads.py` | Head factory, precision wrapper, swap-equivariant tie-from-wins architecture (introduced by EXPT2), and retained legacy head definitions |
-| `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
+| `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing policy |
+| `recompute.py` | Single-branch recompute: no-grad A features, CPU/CUDA RNG snapshot/replay, and deferred A backward |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup/joint stages, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup/joint stages (two-pass B/head then A backward), optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, validation, atomic storage, and restoration |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
@@ -228,7 +229,8 @@ present in a fresh checkout.
    per finalized group, short-tail merging, and the merged joint update last.
    Epoch length queries must match iteration without changing RNG state.
    Checkpointing is chosen once per A/B joint micro-batch through backward;
-   disabling it removes input-gradient hooks. See
+   A is recomputed after B/head backward with its RNG replayed and the training
+   RNG restored; disabling checkpointing removes input-gradient hooks. See
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented

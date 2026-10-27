@@ -47,6 +47,7 @@ from .data import (
 from .extractor import LoRAEmbeddingExtractor
 from .model import LoRAQwenClassifier
 from .profile import PROFILE
+from .recompute import SingleBranchRecompute
 from .warmup_cache import HeadWarmupCache, WarmupCacheContext, WarmupCacheEntry
 
 
@@ -566,21 +567,18 @@ class LoRATrainer:
 				features, labels = batch
 				features = features.to(self._device, non_blocking=True)
 				labels = labels.to(self._device, non_blocking=True)
-				encodings = (features[:, 0], features[:, 1])
+				loss_sum = self._loss_sum(
+					model, criterion, (features[:, 0], features[:, 1]), labels
+				)
+				scaler.scale(loss_sum / group_rows).backward()
+				loss_value = loss_sum.detach()
 			else:
 				labels = batch.labels.to(self._device, non_blocking=True)
-				encodings = model.encode(batch)
-			if self._config.ab_swap == "inf":
-				log_probabilities = ABSwapAverager.log_probabilities(
-					model.classifier, *encodings
+				loss_value = self._joint_backward(
+					model, batch, labels, criterion, scaler, group_rows
 				)
-				loss_sum = criterion.from_log_probabilities(log_probabilities, labels)
-			else:
-				logits = model.classifier(*encodings)
-				loss_sum = criterion(logits, labels)
-			finite_losses.logical_and_(torch.isfinite(loss_sum.detach()))
-			scaler.scale(loss_sum / group_rows).backward()
-			loss_total.add_(loss_sum.detach())
+			finite_losses.logical_and_(torch.isfinite(loss_value))
+			loss_total.add_(loss_value)
 			rows_total += int(labels.shape[0])
 			group_processed += int(labels.shape[0])
 			if group_processed > group_rows:
@@ -617,6 +615,41 @@ class LoRATrainer:
 				f"{self._model_label} training did not consume the complete optimizer-group plan."
 			)
 		return loss_total.item() / rows_total
+
+	def _loss_sum(
+		self,
+		model: LoRAQwenClassifier,
+		criterion: ClassificationLoss,
+		encodings: tuple[torch.Tensor, torch.Tensor],
+		labels: torch.Tensor,
+	) -> torch.Tensor:
+		"""Return the row-summed training loss for the configured objective."""
+		if self._config.ab_swap == "inf":
+			log_probabilities = ABSwapAverager.log_probabilities(
+				model.classifier, *encodings
+			)
+			return criterion.from_log_probabilities(log_probabilities, labels)
+		return criterion(model.classifier(*encodings), labels)
+
+	def _joint_backward(
+		self,
+		model: LoRAQwenClassifier,
+		batch: PairwiseBatch,
+		labels: torch.Tensor,
+		criterion: ClassificationLoss,
+		scaler: torch.amp.GradScaler,
+		group_rows: int,
+	) -> torch.Tensor:
+		"""Backpropagate B and the head first, then recompute A for its gradients."""
+		recompute = SingleBranchRecompute(model, batch)
+		encodings = recompute.encode()
+		loss_sum = self._loss_sum(model, criterion, encodings, labels)
+		scaler.scale(loss_sum / group_rows).backward()
+		loss_value = loss_sum.detach()
+		# Release B's graph before A is recomputed.
+		del encodings, loss_sum
+		recompute.backward_a()
+		return loss_value
 
 	def _create_warmup_loaders(
 		self,
