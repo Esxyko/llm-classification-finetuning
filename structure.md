@@ -143,7 +143,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 
 | Module | Owns |
 | --- | --- |
-| `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
+| `data.py` | Canonical token/feature views, branch flattening, independent right padding, shared peak-branch/total-padded token costs, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
 | `heads.py` | Head factory, precision wrapper, swap-equivariant tie-from-wins architecture (introduced by EXPT2), and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing policy |
@@ -228,6 +228,11 @@ present in a fresh checkout.
 7. **Optimizer groups:** preserve row-normalized loss, one clipping/update boundary
    per finalized group, short-tail merging, and the merged joint update last.
    Epoch length queries must match iteration without changing RNG state.
+   Packing and checkpointing constrain the largest independently padded branch
+   (`rows * max(longest_A, longest_B)`); placements minimize added total A/B
+   padding, and plans minimize total padded tokens before micro-batch count.
+   Planning, plan validation, and runtime share these cost definitions. Both
+   packing passes stay within finalized update boundaries.
    Checkpointing is chosen once per A/B joint micro-batch through backward;
    A is recomputed after B/head backward with its RNG replayed and the training
    RNG restored; disabling checkpointing removes input-gradient hooks. See

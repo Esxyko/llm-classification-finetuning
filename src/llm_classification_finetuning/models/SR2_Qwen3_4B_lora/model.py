@@ -17,7 +17,7 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...model_storage import load_model_weights
 from ..common import ABSwapAverager, GPUEnvironment
-from .data import BranchBatch, PairwiseBatch
+from .data import BranchBatch, PairwiseBatch, PairwiseTokenCost
 from .heads import EXPT, EXPT2, create_classification_head
 
 
@@ -151,15 +151,15 @@ class LoRAQwenClassifier(nn.Module):
 
 	def configure_joint_checkpointing(self, batch: PairwiseBatch) -> bool:
 		"""Choose checkpointing once for an A/B micro-batch, through all backward passes."""
-		padded_tokens = (
-			batch.branch_a.input_ids.numel() + batch.branch_b.input_ids.numel()
+		cost = PairwiseTokenCost(
+			batch.branch_a.input_ids.numel(), batch.branch_b.input_ids.numel()
 		)
 		self._set_gradient_checkpointing(
 			self.training
 			and torch.is_grad_enabled()
 			and (
 				self._gradient_checkpointing_threshold == 0
-				or padded_tokens > self._gradient_checkpointing_threshold
+				or cost.max_branch_tokens > self._gradient_checkpointing_threshold
 			)
 		)
 		return self._gradient_checkpointing_enabled

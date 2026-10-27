@@ -136,10 +136,20 @@ embedding files and shards using retired identities are not read. See
 
 ## LoRA batch plans
 
-Plans under `adapter_batches/plans/*.pt` use schema v4. Keys contain sorted
+Plans under `adapter_batches/plans/*.pt` use schema v4 and planning algorithm
+v2. Keys contain sorted
 selected `(id, is_swapped, A_length, B_length)` rows, checkpointing threshold,
 update-group size, and planning version. Cached identities map back to current
 dataset indices and labels on each read.
+
+Algorithm v2 constrains packing by peak branch load
+`M = rows * max(longest_A, longest_B)`. It compares four global sorts and ranks
+plans by total padded tokens `P = rows * (longest_A + longest_B)`, then
+micro-batch count. Within each group, feasible placements minimize the increase
+in `P`, then remaining branch budget, then micro-batch creation order. The stored
+`padded_tokens` remains the sum of `P` across all micro-batches; validation uses
+`M` for the threshold and `P` for this total. The algorithm version selects a new
+cache key, so v1 plans remain on disk and are rebuilt without migration or reuse.
 
 Changing selected rows, lengths, threshold, or effective update size selects a
 new plan. Changing labels, reference order, split names, unselected validation

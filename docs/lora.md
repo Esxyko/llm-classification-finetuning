@@ -211,8 +211,17 @@ disabled. See [extraction packing](configuration.md#extraction-token-budgets).
 
 ## Optional token-budget training batches
 
-Two passes control joint micro-batches. Both use padded A/B token cost
-`rows * (longest_A + longest_B)`, independently of extraction budgets.
+Two passes control joint micro-batches, independently of extraction budgets.
+For `n` rows with independently padded branch lengths `L_A` and `L_B`, both use
+the same two costs:
+
+- Peak branch load `M = n * max(L_A, L_B)` constrains packing and determines
+  checkpointing.
+- Total padded tokens `P = n * (L_A + L_B)` measures padding and computation
+  across both branches and ranks packing choices.
+
+Planning, cached-plan validation, and runtime checkpointing share these
+definitions. Runtime costs use each branch's actual padded tensor size.
 
 ### Initial plan and checkpointing threshold
 
@@ -221,15 +230,23 @@ With `gradient_checkpointing_threshold: 0`, initial batches use
 checkpointing. A positive threshold enables a reusable global plan:
 
 1. Select original training IDs, or all original IDs for a build.
-2. Compare stable sorts by `(A_length, B_length)`, `(B_length, A_length)`, and
-   `(A_length + B_length, A_length, B_length)`, using sample identity as tie-breaker.
+2. Compare four stable ascending sorts by `A_length`, `B_length`,
+   `A_length + B_length`, and `max(A_length, B_length)`, breaking ties by sample
+   ID and then orientation.
 3. Divide each candidate into groups of `G` rows and a possible short tail.
-4. Within each group, best-fit pack longest-total-length rows first under the
-   threshold. Choose the candidate with fewest micro-batches, then least padding.
+4. Within each group, pack under `M <= threshold` using the shared packing rule
+   below. Choose the candidate with the lowest total `P`, then the fewest
+   micro-batches. Exact ties retain the first candidate in the order above.
+
+Both packing passes process rows by descending `max(A_length, B_length)`, then
+descending total length, then ascending sample identity. For each row, consider
+existing micro-batches whose resulting `M` fits the applicable budget. Choose
+the smallest increase in `P`; ties prefer the smallest remaining branch budget,
+then the earliest-created micro-batch. If none fits, create a new micro-batch.
 
 This is a heuristic, not a global optimum. A single pair above the threshold
-remains alone. At or below a positive threshold, checkpointing is disabled;
-above it, checkpointing is enabled for **both branches through backward**,
+remains alone. When `M` is at or below a positive threshold, checkpointing is
+disabled; above it, checkpointing is enabled for **both branches through backward**,
 including A's no-grad forward, B's backward, and A's recompute.
 Warmup and inference disable checkpointing.
 
@@ -241,17 +258,20 @@ short tail into the last shuffled full group. That merged update stays last;
 a lone short group runs alone.
 
 A positive `gradient_checkpointing_budget` then combines only checkpointed
-**singleton** micro-batches inside each finalized update. It uses descending
-total length, identity tie-breaks, and best fit. Existing multi-row batches and
-non-checkpointed singletons remain intact. Rows never cross update boundaries.
-Combined cost may equal the budget; an oversized pair still runs alone. The
-budget need not exceed the threshold.
+**singleton** micro-batches inside each finalized update, using the shared
+packing rule with `M <= budget`. For positive thresholds, eligible singletons
+have `max(A_length, B_length) > threshold`; combining them keeps checkpointing
+enabled. Existing multi-row batches and non-checkpointed singletons remain
+intact. Neither pass crosses a finalized update boundary. Combined `M` may equal
+the budget; an oversized pair still runs alone without truncation. The budget
+need not exceed the threshold.
 
 The second pass also works with threshold `0`: initial fixed batches are seeded
 by `random_state + joint_epoch` and repacked in memory. A zero budget disables
-this pass and preserves initial within-update batch ordering. The merged update
-remains last. Epoch batches are memoized so length queries match iteration
-without consuming extra shuffle state.
+only this repacking pass. Positive-threshold plans still shuffle micro-batches
+inside each update after repacking. The merged update remains last. Epoch
+batches are memoized so length queries match iteration without consuming extra
+shuffle state.
 
 Dynamic micro-batches can exceed `training_batch_size`. Update counts and loss
 normalization use finalized row groups, not micro-batch counts. Only initial

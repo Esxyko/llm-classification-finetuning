@@ -1,0 +1,35 @@
+Saving validation log to /content/llm-classification-finetuning/results/logs/validate-20261027-005218-626413.log
+Running holdout validation for 1.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 0 reused, 113,936 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Created LoRA batch plan (holdout): 45,982 rows, 44 updates, 2,465 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/845b27a91d23e34a032fa25e04e51a5bb84736ea35eafaf97a856300dca1c716.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+[transformers] [1mQwen3Model LOAD REPORT[0m from: Skywork/Skywork-Reward-V2-Qwen3-4B
+Key          | Status     |  | 
+-------------+------------+--+-
+score.weight | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:03:24).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 133,120,386 trainable parameters.
+Rebuilding LoRA head warmup (Validation run): precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/9708dbb21f11ccea937515d5eab0d56b4105446238d2ab3d475b2237332bb9e0.pt
+LoRA warmup extraction branch batch 1/89.
+[W1027 00:58:48.526642389 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 10200547328 bytes (free: 2143158272, total: 101974081536).
+SR2_Qwen3_4B_lora validation head warmup Validation run epoch 1/1 (total 1/3):
+progress: 5.1% work: 6.0/117.5 time: 00:26:35/08:40:44
+SR2_Qwen3_4B_lora validation head warmup Validation run epoch 1/1 (total 1/3):
+progress: 10.2% work: 12.0/117.5 time: 00:26:35/04:20:23
+SR2_Qwen3_4B_lora validation head warmup Validation run epoch 1/1 (total 1/3):
+progress: 15.3% work: 18.0/117.5 time: 00:26:36/02:53:35
+SR2_Qwen3_4B_lora validation head warmup validation Validation run epoch 1/1 (total 1/3):
+progress: 20.0% work: 23.5/117.5 time: 00:26:36/02:12:58
+Validation run head warmup epoch 1/1 (total 1/3): train_loss=1.370454 validation_loss=0.966658
+Saved LoRA head warmup (Validation run): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/9708dbb21f11ccea937515d5eab0d56b4105446238d2ab3d475b2237332bb9e0.pt
+[W1027 01:24:03.043728009 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 245366784 bytes (free: 37617664, total: 101974081536).
+[W1027 01:24:03.043826369 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 245366784 bytes (free: 37617664, total: 101974081536).
+GPU memory peak before failure (SR2-Qwen3-4B-lora, cuda:0): allocated=93.47 GiB reserved=94.28 GiB
+Error: CUDA ran out of memory during LoRA execution. Lower SR2_Qwen3_4B_lora.gradient_checkpointing_threshold when positive, or lower gradient_checkpointing_budget (0 disables singleton merging), or lower warmup.extraction_budget for warmup extraction, warmup.warmup_training_batch_size for warmup head training, SR2_Qwen3_4B_lora.extraction_budget for joint-validation/submission extraction, or training_batch_size or head_inference_batch_size for the affected stage. Keep max_length at least as large as the longest required input; inputs are never truncated. Gradient checkpointing is automatic above the threshold, or for all joint-training batches when the threshold is 0. Singletons above the checkpointing budget still run alone without truncation. Use fp16/bf16 instead of fp32. Increase gradient_accumulation_steps to preserve the effective training batch when lowering the micro-batch.
+Failed holdout validation for 1.yaml: SR2-Qwen3-4B-lora (exit code 1)
+Completed 0/1 tasks.
+Failed tasks: 1.yaml: SR2-Qwen3-4B-lora
