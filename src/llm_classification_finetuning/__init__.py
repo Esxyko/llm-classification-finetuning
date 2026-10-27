@@ -5,8 +5,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load project settings before Hugging Face freezes its environment at import time.
+# Load project settings before libraries read their environment at import time.
 load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+
+# Set the allocator default before PyTorch imports; honor its legacy CUDA alias.
+if "PYTORCH_CUDA_ALLOC_CONF" not in os.environ:
+	os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
 
 # Hugging Face reads download settings when its libraries are first imported.
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")

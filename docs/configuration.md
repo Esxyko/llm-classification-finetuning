@@ -17,6 +17,11 @@ Relative paths resolve from the **process working directory**, not the YAML
 file's directory. `~` expands to the user's home directory. `.env` is loaded
 from that working directory without overriding existing environment variables.
 
+Before importing PyTorch, package initialization defaults `PYTORCH_ALLOC_CONF`
+to `expandable_segments:True` unless either `PYTORCH_ALLOC_CONF` or its legacy
+alias `PYTORCH_CUDA_ALLOC_CONF` is already set in the environment or `.env`.
+This process-wide allocator setting requires a fresh process to take effect.
+
 | Setting or artifact | Location / fallback | Controls |
 | --- | --- | --- |
 | `--config PATH` | `./config.yaml` | Selected complete YAML file |
