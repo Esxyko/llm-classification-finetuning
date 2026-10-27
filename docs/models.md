@@ -14,9 +14,11 @@ submission uses [two GPUs](configuration.md#gpu-configuration).
 | `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Final-epoch `validation.csv`, `metrics.json`, `config.yaml` | No |
 | `model MODEL --build` | All original IDs from both partitions | `adapter[_TAG].pt` | Yes |
 | `model MODEL --submit` | No training; use test inputs and a compatible checkpoint | `submission.csv` | No |
-| `model warmup --build` | Train partition only, original rows | Optional completed SR2 warmup cache | No |
+| `model warmup --build` | Train partition only, original rows; evaluate train and validation | Completed SR2 warmup cache and both losses | No |
 
-Builds have no validation set. Validation publishes final-epoch predictions;
+Full-data model builds have no validation set. Standalone warmup evaluates the
+saved validation partition, including after restoring a cache hit.
+Validation publishes final-epoch predictions;
 there is no best-epoch selection. Warmup caches and production checkpoints serve
 different purposes. See [LoRA stages](lora.md#optimization-and-head-warmup).
 
@@ -90,8 +92,10 @@ elapsed/estimated total time. Durations use unbounded `HH:MM:SS`; estimates
 extrapolate weighted work rather than predicting exact remaining runtime.
 
 [LoRA progress](lora.md#training-progress) uses optimizer groups, with half-weight
-warmup work. Reused warmup contributes no executed work; dynamic micro-batches
-do not change the finalized update-group count.
+warmup work, including epoch-end train and validation inference. Inline reused
+warmup contributes no executed work; a standalone warmup cache hit counts its
+current train/validation inference without executing training epochs.
+Dynamic micro-batches do not change the finalized update-group count.
 
 Extraction, preparation, caches, saving, and publication are excluded. Thus the
 progress estimate differs from [complete-run timing](reports.md#timing-metrics).

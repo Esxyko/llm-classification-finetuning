@@ -218,22 +218,22 @@ truncated and are independently validated.
 
 ### Saved state and restoration
 
-After the final warmup validation, or final warmup training epoch for builds,
-the cache atomically stores:
+After the final warmup epoch's training-set evaluation and any validation
+evaluation both succeed, the cache atomically stores:
 
 - FP32 classifier weights and named head AdamW moments/step counters.
 - Gradient-scaler state and source precision.
 - Python, NumPy, Torch CPU, and selected-device CUDA random states.
 
-It contains no adapters or features. CPU loading validates metadata, exact
-head/moment shapes, FP32 dtypes, finite values, and restorable scaler/RNG states
+It contains no adapters, features, or loss metrics. CPU loading validates metadata,
+exact head/moment shapes, FP32 dtypes, finite values, and restorable scaler/RNG states
 before changing the model. Missing/corrupt/incompatible states rebuild; write
 failures are model execution errors. Retired-profile heads and earlier schemas
 are not reused.
 
-A hit restores the head/optimizer/RNG state, skips all warmup feature extraction,
-training, and validation, and starts joint training with fresh adapters and fixed
-joint rates. Only FP16-to-FP16 reuse restores the gradient scaler; other precision
+A hit in inline LoRA restores the head/optimizer/RNG state, skips all warmup
+feature extraction, training, and evaluation, and starts joint training with fresh
+adapters and fixed joint rates. Only FP16-to-FP16 reuse restores the gradient scaler; other precision
 transitions initialize a scaler for the current mode. Across changed precision
 or LoRA settings, reuse continues the original cached warmup rather than
 reproducing a fresh warmup under the new settings. Adapter initialization can
@@ -247,11 +247,19 @@ remain uncached; repository-prepared splits supply it.
 
 ### Standalone warmup build
 
-`model warmup --build` prepares train-only tokens and checks the same
-non-quantized SR2 identity. A hit returns before backbone-weight loading and
-reports zero executed epochs. A miss extracts a frozen backbone without adapters
-and trains only the head. There is no validation, joint plan, production
-checkpoint, or result report.
+`model warmup --build` prepares tokens for train and validation and checks the
+same non-quantized SR2 identity, still based only on training IDs. A miss extracts
+frozen features without adapters once for both partitions and trains only the
+head on original train rows. Each epoch ends with full-training-set inference
+using warmup label smoothing, followed by unsmoothed validation inference;
+both use final epoch weights and disable dropout.
+
+A hit loads the backbone, restores the cached head, and extracts current
+train/validation features to recompute both losses. It executes zero training
+epochs and does not rewrite the cached state. The summary reports both losses
+on hits and misses; no historical loss values are reused. This evaluation does
+not change the existing cache identity or schema v5. There is no joint plan,
+production checkpoint, or result report.
 
 Reuse in inline SR2 requires matching both training IDs and effective model/head
 settings, not merely using the same cache directory. See

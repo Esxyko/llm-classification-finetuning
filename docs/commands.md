@@ -52,15 +52,24 @@ is an error. The entire YAML is validated before any model runs.
 ## Standalone warmup
 
 `warmup` is a separate selector requiring `--build`. It accepts `--config` and
-`--refresh-cache`; validation, `--submit`, and `--checkpoint-tag` are unsupported.
+`--refresh-cache`; the default validation command mode, `--submit`, and
+`--checkpoint-tag` are unsupported.
 It is excluded from `ALL`.
 
-It prepares only train-partition tokens and trains the SR2 comparison head on
-the non-quantized backbone configured in `warmup` (Skywork in the shipped presets),
-without adapters, joint training, validation, or production
-checkpoint publication. A compatible hit skips weight loading and reports zero
-executed epochs. It shares SR2's cache namespace; a validation run can reuse it
-when effective settings and training IDs match. Full-data builds use both partitions.
+It prepares train and validation tokens, then trains the SR2 comparison head
+only on original train-partition rows using the non-quantized backbone configured
+in `warmup` (Skywork in the shipped presets). After each epoch, it evaluates the
+entire training set with the final epoch weights and warmup label smoothing,
+then evaluates validation with unsmoothed log loss. Both evaluations disable
+dropout and reuse the temporary frozen features extracted before training.
+The epoch logs and final summary report both losses to six decimal places.
+
+A compatible hit restores the head, loads the backbone, and extracts current
+train/validation features to recompute both losses without training or rewriting
+the warmup cache; it reports zero executed epochs. There are no adapters, joint
+training, production checkpoints, or result reports. It shares SR2's cache
+namespace; a validation run can reuse it when effective settings and training
+IDs match. Normal full-data model builds train on both partitions.
 See [warmup configuration](configuration.md#standalone-warmup) and
 [cache reuse](caching.md#standalone-warmup-build).
 

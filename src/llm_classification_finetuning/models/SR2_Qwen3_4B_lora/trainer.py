@@ -52,12 +52,14 @@ from .warmup_cache import HeadWarmupCache, WarmupCacheContext, WarmupCacheEntry
 
 @dataclass(frozen=True, slots=True)
 class LoRATrainingHistory:
-	"""Epoch losses and final canonical validation predictions."""
+	"""Executed epochs, final predictions, and the latest warmup evaluation."""
 
 	training_losses: tuple[float, ...]
 	epochs: tuple[EpochMetrics, ...]
 	validation_probabilities: np.ndarray | None
 	training_rows: int
+	warmup_training_loss: float | None = None
+	warmup_validation_loss: float | None = None
 
 
 class _CosineLearningRateSchedule:
@@ -204,23 +206,22 @@ class LoRATrainer:
 		return model
 
 	def build_warmup(self, batches: LoRATrainingBatchRepository) -> WarmupBuildResult:
-		"""Build only train-partition head warmup, avoiding weights on a cache hit."""
+		"""Build or restore train-partition warmup and evaluate current holdout data."""
 		if not self._warmup_only:
 			raise ModelExecutionError("Warmup cache builds require warmup_only=True.")
 		training = batches.get_training()
+		validation = batches.data.reference.loc[
+			batches.data.reference["split"].eq("validation")
+			& ~batches.data.reference["is_swapped"]
+		]
+		if validation.empty:
+			raise ModelExecutionError("The holdout validation set is empty.")
 		seed = self._config.random_state
 		entry = self._prepare_warmup(training.warmup_context, seed=seed)
 		if entry is None:
 			raise ModelExecutionError("Standalone warmup requires a cache identity.")
 		path = self._warmup_cache.path(entry)
-		if entry.state is not None:
-			print(
-				f"Reused LoRA head warmup (Warmup cache build): "
-				f"source_precision={entry.state['source_precision']}, "
-				f"precision={self._gpu.precision}; {path}",
-				flush=True,
-			)
-			return WarmupBuildResult(path, True, len(training.reference), 0)
+		cache_reused = entry.state is not None
 		model = self.create_model(seed=seed, revision=batches.base_revision)
 		try:
 			history = self.fit(
@@ -228,11 +229,24 @@ class LoRATrainer:
 				training,
 				batches.data.canonical_texts,
 				seed=seed,
+				validation=validation,
 				description="Warmup cache build",
 				warmup_cache_entry=entry,
 			)
+			if (
+				history.warmup_training_loss is None
+				or history.warmup_validation_loss is None
+			):
+				raise ModelExecutionError(
+					"Standalone warmup did not produce both train and validation losses."
+				)
 			return WarmupBuildResult(
-				path, False, history.training_rows, len(history.training_losses)
+				cache_path=path,
+				cache_reused=cache_reused,
+				training_rows=history.training_rows,
+				epochs=len(history.training_losses),
+				final_training_loss=history.warmup_training_loss,
+				validation_loss=history.warmup_validation_loss,
 			)
 		finally:
 			del model
@@ -243,7 +257,7 @@ class LoRATrainer:
 		"""Train one fresh model against the saved holdout and align final predictions."""
 		if self._warmup_only:
 			raise ModelExecutionError(
-				"Standalone warmup does not run holdout validation."
+				"Standalone warmup must use build_warmup for head-only evaluation."
 			)
 		run_started = self._timestamp()
 		data = batches.data
@@ -308,8 +322,6 @@ class LoRATrainer:
 		"""Warm up the head, then jointly optimize both groups with cosine decay."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
-		if self._warmup_only and validation is not None:
-			raise ModelExecutionError("Standalone warmup does not run validation.")
 		reference = training.reference
 		if reference.empty:
 			raise ModelExecutionError(f"{self._model_label} training received no rows.")
@@ -337,7 +349,11 @@ class LoRATrainer:
 			entry = warmup_cache_entry or self._prepare_warmup(context, seed=seed)
 		warmup_cache_entry = None
 		reused_warmup = entry is not None and entry.state is not None
-		mode = "validation" if validation is not None else "build"
+		mode = (
+			"validation"
+			if validation is not None and not self._warmup_only
+			else "build"
+		)
 		if progress is None:
 			progress = self._create_progress(
 				len(reference),
@@ -346,6 +362,7 @@ class LoRATrainer:
 				warmup_required=not reused_warmup,
 			)
 		loader: DataLoader[PairwiseBatch] | DataLoader[list[torch.Tensor]] | None = None
+		warmup_training: DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
 		lr_schedule: _CosineLearningRateSchedule | None = None
 		parameter_groups = [
@@ -391,15 +408,39 @@ class LoRATrainer:
 		losses: list[float] = []
 		metrics: list[EpochMetrics] = []
 		probabilities: np.ndarray | None = None
+		warmup_training_loss: float | None = None
+		warmup_validation_loss: float | None = None
 		total_epochs = self._config.warmup_epochs + (
 			0 if self._warmup_only else self._config.epochs
 		)
 		first_epoch = self._config.warmup_epochs + 1 if reused_warmup else 1
-		if self._config.warmup_epochs and not reused_warmup:
+		if self._config.warmup_epochs and (not reused_warmup or self._warmup_only):
 			# Feature extraction belongs to run setup, outside every epoch timer.
-			loader, warmup_validation = self._create_warmup_loaders(
+			loader, warmup_training, warmup_validation = self._create_warmup_loaders(
 				model, reference, records, validation=validation, seed=seed
 			)
+		if self._warmup_only and reused_warmup:
+			warmup_training_loss, _ = self.evaluate(
+				model,
+				reference,
+				records,
+				feature_loader=warmup_training,
+				head_only=True,
+				criterion=self._warmup_criterion,
+				stage="head warmup training evaluation",
+				progress=progress,
+				description=f"{description} cached head",
+			)
+			if validation is not None:
+				warmup_validation_loss, probabilities = self.evaluate(
+					model,
+					validation,
+					records,
+					feature_loader=warmup_validation,
+					head_only=True,
+					progress=progress,
+					description=f"{description} cached head",
+				)
 		for epoch in range(first_epoch, total_epochs + 1):
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
@@ -413,8 +454,9 @@ class LoRATrainer:
 				f"(total {epoch}/{total_epochs})"
 			)
 			if epoch == self._config.warmup_epochs + 1:
-				# Drop both views of the shared CPU feature store before joint training.
+				# Drop all views of the shared CPU feature store before joint training.
 				loader = None
+				warmup_training = None
 				warmup_validation = None
 				loader = training.loader
 				for group in optimizer.param_groups:
@@ -446,6 +488,19 @@ class LoRATrainer:
 				progress=progress,
 				description=epoch_description,
 			)
+			if head_only:
+				loss, _ = self.evaluate(
+					model,
+					reference,
+					records,
+					feature_loader=warmup_training,
+					head_only=True,
+					criterion=self._warmup_criterion,
+					stage="head warmup training evaluation",
+					progress=progress,
+					description=epoch_description,
+				)
+				warmup_training_loss = loss
 			training_finished = self._timestamp()
 			if validation is not None:
 				validation_loss, probabilities = self.evaluate(
@@ -457,6 +512,8 @@ class LoRATrainer:
 					progress=progress,
 					description=epoch_description,
 				)
+				if head_only:
+					warmup_validation_loss = validation_loss
 				validation_finished = self._timestamp()
 				metrics.append(
 					EpochMetrics(
@@ -488,6 +545,8 @@ class LoRATrainer:
 			epochs=tuple(metrics),
 			validation_probabilities=probabilities,
 			training_rows=len(reference),
+			warmup_training_loss=warmup_training_loss,
+			warmup_validation_loss=warmup_validation_loss,
 		)
 
 	def _prepare_warmup(
@@ -516,25 +575,29 @@ class LoRATrainer:
 		warmup_training_steps = OptimizerGroupLayout(
 			training_rows, self._config.warmup_training_batch_size
 		).update_count
+		training_evaluation_steps = math.ceil(
+			training_rows / self._head_inference_batch_size
+		)
+		validation_steps = math.ceil(validation_rows / self._head_inference_batch_size)
+		warmup_evaluation_steps = training_evaluation_steps + validation_steps
 		if self._warmup_only:
 			return TrainingProgress(
 				model=self._model_key,
 				mode=mode,
 				total_steps=(
 					self.WARMUP_PROGRESS_WEIGHT
-					* self._config.warmup_epochs
-					* warmup_training_steps
-					if warmup_required
-					else 0
+					* (
+						self._config.warmup_epochs
+						* (warmup_training_steps + warmup_evaluation_steps)
+						if warmup_required
+						else warmup_evaluation_steps
+					)
 				),
 			)
 		joint_batch_size = (
 			self._config.training_batch_size * self._config.gradient_accumulation_steps
 		)
-		validation_steps = math.ceil(
-			validation_rows / self._config.head_inference_batch_size
-		)
-		warmup_steps = warmup_training_steps + validation_steps
+		warmup_steps = warmup_training_steps + warmup_evaluation_steps
 		joint_steps = OptimizerGroupLayout(training_rows, joint_batch_size).update_count
 		return TrainingProgress(
 			model=self._model_key,
@@ -673,7 +736,11 @@ class LoRATrainer:
 		*,
 		validation: pd.DataFrame | None,
 		seed: int,
-	) -> tuple[DataLoader[list[torch.Tensor]], DataLoader[list[torch.Tensor]] | None]:
+	) -> tuple[
+		DataLoader[list[torch.Tensor]],
+		DataLoader[list[torch.Tensor]],
+		DataLoader[list[torch.Tensor]] | None,
+	]:
 		"""Extract each needed ID once, then share oriented features for head warmup."""
 		ids = reference["id"]
 		if validation is not None:
@@ -698,12 +765,13 @@ class LoRATrainer:
 			pin_memory=True,
 			generator=torch.Generator().manual_seed(seed),
 		)
+		training_evaluation_loader = self._create_feature_loader(embeddings, reference)
 		validation_loader = (
 			self._create_feature_loader(embeddings, validation)
 			if validation is not None
 			else None
 		)
-		return training_loader, validation_loader
+		return training_loader, training_evaluation_loader, validation_loader
 
 	def _extract_features(
 		self,
@@ -730,13 +798,22 @@ class LoRATrainer:
 			stage=stage,
 		)
 
+	@property
+	def _head_inference_batch_size(self) -> int:
+		"""Reuse the standalone warmup batch size without requiring LoRA settings."""
+		return (
+			self._config.warmup_training_batch_size
+			if self._warmup_only
+			else self._config.head_inference_batch_size
+		)
+
 	def _create_feature_loader(
 		self, embeddings: PairwiseFeatureStore, reference: pd.DataFrame
 	) -> DataLoader[list[torch.Tensor]]:
 		"""Select reference-ordered feature views for head-only inference."""
 		return DataLoader(
 			embeddings.dataset(reference),
-			batch_size=self._config.head_inference_batch_size,
+			batch_size=self._head_inference_batch_size,
 			shuffle=False,
 			pin_memory=True,
 			generator=torch.Generator().manual_seed(self._config.random_state),
@@ -751,6 +828,8 @@ class LoRATrainer:
 		*,
 		feature_loader: DataLoader[list[torch.Tensor]] | None = None,
 		head_only: bool = False,
+		criterion: ClassificationLoss | None = None,
+		stage: str | None = None,
 		progress: TrainingProgress | None = None,
 		description: str = "",
 	) -> tuple[float, np.ndarray]:
@@ -760,7 +839,7 @@ class LoRATrainer:
 				f"{self._model_label} inference received no rows."
 			)
 		model.eval()
-		progress_stage = (
+		progress_stage = stage or (
 			"head warmup validation"
 			if head_only
 			else "joint validation"
@@ -777,6 +856,10 @@ class LoRATrainer:
 				stage=progress_stage,
 			)
 			feature_loader = self._create_feature_loader(embeddings, reference)
+		if len(feature_loader.dataset) != len(reference):
+			raise ModelExecutionError(
+				f"{self._model_label} inference features do not match the reference row count."
+			)
 		probabilities = torch.empty(
 			(len(reference), 3), device=self._device, dtype=torch.float32
 		)
@@ -797,8 +880,16 @@ class LoRATrainer:
 			finite_probabilities.logical_and_(torch.isfinite(log_probabilities).all())
 			if "label" in reference:
 				labels = labels.to(self._device, non_blocking=True)
-				loss_total.add_(F.nll_loss(log_probabilities, labels, reduction="sum"))
+				loss_total.add_(
+					F.nll_loss(log_probabilities, labels, reduction="sum")
+					if criterion is None
+					else criterion.from_log_probabilities(log_probabilities, labels)
+				)
 			stop = start + log_probabilities.shape[0]
+			if stop > len(reference):
+				raise ModelExecutionError(
+					f"{self._model_label} inference exceeded the reference row count."
+				)
 			probabilities[start:stop].copy_(log_probabilities.exp())
 			start = stop
 			if progress is not None and stop < len(reference):
@@ -807,12 +898,21 @@ class LoRATrainer:
 					stage=progress_stage,
 					weight=progress_weight,
 				)
+		if start != len(reference):
+			raise ModelExecutionError(
+				f"{self._model_label} inference did not consume every reference row."
+			)
 		if not bool(finite_probabilities):
 			raise ModelExecutionError(
 				f"{self._model_label} inference produced non-finite probabilities."
 			)
-		result = loss_total.item() / len(reference), probabilities.cpu().numpy()
-		if progress is not None and start == len(reference):
+		loss = loss_total.item() / start
+		if not math.isfinite(loss):
+			raise ModelExecutionError(
+				f"{self._model_label} inference produced a non-finite loss."
+			)
+		result = loss, probabilities.cpu().numpy()
+		if progress is not None:
 			# Complete the last batch only after the existing result checks succeed.
 			progress.advance(description, stage=progress_stage, weight=progress_weight)
 		return result

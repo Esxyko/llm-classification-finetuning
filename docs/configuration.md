@@ -137,7 +137,9 @@ its fixed `warmup.warmup_learning_rate`. See
 For three classes, training uses the target
 `(1 - label_smoothing) * one_hot + label_smoothing / 3`.
 This applies to warmup and joint-training cross entropy.
-Validation and reporting use unsmoothed log loss.
+Warmup's epoch-end training-set inference uses the same smoothing as its
+training objective. Validation and reported validation metrics use unsmoothed
+log loss.
 
 | Setting | Applies to |
 | --- | --- |
@@ -165,8 +167,12 @@ The corresponding fields in `warmup` configure **only** `model warmup --build`.
 They do not override SR2's model/head settings.
 
 Standalone warmup requires positive `warmup_epochs` and uses the saved train
-partition, the SR2 comparison head, and original rows only. It writes
-`SR2_Qwen3_4B_lora_warmup/`, sharing the inline SR2 namespace. The shipped
+partition for training, the SR2 comparison head, and original rows only.
+It also reads validation for evaluation. Epoch-end inference reports the full
+training loss with warmup smoothing and validation's unsmoothed log loss;
+both inference loaders use `warmup_training_batch_size`. Cache hits recompute
+both losses from the restored head and current data without training.
+It writes `SR2_Qwen3_4B_lora_warmup/`, sharing the inline SR2 namespace. The shipped
 presets set `warmup.model_name` to `Skywork/Skywork-Reward-V2-Qwen3-4B`.
 
 Matching shared controls is insufficient for cache reuse: model/head settings
@@ -197,7 +203,8 @@ See [data preparation](data-preparation.md#one-shared-trainvalidation-split).
 | --- | --- |
 | `warmup.extraction_budget` | Inline LoRA and standalone warmup extraction |
 | A LoRA section's `extraction_budget` | Its joint-validation and submission extraction |
-| A LoRA section's `head_inference_batch_size` | Head inference after extraction; counts pairs, not tokens |
+| A LoRA section's `head_inference_batch_size` | Head inference after extraction, including inline warmup train/validation evaluation; counts pairs, not tokens |
+| `warmup.warmup_training_batch_size` | Standalone warmup head training and train/validation inference batch size |
 
 Extraction sorts individual A/B branches by descending length, breaking ties by
 original branch index. Batch cost is `branch_count * longest_branch_length`;
@@ -255,8 +262,9 @@ Adapters follow their base layers; decoder layers remain intact.
 
 Both submission GPUs must support the selected precision. There is no automatic
 precision change, CPU/disk offload, or single-GPU submission fallback. Hardware
-checks still run on complete warmup-cache hits, though standalone warmup skips
-backbone weights on a hit. `ALL` executes SR2 on the configured device layout.
+checks still run on complete warmup-cache hits. Standalone warmup loads backbone
+weights on a hit to recompute current train/validation losses.
+`ALL` executes SR2 on the configured device layout.
 
 Device placement can change without invalidating caches or checkpoints.
 SR2 checkpoints allow precision, attention, and TF32 changes; compatibility does

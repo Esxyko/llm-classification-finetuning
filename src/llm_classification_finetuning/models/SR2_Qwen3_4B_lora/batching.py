@@ -599,20 +599,6 @@ class LoRATrainingBatchRepository:
 				validation_fraction=config.validation.validation_fraction,
 			)
 			data = repository.load()
-			if warmup_only:
-				reference = data.reference.loc[
-					data.reference["split"].eq("train")
-				].copy()
-				training_ids = set(reference["id"])
-				data = ModelData(
-					reference=reference.reset_index(drop=True),
-					canonical_texts=tuple(
-						record
-						for record in data.canonical_texts
-						if record.row_id in training_ids
-					),
-					fingerprint=data.fingerprint,
-				)
 			return cls(
 				config=model,
 				data=data,

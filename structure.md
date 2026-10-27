@@ -98,7 +98,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `models/profile.py` | Immutable selector/config/artifact identity and effective A/B policy |
 | `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports, deferring pipeline/trainer imports until execution |
 | `models/SR2_Qwen3_4B_lora/profile.py` | SR2 identity usable below the registration surface without import cycles; default for LoRA Python APIs |
-| `models/warmup.py` | Train-partition-only standalone SR2 head warmup, sharing SR2's cache namespace without adapters, validation, joint plans, or production checkpoint |
+| `models/warmup.py` | Standalone SR2 head warmup trained on the train partition, with current train/validation evaluation on builds and cache hits; shares SR2's cache namespace without adapters, joint plans, or production checkpoint |
 
 SR2 is the only registered model. `ALL` runs it when its YAML section is present;
 `warmup` stays outside the registry. Retired profiles remain unregistered and
@@ -148,7 +148,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, swap-equivariant harmonic/discrepancy architecture, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, epoch-end warmup train/validation inference on shared features, shared progress, and standalone cached-head evaluation |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, validation, atomic storage, and restoration |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
@@ -231,8 +231,10 @@ present in a fresh checkout.
    infer one compatibility from another. Version identities when their actual
    representation/algorithm changes. See [caching](docs/caching.md).
 5. **CPU preparation:** token/loader/plan preparation must not load model weights
-   or initialize CUDA. Complete frozen/warmup hits skip backbone weights while
-   retaining applicable input and hardware checks.
+   or initialize CUDA. Complete frozen-embedding hits skip backbone weights while
+   retaining applicable input and hardware checks. Inline warmup hits skip warmup
+   work; standalone warmup hits load weights and evaluate the restored head on
+   current train/validation data without training or rewriting cached state.
 6. **LoRA inputs and attention:** never truncate adapter inputs. Right-pad without
    masks, pool the last real token, and preserve scoped SDPA/checkpoint
    recomputation settings. Restore global predicates/flags after failures.
@@ -261,7 +263,10 @@ present in a fresh checkout.
    policy; submission disables gradient checkpointing. See [precision](docs/lora.md#hardware-and-input-limits).
 9. **Warmup state:** publish only completed compatible head/optimizer/scaler/RNG
    states, validate them before restoration, and retain current training-ID
-   semantics. No persisted live LoRA features. See [warmup](docs/caching.md#lora-head-warmup).
+   semantics. Each executed warmup epoch evaluates its complete training set with
+   final weights, dropout disabled, and warmup smoothing; validation remains
+   unsmoothed. Publish only after these evaluations succeed. No persisted live
+   LoRA features or losses. See [warmup](docs/caching.md#lora-head-warmup).
 10. **Placement and production state:** load backbones directly with device maps;
     submission uses exactly two GPUs without replicas/offload/fallback. Production
     builds omit base weights and optimizer state; LoRA retains its Hub revision.

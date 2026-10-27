@@ -148,7 +148,7 @@ class HeadWarmupCache:
 		optimizer: AdamW,
 		scaler: torch.amp.GradScaler,
 	) -> None:
-		"""Publish only after the final warmup validation has completed."""
+		"""Publish only after the final warmup train/validation evaluation completes."""
 		path = self.path(entry)
 		try:
 			numpy_state = np.random.get_state()

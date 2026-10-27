@@ -197,8 +197,8 @@ offsets/metadata. Current train/test inputs are checked independently.
 
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
-| Head warmup, cache miss | Extract frozen eval-mode features with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Holdout validates after each epoch using the same temporary features; save completed head/optimizer/RNG state |
-| Head warmup, cache hit | Restore compatible head and training state | Skip warmup extraction, training, and validation |
+| Head warmup, cache miss | Extract frozen eval-mode features with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Evaluate the full training set and, for holdout runs, validation after each epoch using the same temporary features; save completed head/optimizer/RNG state |
+| Head warmup, cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup extracts current train/validation features and recomputes both losses without training |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
@@ -208,8 +208,10 @@ come from the selected LoRA section. `warmup_epochs: 0` skips warmup extraction
 and cache I/O. See [standalone versus inline settings](configuration.md#standalone-warmup).
 
 Warmup features are extracted once for needed train/validation IDs, stay in CPU
-memory, and are released before joint training. They are not persisted. For a
-57,477-ID, 2,560-dimensional backbone, both branches' raw feature tensor is about
+memory, and are shared by the shuffled training loader and fixed-order train
+and validation inference loaders. All feature views are released before joint
+training. They are not persisted. For a 57,477-ID, 2,560-dimensional backbone,
+both branches' raw feature tensor is about
 0.55 GiB in BF16 or 1.10 GiB in FP32, excluding loader batches and metadata.
 
 Both stages normalize loss by the actual rows in each optimizer update, then
@@ -225,6 +227,11 @@ batches of 8, 8, 8, and 3, but update groups of 8, 8, and 11 rows.
 
 `gradient_accumulation_steps` applies only to joint training. Both stages use
 configured label smoothing for training and unsmoothed validation loss.
+Warmup `train_loss` is recomputed over the complete training set after all
+optimizer updates in each epoch, with the epoch's final weights, dropout disabled,
+and warmup label smoothing. It sums losses across all rows and divides by the
+actual row count, including a short final inference batch. Joint `train_loss`
+remains the row-weighted average observed during optimization.
 There is no early-stopping checkpoint selection: holdout publication uses the
 final epoch. Reused warmup contributes no old losses, timings, or executed epochs;
 joint epoch numbers retain their configured warmup offset.
@@ -270,9 +277,11 @@ restoring its checkpoint. Backbone extraction uses the selected LoRA section's
 
 Extraction completes before head inference, stores temporary CPU features, and
 releases them on return. Features are never reused across joint epochs/runs.
-Warmup validation instead reuses that stage's frozen features. Logs distinguish
-warmup, joint validation, and submission; joint-validation timing includes both
-extraction and head inference. Validation/submission still work when warmup is
+Warmup train and validation inference instead reuse that stage's frozen features.
+Inline warmup uses `head_inference_batch_size` for both evaluations; standalone
+warmup uses `warmup_training_batch_size`. Logs distinguish warmup training
+evaluation, warmup validation, joint validation, and submission; joint-validation
+timing includes both extraction and head inference. Validation/submission still work when warmup is
 disabled. See [extraction packing](configuration.md#extraction-token-budgets).
 
 ## Optional token-budget training batches
@@ -367,17 +376,22 @@ budgets are not benchmark guarantees.
 
 ## Training progress
 
-One counter spans executed warmup/joint epochs and their validation batches,
-logging approximately 5% milestones. Warmup updates and warmup validation
-batches each count as **0.5** work units; joint updates and validation batches
-count as **1**. Dynamic micro-batches do not change update-group work counts;
+One counter spans executed warmup/joint epochs and their inference batches,
+logging approximately 5% milestones. Warmup updates, training-set evaluation,
+and validation batches each count as **0.5** work units; joint updates and
+validation batches count as **1**. Dynamic micro-batches do not change update-group work counts;
 FP16-skipped updates still advance progress.
 
-For a holdout, let `W` and `J` be the warmup/joint update counts above and
+For an inline holdout run, let `W` and `J` be the warmup/joint update counts above,
+`T = ceil(training_rows / head_inference_batch_size)`, and
 `V = ceil(original_validation_rows / head_inference_batch_size)`.
-Work is `0.5 * executed_warmup_epochs * (W + V) + epochs * (J + V)`.
-Builds use all training IDs and `V = 0`; standalone warmup has only half-weight
-warmup updates. Reused warmup contributes zero work.
+Work is `0.5 * executed_warmup_epochs * (W + T + V) + epochs * (J + V)`.
+Full-data model builds use all training IDs and `V = 0`.
+
+Standalone warmup uses `warmup_training_batch_size` for the denominators of
+both `T` and `V`. A miss counts `0.5 * warmup_epochs * (W + T + V)`;
+a hit counts only `0.5 * (T + V)` for current-data evaluation and executes zero
+epochs. Inline reused warmup contributes zero work.
 
 Extraction, preparation, caches, saving, and publication are excluded. See
 [shared progress behavior](models.md#training-progress) and

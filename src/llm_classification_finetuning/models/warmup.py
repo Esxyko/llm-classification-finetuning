@@ -30,7 +30,7 @@ class WarmupModelPipeline:
 		self._config = replace(config, warmup=self._model_config)
 
 	def run(self, *, refresh_cache: bool = False) -> WarmupBuildResult:
-		"""Prepare train-only tokens and publish completed warmup, or reuse a hit."""
+		"""Build or reuse train-partition warmup and evaluate both saved partitions."""
 		try:
 			batches = LoRATrainingBatchRepository.from_config(
 				self._config,

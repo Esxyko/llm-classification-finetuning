@@ -123,17 +123,23 @@ seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
 
 | Field / scope | Includes |
 | --- | --- |
-| Epoch `training_time` | That epoch's training phase |
+| Epoch `training_time` | That epoch's training phase, including full-training-set inference at the end of warmup epochs |
 | Epoch `validation_time` | Validation phase; joint LoRA validation includes fresh extraction plus head inference |
 | Epoch `total_time` | Epoch setup and training/validation; excludes warmup feature extraction performed before epochs |
 | Top-level `training_time`, `validation_time` | Sums of executed epoch phase durations |
 | Final `total_time`, `config_total_time` | Complete successful model run: initialization, input/cache/embedding preparation, training, validation, cleanup, and publication |
 
-Warmup validation reuses its extracted features. Cache work and warmup extraction
-are included in complete-run time, not epoch phases. A warmup hit contributes no
+Warmup train and validation inference reuse their shared extracted features.
+Warmup epoch `training_loss` is the final-weight training-set loss with warmup
+label smoothing and dropout disabled; joint epoch `training_loss` remains the
+average observed during optimization. All `validation_loss` values are unsmoothed.
+Cache work and warmup extraction are included in complete-run time, not epoch
+phases. A warmup hit contributes no
 historical epoch losses or times; joint epoch numbering retains the configured
 warmup offset. `model ALL` times each model separately. Builds do not write
 `metrics.json`; their summaries count only epochs executed in that invocation.
+Standalone warmup reports current train and validation losses on cache hits as
+well, while its executed epoch count remains zero.
 
 The [progress counter](models.md#training-progress) excludes extraction and
 publication, so its time estimate has a different scope.

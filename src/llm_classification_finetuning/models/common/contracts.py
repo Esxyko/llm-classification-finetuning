@@ -55,12 +55,14 @@ class ModelSubmitResult:
 
 @dataclass(frozen=True, slots=True)
 class WarmupBuildResult:
-	"""Summary of a train-partition head-warmup cache build or hit."""
+	"""Summary and current train/validation losses of a head-warmup build or hit."""
 
 	cache_path: Path
 	cache_reused: bool
 	training_rows: int
 	epochs: int
+	final_training_loss: float
+	validation_loss: float
 
 
 ModelExecutionResult = (

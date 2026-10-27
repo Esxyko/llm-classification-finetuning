@@ -254,6 +254,8 @@ def _print_result(selector: str, result: ModelExecutionResult) -> None:
 		print(
 			f"Warmup train partition: {result.training_rows:,} rows; executed {result.epochs} epochs."
 		)
+		print(f"Final training loss: {result.final_training_loss:.6f}")
+		print(f"Validation log loss: {result.validation_loss:.6f}")
 		return
 	if result.cache_path is not None:
 		cache_status = "Reused" if result.cache_reused else "Created"
