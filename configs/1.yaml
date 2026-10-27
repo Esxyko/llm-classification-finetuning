@@ -36,7 +36,7 @@ SR2_Qwen3_4B_lora:
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
-  gradient_checkpointing_threshold: 10752
+  gradient_checkpointing_threshold: 9216
   gradient_checkpointing_budget: 98304
   training_batch_size: 1
   head_inference_batch_size: 4096
