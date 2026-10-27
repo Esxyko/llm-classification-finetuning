@@ -23,10 +23,10 @@ warmup:
   max_length: 13866
   hidden_size: 256
   dropout: 0.1
-  warmup_epochs: 1
+  warmup_epochs: 2
   extraction_budget: 540672
-  warmup_training_batch_size: 1024
-  warmup_learning_rate: 0.001
+  warmup_training_batch_size: 4096
+  warmup_learning_rate: 0.0015
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
