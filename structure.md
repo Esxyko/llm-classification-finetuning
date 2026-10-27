@@ -145,7 +145,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
-| `heads.py` | Head factory, precision wrapper, swap-equivariant tie-from-wins architecture (introduced by EXPT2), and retained legacy head definitions |
+| `heads.py` | Head factory, precision wrapper, swap-equivariant harmonic/discrepancy architecture, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
 | `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, validation/inference, shared progress, and standalone warmup cache short-circuit |
@@ -207,11 +207,15 @@ present in a fresh checkout.
    Encode with the same tokenizer and `add_special_tokens=False`. Predictions
    use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/models.md#build-and-submit).
-3. **Profile objectives:** SR2 uses the tie-from-wins head and original rows
-   only. Preserve shared win dropout, separate tie dropout, and FP32 logits.
-   Architecture `swap_equivariant_tie_from_wins_v2` adds zero-initialized FP32
-   `readout_bias` of shape `[2]`: one shared win bias and one tie bias. Its marker
-   isolates warmup caches and rejects incompatible v1 production checkpoints.
+3. **Profile objectives:** SR2 uses shared cross projections with harmonic fusion
+   and a discrepancy correction, on original rows only. Derive both symmetric
+   features before dropout; share one win mask and use independent fusion and
+   discrepancy masks. Compute the correction once and reuse it. Architecture
+   `swap_equivariant_harmonic_discrepancy_v1` uses six Xavier-uniform matrices
+   (gain 1.0), zero-initialized hidden biases, and one zero-initialized FP32 scalar
+   tie bias. Harmonic fusion (epsilon `1e-8`) and final logit arithmetic stay FP32.
+   Its marker and exact parameter structure isolate warmup caches and reject
+   earlier tie-from-wins production checkpoints.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen embeddings, plans, warmup,
    and production checkpoints. Map cached entries to current rows/labels; never

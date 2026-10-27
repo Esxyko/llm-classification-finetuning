@@ -59,7 +59,9 @@ class ModelResultPublisher:
 			"generated_at": generated_at.isoformat(timespec="seconds"),
 			"model_name": model_config.model_name,
 			"head_architecture": profile.head_architecture,
-			"embedding_combination": "sum_signed_diff_abs_diff"
+			"embedding_combination": "cross_projected_harmonic_abs_diff"
+			if profile.head_architecture == "swap_equivariant_harmonic_discrepancy_v1"
+			else "sum_signed_diff_abs_diff"
 			if profile.head_architecture
 			in {
 				"swap_equivariant_reparam_v2",

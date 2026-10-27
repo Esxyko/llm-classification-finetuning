@@ -19,7 +19,7 @@ from torch.optim import AdamW
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
 from ..common import CacheStorage
-from .heads import EXPT2, PAIRWISE_MLP, create_classification_head
+from .heads import PAIRWISE_MLP, SR2, create_classification_head
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ class HeadWarmupCache:
 		*,
 		quantize_training: bool = False,
 		model_label: str = "LoRA",
-		head_architecture: str = EXPT2,
+		head_architecture: str = SR2,
 	) -> None:
 		self.root = root
 		self._config = config

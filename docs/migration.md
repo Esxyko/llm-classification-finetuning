@@ -49,17 +49,28 @@ of `LoRAModelPipeline`, `LoRATrainer`, `LoRATrainingBatchRepository`,
 `PreparedTrainingSplit`, `TrainingBatchPlan`, and `WarmupCacheContext` to that
 package. The default Python profile is now SR2; its identity lives in `profile.py`.
 
-The SR2 selector, config key, result prefix, checkpoint/cache directories,
-head tensors, architecture marker `swap_equivariant_tie_from_wins_v1`,
-adapter/head schema v2, batch-plan schema v4, and warmup schema v5 are unchanged.
-The EXPT2 head architecture remains in SR2 even though the EXPT2 profile is retired.
-Compatible existing SR2 checkpoints and caches require no conversion.
+That package move preserved the SR2 selector, config key, result prefix,
+checkpoint/cache directories, head tensors, architecture marker
+`swap_equivariant_tie_from_wins_v1`, adapter/head schema v2, batch-plan schema v4,
+and warmup schema v5. The EXPT2 head definition was retained even though its
+profile was retired; compatible checkpoints required no conversion at that stage.
 
 The subsequent readout-bias update changes the SR2 head marker to
 `swap_equivariant_tie_from_wins_v2` and adds `readout_bias`, with one shared
 win bias and one tie bias. Storage schemas and artifact namespaces stay the
 same. The v2 head rejects v1 checkpoints; rebuild them with the matching config.
 Warmup uses new cache keys and is regenerated, leaving historical v1 files intact.
+
+The current head replacement uses `swap_equivariant_harmonic_discrepancy_v1`:
+shared cross projections feed harmonic fusion and an absolute-difference
+correction, with separate R/S/T readouts and only one scalar output bias. All six
+matrices use Xavier uniform with gain 1.0; hidden and output biases start at zero.
+The adapter/head schema v2, warmup schema v5, configuration fields, and artifact
+namespaces remain unchanged. Earlier tie-from-wins v1/v2 checkpoints are rejected
+and require rebuilding. Warmup selects new cache keys; exact parameter/moment
+structure checks also reject old states with relabeled metadata. Historical
+weights, caches, results, and configuration snapshots are not converted or edited.
+See the [current head definition](lora.md#swap-equivariant-head).
 
 `model warmup --build` now uses the SR2 profile and writes
 `SR2_Qwen3_4B_lora_warmup/`. Current presets select

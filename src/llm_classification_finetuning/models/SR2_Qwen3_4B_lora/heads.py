@@ -10,6 +10,7 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
+SR2 = "swap_equivariant_harmonic_discrepancy_v1"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -155,15 +156,95 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 		return logits.float() + self.readout_bias[[0, 0, 1]]
 
 
+class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
+	"""Combine cross-projected wins with harmonic and discrepancy representations."""
+
+	head_architecture = SR2
+	EMBEDDING_COMBINATION = "cross_projected_harmonic_abs_diff"
+	EPSILON = 1e-8
+
+	def __init__(
+		self,
+		backbone_hidden_size: int,
+		hidden_size: int,
+		dropout: float,
+		*,
+		compute_dtype: torch.dtype,
+	) -> None:
+		super().__init__()
+		self._compute_dtype = compute_dtype
+		# L carries B1 and is reused for both branches; M has no bias.
+		self.self_projection = nn.Linear(backbone_hidden_size, hidden_size, bias=True)
+		self.cross_projection = nn.Linear(backbone_hidden_size, hidden_size, bias=False)
+		# N carries B2; R, S, and T have no output biases.
+		self.discrepancy_projection = nn.Linear(hidden_size, hidden_size, bias=True)
+		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
+		self.tie_readout = nn.Linear(hidden_size, 1, bias=False)
+		self.discrepancy_readout = nn.Linear(hidden_size, 1, bias=False)
+		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
+		self.activation = nn.GELU()
+		self.dropout = nn.Dropout(dropout)
+		for layer in (
+			self.self_projection,
+			self.cross_projection,
+			self.discrepancy_projection,
+			self.win_readout,
+			self.tie_readout,
+			self.discrepancy_readout,
+		):
+			nn.init.xavier_uniform_(layer.weight, gain=1.0)
+			if layer.bias is not None:
+				nn.init.zeros_(layer.bias)
+
+	@classmethod
+	def embedding_combination(cls) -> str:
+		"""Return the marker for cross projections, fusion, and absolute differences."""
+		return cls.EMBEDDING_COMBINATION
+
+	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
+		"""Return FP32 A-win, B-win, and tie logits with shared win dropout."""
+		if h_a.shape != h_b.shape or h_a.ndim != 2:
+			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
+		with torch.autocast(
+			device_type=h_a.device.type,
+			dtype=torch.bfloat16,
+			enabled=self._compute_dtype == torch.bfloat16,
+		):
+			p1 = self.activation(self.self_projection(h_a) + self.cross_projection(h_b))
+			p2 = self.activation(self.self_projection(h_b) + self.cross_projection(h_a))
+			# Both derived representations use the undropped win features.
+			with torch.autocast(device_type=h_a.device.type, enabled=False):
+				p1_fp32, p2_fp32 = p1.float(), p2.float()
+				denominator = p1_fp32.abs() + p2_fp32.abs() + self.EPSILON
+				fused = 2 * p1_fp32 * p2_fp32 / denominator
+			discrepancy = self.activation(self.discrepancy_projection((p1 - p2).abs()))
+			if self.training and self.dropout.p:
+				# One standard, scaled mask per sample is reused only by the two wins.
+				win_mask = self.dropout(torch.ones_like(p1))
+				p1, p2 = p1 * win_mask, p2 * win_mask
+			# Separate dropout calls draw independent fusion and discrepancy masks.
+			fused = self.dropout(fused)
+			discrepancy = self.dropout(discrepancy)
+			win_a = self.win_readout(p1).squeeze(-1)
+			win_b = self.win_readout(p2).squeeze(-1)
+			tie = self.tie_readout(fused).squeeze(-1)
+			q = self.discrepancy_readout(discrepancy).squeeze(-1)
+		q = q.float()
+		return torch.stack(
+			(win_a.float() + q, win_b.float() + q, tie.float() - q + self.tie_bias),
+			dim=-1,
+		)
+
+
 def create_classification_head(
 	backbone_hidden_size: int,
 	hidden_size: int,
 	dropout: float,
 	*,
 	compute_dtype: torch.dtype,
-	head_architecture: str = EXPT2,
+	head_architecture: str = SR2,
 ) -> nn.Module:
-	"""Construct an EXPT2 head by default, retaining legacy head definitions."""
+	"""Construct the current SR2 head by default, retaining legacy definitions."""
 	if head_architecture == PAIRWISE_MLP:
 		return _LoRAClassificationHead(
 			backbone_hidden_size,
@@ -180,6 +261,13 @@ def create_classification_head(
 		)
 	if head_architecture == EXPT2:
 		return SwapEquivariantTieFromWinsClassificationHead(
+			backbone_hidden_size,
+			hidden_size,
+			dropout,
+			compute_dtype=compute_dtype,
+		)
+	if head_architecture == SR2:
+		return SwapEquivariantHarmonicDiscrepancyClassificationHead(
 			backbone_hidden_size,
 			hidden_size,
 			dropout,

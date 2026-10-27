@@ -171,10 +171,13 @@ update counts follow finalized merged groups. See
 
 SR2 and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. Both use the
-`swap_equivariant_tie_from_wins_v2` head architecture and warmup schema v5.
-The v2 head adds zero-initialized, trainable win/tie readout biases. Its architecture
-marker selects new cache keys within the existing namespace; v1 entries remain
-on disk and are not reused or migrated. Warmup is regenerated for v2.
+`swap_equivariant_harmonic_discrepancy_v1` head architecture and warmup schema v5.
+This head uses shared cross projections, harmonic fusion, a discrepancy correction,
+and one scalar output bias. Its architecture marker selects new cache keys within
+the existing namespace; earlier tie-from-wins v1/v2 entries remain on disk and
+are not reused or migrated. Exact head/optimizer tensor names and shapes are
+validated against the new head, so relabeling old metadata cannot make an old
+state compatible. Warmup is regenerated for the new architecture.
 Submission does not use warmup caches.
 
 ### Identity

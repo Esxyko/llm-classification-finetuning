@@ -24,9 +24,9 @@ and [configuration](configuration.md) for the complete fields and parser default
 | SR2 | `SR2_Qwen3_4B_lora` | `Skywork/Skywork-Reward-V2-Qwen3-4B` | `SR2_Qwen3_4B_lora` / `SR2_Qwen3_4B_lora_warmup` |
 
 SR2 loads Skywork's Transformer through `AutoModel`, omitting its scalar reward
-head. Its comparison head extends the architecture introduced by the retired
-EXPT2 profile with separate win and tie readout biases. The implementation and
-public Python APIs now live in `models/SR2_Qwen3_4B_lora/`. Head size, rank,
+head. Its comparison head uses shared cross projections, harmonic fusion, and
+an absolute-difference correction. The implementation and public Python APIs
+now live in `models/SR2_Qwen3_4B_lora/`. Head size, rank,
 smoothing, rates, and epochs may differ between presets; read their actual values.
 
 SR2 and the standalone `warmup` command use the same SR2 cache namespace.
@@ -35,34 +35,48 @@ matching training IDs and effective model/head settings.
 
 ## Swap-equivariant head
 
-For pooled column vectors $A,B$ of width $D$ and classifier width $h$:
+For pooled row vectors $A,B$ of width $D$ and classifier width $h$:
 
 $$
 \begin{aligned}
-u &= W_s[A+B;\,|A-B|] + b_1, & W_s &\in \mathbb{R}^{h\times 2D},\\
-v &= W_d(A-B), & W_d &\in \mathbb{R}^{h\times D},\\
-p_A &= \operatorname{GELU}(u+v), & p_B &= \operatorname{GELU}(u-v),\\
-t &= \operatorname{GELU}\left(W_t\frac{p_A+p_B}{2}+b_2\right),
-& W_t &\in \mathbb{R}^{h\times h}.
+P_1 &= \operatorname{GELU}(AL+BM+B_1),\\
+P_2 &= \operatorname{GELU}(BL+AM+B_1),\\
+P' &= \frac{2P_1\odot P_2}{|P_1|+|P_2|+10^{-8}},\\
+Q &= \operatorname{GELU}(|P_1-P_2|N+B_2),\\
+q &= (Q\odot m_Q)T,\\
+\operatorname{logit}_A &= (P_1\odot m_P)R+q,\\
+\operatorname{logit}_B &= (P_2\odot m_P)R+q,\\
+\operatorname{logit}_{tie} &= (P'\odot m_{P'})S-q+b.
 \end{aligned}
 $$
 
-The directional projection has no bias. The tie projection acts on the mean of
-the activated win representations **before dropout**. Win branches share a
-dropout mask; the tie branch has an independent mask. One shared bias-free
-`Linear(h, 1)` scores the three representations. After converting these scores
-to FP32, the head adds `readout_bias`, a trainable FP32 vector of shape `[2]`
-initialized to zero: A-win and B-win share its first element, and tie uses its
-second element. The FP32 logits are returned in A-win, B-win, tie order. The
-relative bias learns the win-versus-tie prior. Swapping inputs exchanges win
-logits and preserves the tie logit under the same masks; evaluation disables
-dropout. Biases use the existing head learning rate and weight decay.
+Here $L,M\in\mathbb{R}^{D\times h}$, $N\in\mathbb{R}^{h\times h}$, and
+$R,S,T\in\mathbb{R}^{h\times 1}$. PyTorch stores the transposed linear weights.
+The six matrices are initialized independently with Xavier uniform, gain 1.0;
+$L$ and $M$ are shared across A/B branches. The hidden biases $B_1,B_2$ and
+the sole scalar output bias $b$ are trainable and initialized to zero. The head
+has $2Dh+h^2+5h+1$ trainable parameters. Biases use the existing head learning
+rate and weight decay.
+
+Fusion multiplication/division, absolute values, and mask multiplication act
+elementwise. Both $P'$ and $Q$ use **undropped** $P_1,P_2$. Each sample's win
+branches share $m_P$; $m_P,m_{P'},m_Q$ are mutually independent standard dropout
+masks with $1/(1-p)$ scaling. Evaluation disables dropout. The correction $q$
+is computed once and reused. Swapping inputs exchanges win logits and preserves
+the tie logit under the same masks.
+
+Before harmonic fusion, $P_1,P_2$ are converted to FP32 inside a region with
+autocast disabled; the entire fusion formula, including the fixed epsilon
+$10^{-8}$, stays FP32 through dropout. Other matrix multiplications retain the
+existing head precision policy. The three main readouts and $q$ are converted
+to FP32 before final addition/subtraction, and $b$ is FP32. Returned FP32 logits
+are ordered A-win, B-win, tie.
 
 These weights are trained directly. The architecture marker is
-`swap_equivariant_tie_from_wins_v2`; adapter/head checkpoint schema is v2 and
-warmup schema is v5. The new marker selects a different warmup cache key and
-rejects historical v1 checkpoints without converting their weights. Rebuild
-those checkpoints with the matching configuration; warmup is regenerated.
+`swap_equivariant_harmonic_discrepancy_v1`; adapter/head checkpoint schema is v2
+and warmup schema is v5. The marker selects different warmup cache keys and
+rejects earlier tie-from-wins v1/v2 checkpoints without converting their weights.
+Rebuild those checkpoints with the matching configuration; warmup is regenerated.
 There is no `A/B_swap` setting or orientation averaging for SR2.
 
 ## Hardware and input limits
@@ -102,6 +116,7 @@ checkpoints require rebuilding.
 BF16 support is checked on each selected GPU. BF16 adapter encoding and
 checkpoint recomputation disable PEFT's input dtype upcasting while preserving
 FP32 adapter parameters. RMSNorm retains FP32 variance calculation.
+Harmonic feature fusion and final logit arithmetic remain FP32 in every mode.
 
 With `sdpa`, LoRA permits Flash, memory-efficient, and cuDNN backends and disables
 math fallback during warmup, joint training, validation, submission, and

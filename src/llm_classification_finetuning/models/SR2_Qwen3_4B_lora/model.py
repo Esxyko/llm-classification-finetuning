@@ -18,7 +18,7 @@ from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...model_storage import load_model_weights
 from ..common import ABSwapAverager, GPUEnvironment
 from .data import BranchBatch, PairwiseBatch
-from .heads import EXPT, EXPT2, create_classification_head
+from .heads import EXPT, EXPT2, SR2, create_classification_head
 
 
 class LoRAQwenClassifier(nn.Module):
@@ -34,7 +34,7 @@ class LoRAQwenClassifier(nn.Module):
 		device_map: dict[str, str] | None = None,
 		quantize_backbone: bool = False,
 		warmup_only: bool = False,
-		head_architecture: str = EXPT2,
+		head_architecture: str = SR2,
 	) -> None:
 		super().__init__()
 		if not warmup_only and not isinstance(config, LoRAModelConfig):
@@ -196,7 +196,7 @@ class LoRAQwenClassifier(nn.Module):
 	def log_probabilities(self, batch: PairwiseBatch) -> Tensor:
 		"""Return the selected head's original-only or averaged log probabilities."""
 		a, b = self.encode(batch)
-		if self.head_architecture in {EXPT, EXPT2}:
+		if self.head_architecture in {EXPT, EXPT2, SR2}:
 			return F.log_softmax(self.classifier(a, b), dim=-1)
 		return ABSwapAverager.log_probabilities(self.classifier, a, b)
 
