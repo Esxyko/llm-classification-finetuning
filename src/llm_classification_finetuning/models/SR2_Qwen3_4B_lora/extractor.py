@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from ...errors import ModelExecutionError
-from ..common import ExtractionBatchSampler
+from ..common import ExtractionBatchSampler, TrainingProgress
 from .data import BranchBatch, PairwiseFeatureStore
 from .model import LoRAQwenClassifier
 
@@ -25,6 +25,8 @@ class LoRAEmbeddingExtractor:
 		row_ids: tuple[int, ...],
 		*,
 		stage: str,
+		progress: TrainingProgress | None = None,
+		description: str = "",
 	) -> PairwiseFeatureStore:
 		sampler = loader.batch_sampler
 		if not isinstance(sampler, ExtractionBatchSampler):
@@ -45,7 +47,12 @@ class LoRAEmbeddingExtractor:
 				)
 			features[indices] = pooled
 			del pooled
-			if index == 0 or (index + 1) % 100 == 0:
+			if progress is not None:
+				progress.advance(
+					f"{description} branch batch {index + 1:,}/{len(loader):,}",
+					stage=f"{stage} feature extraction",
+				)
+			elif index == 0 or (index + 1) % 100 == 0:
 				print(
 					f"{self._model_label} {stage} extraction branch batch {index + 1:,}/{len(loader):,}.",
 					flush=True,

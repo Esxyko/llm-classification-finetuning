@@ -379,27 +379,56 @@ budgets are not benchmark guarantees.
 
 ## Training progress
 
-One counter spans executed warmup/joint epochs and their inference batches,
-logging approximately 5% milestones. Warmup updates, training-set evaluation,
-and validation batches each count as **0.5** work units; joint updates and
-validation batches count as **1**. Dynamic micro-batches do not change update-group work counts;
-FP16-skipped updates still advance progress.
+Progress has three independent stages. Each starts its own timer and work counter,
+accumulates across all of its epochs, and finishes with one 100% log after its
+work and result checks succeed. Failures do not force completion.
+
+| Stage | Included work | Logging interval |
+| --- | --- | --- |
+| **Warmup feature extraction** | All branch batches for the deduplicated train/validation IDs, extracted once before head training | Approximately 20% |
+| **Head warmup** | All warmup epochs, including optimizer groups, full-training-set evaluation, and validation | Approximately 20% |
+| **Joint training** | All joint epochs, including optimizer groups, validation feature extraction, and validation head inference | Approximately 10% |
+
+Each completed optimizer group, extraction branch batch, or head inference batch
+counts as **1** work unit. There are no warmup/joint weighting factors.
+Dynamic training micro-batches do not change update-group work counts;
+FP16-skipped updates still advance progress. Extraction milestones use the actual
+loader length: 46 branch batches log at batches 10, 19, 28, 37, and 46, including
+the final 100% log.
 
 For an inline holdout run, let `W` and `J` be the warmup/joint update counts above,
 `T = ceil(training_rows / head_inference_batch_size)`, and
-`V = ceil(original_validation_rows / head_inference_batch_size)`.
-Work is `0.5 * executed_warmup_epochs * (W + T + V) + epochs * (J + V)`.
-Full-data model builds use all training IDs and `V = 0`.
+`V = ceil(original_validation_rows / head_inference_batch_size)`, and `E` be the
+number of branch batches in each joint-validation extraction loader. Warmup
+extraction counts its own loader's batches; Head warmup totals
+`warmup_epochs * (W + T + V)`; Joint training totals `epochs * (J + E + V)`.
+Full-data model builds use all training IDs and `E = V = 0`.
 
 Standalone warmup uses `warmup_training_batch_size` for the denominators of
-both `T` and `V`. A miss counts `0.5 * warmup_epochs * (W + T + V)`;
-a hit counts only `0.5 * (T + V)` for current-data evaluation and executes zero
-epochs. Inline reused warmup contributes zero work.
+both `T` and `V`. A miss runs Warmup feature extraction followed by Head warmup,
+without Joint training. A hit logs cache reuse, runs Warmup feature extraction
+for current data, and then runs a separate **Cached head evaluation** stage with
+`T + V` work and approximately 20% milestones. It executes zero training epochs.
+Inline cache hits log reuse without creating progress records for either skipped
+warmup stage. Disabled warmup also enters Joint training directly.
 
-Extraction, preparation, caches, saving, and publication are excluded. See
-[shared progress behavior](models.md#training-progress) and
-[timing metrics](reports.md#timing-metrics). Python callers may pass a shared
-`TrainingProgress` to `LoRATrainer.fit()`; otherwise one is created for that call.
+Logs retain `time: HH:MM:SS/HH:MM:SS`, meaning **elapsed/estimated_total**. The
+right-hand duration is the current stage's estimated total, calculated as
+`stage_elapsed * stage_total_work / stage_completed_work`, rather than time
+remaining. At 100%, both durations equal that stage's actual elapsed time. Stage
+transitions reset all work and timing; neither earlier stages nor cache reuse
+contribute to the estimate. CPU preparation, cache I/O, saving, and publication
+are outside the stage boundaries. Warmup extraction starts after its loader is
+prepared; Head warmup starts after its feature views and loaders are ready and
+ends before saving the warmup cache; Joint training starts after transition setup.
+
+See [shared progress behavior](models.md#training-progress) and
+[timing metrics](reports.md#timing-metrics). Python callers may still pass a
+`TrainingProgress` to `LoRATrainer.fit()`; it is reset at each stage boundary.
+Otherwise an initially inactive counter is created for that call. The shared
+counter supports `start_stage(stage=..., total_steps=..., milestone_percent=...)`
+and `finish_stage(description)`. Existing construction with `total_steps` retains
+the legacy 5% logging interval and automatic completion.
 
 ## Memory tuning
 

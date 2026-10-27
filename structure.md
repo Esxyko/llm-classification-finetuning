@@ -131,7 +131,7 @@ they do not expose an active frozen CLI profile.
 | `trainer.py` | Holdout/full-data frozen-head training and epoch metrics |
 | `predictor.py` | Saved-head submission inference |
 | `checkpoint.py` | Atomic frozen head persistence and compatibility validation |
-| `progress.py` | CPU weighted-work counters and five-percent progress logs |
+| `progress.py` | CPU work counters, independent stage timers/completion and configurable progress milestones, retaining legacy weighted counters |
 | `publishers.py` | Staged validation/submission publication, effective YAML snapshots, and successful-run timing/peak updates |
 | `pipeline.py` | Frozen validation/build/submit orchestration |
 
@@ -147,8 +147,8 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
 | `heads.py` | Head factory, precision wrapper, swap-equivariant harmonic/discrepancy architecture, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
-| `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, epoch-end warmup train/validation inference on shared features, shared progress, and standalone cached-head evaluation |
+| `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission, with branch-batch progress callbacks |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress, and standalone cached-head evaluation |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, validation, atomic storage, and restoration |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |

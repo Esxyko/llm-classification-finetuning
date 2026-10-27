@@ -86,20 +86,30 @@ Hub revision. Historical Qwen checkpoints are not converted into SR2 checkpoints
 
 ## Training progress
 
-One CPU counter spans all executed training and validation epochs, logging
-roughly 5% milestones with model/mode/stage/epoch, percentage, work count, and
-elapsed/estimated total time. Durations use unbounded `HH:MM:SS`; estimates
-extrapolate weighted work rather than predicting exact remaining runtime.
+Progress logs include model/mode/stage/epoch, percentage, work count, and
+`time: elapsed/estimated_total`. Durations use unbounded `HH:MM:SS`; the right-hand
+duration is the current counter's estimated total time, calculated as
+`elapsed * total_work / completed_work`, rather than remaining time.
 
-[LoRA progress](lora.md#training-progress) uses optimizer groups, with half-weight
-warmup work, including epoch-end train and validation inference. Inline reused
-warmup contributes no executed work; a standalone warmup cache hit counts its
-current train/validation inference without executing training epochs.
-Dynamic micro-batches do not change the finalized update-group count.
+[LoRA progress](lora.md#training-progress) has independent Warmup feature
+extraction, Head warmup, and Joint training stages. Work and timing reset between
+stages and accumulate across epochs within a stage. Each optimizer group,
+extraction branch batch, and head inference batch counts as one work unit. Warmup
+stages log approximately every 20%; Joint training logs approximately every 10%
+and includes validation feature extraction. Dynamic training micro-batches do
+not change the finalized update-group count.
 
-Extraction, preparation, caches, saving, and publication are excluded. Thus the
-progress estimate differs from [complete-run timing](reports.md#timing-metrics).
-Successful completion prints 100% once; failures do not force completion.
+Inline reused warmup logs reuse without progress for skipped work. A standalone
+warmup cache hit reports current feature extraction and a separate Cached head
+evaluation stage, executing zero training epochs. CPU preparation, cache I/O,
+saving, and publication remain outside the stage boundaries, so stage estimates
+differ from [complete-run timing](reports.md#timing-metrics). Each successfully
+completed stage prints 100% once with its actual duration on both sides;
+failures do not force completion.
+
+The retained frozen-model infrastructure keeps its legacy shared CPU counter and
+5% interval. Existing `TrainingProgress(total_steps=...)` callers retain that
+behavior; LoRA explicitly starts and finishes each independent stage.
 
 ## Retired profiles
 
