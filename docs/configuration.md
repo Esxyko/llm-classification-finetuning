@@ -201,13 +201,17 @@ These two LoRA controls serve different purposes:
 
 | Control | `0` | Positive value |
 | --- | --- | --- |
-| `gradient_checkpointing_threshold` | Initial fixed-size micro-batches; checkpoint all joint batches | Pack initial batches by padded A/B tokens; checkpoint only batches above the threshold |
-| `gradient_checkpointing_budget` | Disable the second packing pass | Combine checkpointed singletons inside each optimizer update, within this padded-token budget |
+| `gradient_checkpointing_threshold` | Initial fixed-size micro-batches; checkpoint all joint batches | Pack initial batches by peak branch tokens; checkpoint only batches above the threshold |
+| `gradient_checkpointing_budget` | Disable the second packing pass | Combine checkpointed singletons inside each optimizer update, within this peak branch token budget |
 
 Joint updates target `training_batch_size * gradient_accumulation_steps` rows.
 A short tail merges into the preceding full update and uses the combined row
 count for loss normalization. With positive token packing, micro-batch sizes can
-exceed `training_batch_size`. Warmup and inference disable checkpointing.
+exceed `training_batch_size`. When `gradient_checkpointing_threshold > 0`,
+`gradient_checkpointing_budget` must exceed `2 * gradient_checkpointing_threshold`
+to merge any checkpointed singletons; when `gradient_checkpointing_threshold: 0`,
+use `training_batch_size: 1` so initial micro-batches are singletons eligible for
+budget repacking. Warmup and inference disable checkpointing.
 See [the packing algorithm](lora.md#optional-token-budget-training-batches) and
 [memory tuning](lora.md#memory-tuning) before changing these values.
 

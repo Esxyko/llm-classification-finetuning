@@ -75,8 +75,10 @@ Match an OOM to its stage before adjusting settings:
 With positive token packing, changing batch size and accumulation while keeping
 their product fixed does not lower packing limits. A zero second-pass budget
 disables singleton merging; a zero threshold enables checkpointing on every
-joint batch. Warmup/inference do not use checkpointing. Oversized individual
-inputs still run alone above a budget and may not fit. See [memory tuning](lora.md#memory-tuning).
+joint batch. Lowering a positive threshold forces more batches into gradient
+checkpointing to reduce peak activation memory. Warmup/inference do not use
+checkpointing. Oversized individual inputs still run alone above a budget and
+may not fit. See [memory tuning](lora.md#memory-tuning).
 
 LoRA never truncates. Lowering `max_length` rejects inputs above the new limit;
 reduce the stage's batch or token budget when addressing memory use.

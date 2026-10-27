@@ -247,7 +247,11 @@ then the earliest-created micro-batch. If none fits, create a new micro-batch.
 This is a heuristic, not a global optimum. A single pair above the threshold
 remains alone. When `M` is at or below a positive threshold, checkpointing is
 disabled; above it, checkpointing is enabled for **both branches through backward**,
-including A's no-grad forward, B's backward, and A's recompute.
+including A's no-grad forward, B's backward, and A's recompute. Because non-checkpointed
+batches store full autograd activations across all backbone layers for one branch
+at a time, setting the threshold too high can exceed GPU memory. Keep the positive
+threshold low enough for non-checkpointed single-branch loads, or set it to `0`
+to force gradient checkpointing on all joint batches.
 Warmup and inference disable checkpointing.
 
 ### Epoch groups and the second packing pass
@@ -263,15 +267,18 @@ packing rule with `M <= budget`. For positive thresholds, eligible singletons
 have `max(A_length, B_length) > threshold`; combining them keeps checkpointing
 enabled. Existing multi-row batches and non-checkpointed singletons remain
 intact. Neither pass crosses a finalized update boundary. Combined `M` may equal
-the budget; an oversized pair still runs alone without truncation. The budget
-need not exceed the threshold.
+the budget; an oversized pair still runs alone without truncation. For positive
+thresholds, the budget must exceed `2 * threshold` to combine any two singletons;
+a smaller budget leaves all eligible singletons running alone.
 
-The second pass also works with threshold `0`: initial fixed batches are seeded
-by `random_state + joint_epoch` and repacked in memory. A zero budget disables
-only this repacking pass. Positive-threshold plans still shuffle micro-batches
-inside each update after repacking. The merged update remains last. Epoch
-batches are memoized so length queries match iteration without consuming extra
-shuffle state.
+The second pass also works with threshold `0`: all micro-batches run with
+checkpointing enabled. In this mode, initial micro-batches of size 1 (e.g. from
+`training_batch_size: 1`) are treated as singletons and repacked in memory under
+`M <= budget`; existing multi-row initial batches (`training_batch_size > 1`)
+remain intact. A zero budget disables only this repacking pass. Positive-threshold
+plans still shuffle micro-batches inside each update after repacking. The merged
+update remains last. Epoch batches are memoized so length queries match iteration
+without consuming extra shuffle state.
 
 Dynamic micro-batches can exceed `training_batch_size`. Update counts and loss
 normalization use finalized row groups, not micro-batch counts. Only initial
