@@ -62,6 +62,14 @@ class LoRATrainingHistory:
 	warmup_validation_loss: float | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _EpochTrainingLosses:
+	"""Row-weighted losses for an epoch and its last consumed optimizer group."""
+
+	training_loss: float
+	last_step_training_loss: float
+
+
 class _CosineLearningRateSchedule:
 	"""Set one shared rate per planned joint update, including FP16 skips."""
 
@@ -475,7 +483,7 @@ class LoRATrainer:
 			training_started = self._timestamp()
 			if not head_only:
 				training.set_epoch(epoch - self._config.warmup_epochs - 1)
-			loss = self._train_epoch(
+			epoch_losses = self._train_epoch(
 				model,
 				loader,
 				optimizer,
@@ -487,6 +495,10 @@ class LoRATrainer:
 				lr_schedule=lr_schedule,
 				progress=progress,
 				description=epoch_description,
+			)
+			loss = epoch_losses.training_loss
+			last_step_training_loss = (
+				None if head_only else epoch_losses.last_step_training_loss
 			)
 			if head_only:
 				loss, _ = self.evaluate(
@@ -523,6 +535,7 @@ class LoRATrainer:
 						training_time_seconds=training_finished - training_started,
 						validation_time_seconds=validation_finished - training_finished,
 						total_time_seconds=validation_finished - epoch_started,
+						last_step_training_loss=last_step_training_loss,
 					)
 				)
 			losses.append(loss)
@@ -530,6 +543,8 @@ class LoRATrainer:
 				f"{description} {stage} epoch {stage_epoch}/{stage_epochs} "
 				f"(total {epoch}/{total_epochs}): train_loss={loss:.6f}"
 			)
+			if last_step_training_loss is not None:
+				message += f" last_step_training_loss={last_step_training_loss:.6f}"
 			if validation is not None:
 				message += f" validation_loss={validation_loss:.6f}"
 			print(message, flush=True)
@@ -632,8 +647,8 @@ class LoRATrainer:
 		lr_schedule: _CosineLearningRateSchedule | None = None,
 		progress: TrainingProgress | None = None,
 		description: str = "Build",
-	) -> float:
-		"""Optimize one epoch, optionally retaining gradients only for the head."""
+	) -> _EpochTrainingLosses:
+		"""Optimize one epoch and report its average and last optimizer-group loss."""
 		criterion = self._warmup_criterion if head_only else self._criterion
 		model.train()
 		if head_only:
@@ -647,6 +662,7 @@ class LoRATrainer:
 		)
 		total_rows = len(loader.dataset)
 		loss_total = torch.zeros((), device=self._device, dtype=torch.float64)
+		group_loss_total = torch.zeros_like(loss_total)
 		finite_losses = torch.ones((), device=self._device, dtype=torch.bool)
 		trainable_parameters = [
 			parameter for parameter in model.parameters() if parameter.requires_grad
@@ -670,6 +686,7 @@ class LoRATrainer:
 					raise RuntimeError(
 						f"A {self._model_label} batch plan has an invalid optimizer group."
 					)
+				group_loss_total.zero_()
 			if head_only:
 				features, labels = batch
 				features = features.to(self._device, non_blocking=True)
@@ -689,6 +706,7 @@ class LoRATrainer:
 			finite_losses.logical_and_(torch.isfinite(loss_sum.detach()))
 			scaler.scale(loss_sum / group_rows).backward()
 			loss_total.add_(loss_sum.detach())
+			group_loss_total.add_(loss_sum.detach())
 			rows_total += int(labels.shape[0])
 			group_processed += int(labels.shape[0])
 			if group_processed > group_rows:
@@ -726,7 +744,10 @@ class LoRATrainer:
 			raise RuntimeError(
 				f"{self._model_label} training did not consume the complete optimizer-group plan."
 			)
-		return loss_total.item() / rows_total
+		return _EpochTrainingLosses(
+			training_loss=loss_total.item() / rows_total,
+			last_step_training_loss=group_loss_total.item() / group_rows,
+		)
 
 	def _create_warmup_loaders(
 		self,

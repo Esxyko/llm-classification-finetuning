@@ -132,7 +132,20 @@ seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
 Warmup train and validation inference reuse their shared extracted features.
 Warmup epoch `training_loss` is the final-weight training-set loss with warmup
 label smoothing and dropout disabled; joint epoch `training_loss` remains the
-average observed during optimization. All `validation_loss` values are unsmoothed.
+row-weighted average observed during optimization. All `validation_loss` values
+are unsmoothed.
+
+Each joint epoch also reports `last_step_training_loss` in its terminal log and,
+for validation runs, its `metrics.json` epoch entry. This is the sum of training
+losses across all micro-batches in the last consumed optimizer group divided by
+that group's actual row count, including any merged tail. It reuses the losses
+computed before the parameter update, with the same training objective, label
+smoothing, and dropout as `training_loss`; no extra training-set evaluation is
+performed. A consumed group still counts when the FP16 scaler skips its update.
+Logs show six decimal places; JSON retains the full floating-point value. Warmup
+epochs omit this field. Build runs print it in joint epoch logs, while their final
+`final_training_loss` retains its existing final-epoch average meaning.
+
 Cache work and warmup extraction are included in complete-run time, not epoch
 phases. A warmup hit contributes no
 historical epoch losses or times; joint epoch numbering retains the configured

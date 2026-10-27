@@ -33,6 +33,7 @@ class EpochMetrics:
 	training_time_seconds: float
 	validation_time_seconds: float
 	total_time_seconds: float
+	last_step_training_loss: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -88,6 +88,11 @@ class ModelResultPublisher:
 				{
 					"epoch": epoch.epoch,
 					"training_loss": epoch.training_loss,
+					**(
+						{"last_step_training_loss": epoch.last_step_training_loss}
+						if epoch.last_step_training_loss is not None
+						else {}
+					),
 					"validation_loss": epoch.validation_loss,
 					"training_time": format_duration(epoch.training_time_seconds),
 					"validation_time": format_duration(epoch.validation_time_seconds),
