@@ -1,0 +1,57 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-100748-857613.log
+Running holdout validation for 1.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Created LoRA batch plan (holdout): 45,982 rows, 44 updates, 3,451 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/a834fc8229239c4047da4de09ea8c74022044824048743b3bf593390ac050e7c.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:01).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 132,793,089 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=4, target_epochs=4, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/3 (total 5/7):
+progress: 10.4% work: 19.0/183.0 time: 00:24:04/03:51:48
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/3 (total 5/7):
+progress: 20.2% work: 37.0/183.0 time: 00:45:38/03:45:41
+[W1028 11:13:08.998520925 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 18743296, total: 101974081536).
+[W1028 11:13:22.547723714 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+[W1028 11:13:44.161038662 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+[W1028 11:14:19.357775999 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+[W1028 11:14:21.259424212 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+[W1028 11:14:22.312453701 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 1/3 (total 5/7) branch batch 11/14:
+progress: 30.1% work: 55.0/183.0 time: 01:09:29/03:51:11
+Validation run joint training epoch 1/3 (total 5/7): train_loss=0.911185 last_step_training_loss=0.931723 validation_loss=0.897356
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/3 (total 6/7):
+progress: 40.4% work: 74.0/183.0 time: 01:31:29/03:46:14
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/3 (total 6/7):
+progress: 50.3% work: 92.0/183.0 time: 01:51:32/03:41:52
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 2/3 (total 6/7) branch batch 5/14:
+progress: 60.1% work: 110.0/183.0 time: 02:17:12/03:48:15
+Validation run joint training epoch 2/3 (total 6/7): train_loss=0.750062 last_step_training_loss=0.752826 validation_loss=0.935950
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 77, in _validate
+    for line in process.stdout:
+                ^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 114, in main
+    return _validate()
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 65, in _validate
+    with subprocess.Popen(
+         ~~~~~~~~~~~~~~~~^
+    	command,
+     ^^^^^^^^
+    ...<7 lines>...
+    	env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as process:
+    ^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 1124, in __exit__
+    self._wait(timeout=self._sigint_wait_secs)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 2078, in _wait
+    time.sleep(delay)
+    ~~~~~~~~~~^^^^^^^
+KeyboardInterrupt
