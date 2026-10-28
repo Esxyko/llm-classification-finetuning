@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import math
+from collections.abc import Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -48,6 +49,7 @@ from .extractor import LoRAEmbeddingExtractor
 from .model import LoRAQwenClassifier
 from .profile import PROFILE
 from .warmup_cache import HeadWarmupCache, WarmupCacheContext, WarmupCacheEntry
+from .warmup_feature_cache import WarmupFeatureCache
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +150,9 @@ class LoRATrainer:
 		self._quantize_training = profile.quantize_training
 		self._head_architecture = profile.head_architecture
 		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
+		self._warmup_feature_cache = WarmupFeatureCache(
+			token_cache_dir.parent / "embedding_cache", model_label=self._model_label
+		)
 		artifact_stem = profile.artifact_stem
 		self._warmup_cache = HeadWarmupCache(
 			token_cache_dir.parent / f"{artifact_stem}_warmup",
@@ -438,6 +443,7 @@ class LoRATrainer:
 				model,
 				reference,
 				records,
+				context=context,
 				validation=validation,
 				seed=seed,
 				progress=progress,
@@ -796,6 +802,7 @@ class LoRATrainer:
 		reference: pd.DataFrame,
 		records: tuple[PairwiseText, ...],
 		*,
+		context: WarmupCacheContext | None,
 		validation: pd.DataFrame | None,
 		seed: int,
 		progress: TrainingProgress,
@@ -805,39 +812,69 @@ class LoRATrainer:
 		DataLoader[list[torch.Tensor]],
 		DataLoader[list[torch.Tensor]] | None,
 	]:
-		"""Extract each needed ID once, then share oriented features for head warmup."""
+		"""Reuse frozen branch features, extracting only missing unique warmup inputs."""
 		ids = reference["id"]
 		if validation is not None:
 			ids = pd.concat((ids, validation["id"]), ignore_index=True)
+		canonical_ids = ids.drop_duplicates()
+		row_ids = tuple(int(row_id) for row_id in canonical_ids)
+		cache_entry = None
+		if context is not None and not self._quantize_training:
+			cache_entry = self._warmup_feature_cache.prepare(
+				BranchTokenDataset(canonical_ids, self._tokens_for(records)),
+				context,
+				model_name=self._config.model_name,
+				precision=self._gpu.precision,
+				feature_dtype=model.feature_dtype,
+				refresh_cache=self._refresh_cache,
+			)
 		extraction_budget = (
 			self._config.extraction_budget
 			if self._warmup_only
 			else self._config.warmup_extraction_budget
 		)
-		extraction_loader = self._create_extraction_loader(
-			ids.drop_duplicates(),
-			records,
-			seed=seed,
-			extraction_budget=extraction_budget,
-		)
 		with nullcontext() if model.warmup_only else model.backbone.disable_adapter():
-			self._timestamp()
-			progress.start_stage(
-				stage="Warmup feature extraction", total_steps=len(extraction_loader)
-			)
-			embeddings = self._extract_features(
-				model,
-				ids,
-				records,
-				extraction_budget=extraction_budget,
-				seed=seed,
-				stage="warmup",
-				extraction_loader=extraction_loader,
-				progress=progress,
-				description=description,
-			)
-			self._timestamp()
-			progress.finish_stage(description)
+			model.eval()
+			if cache_entry is not None and not cache_entry.rows.missing:
+				embeddings = PairwiseFeatureStore(
+					row_ids,
+					cache_entry.rows.features.view(
+						len(row_ids), 2, model.backbone_hidden_size
+					),
+				)
+			else:
+				extraction_loader = self._create_extraction_loader(
+					canonical_ids,
+					records,
+					seed=seed,
+					extraction_budget=extraction_budget,
+					indices=cache_entry.missing_indices
+					if cache_entry is not None
+					else None,
+				)
+				self._timestamp()
+				progress.start_stage(
+					stage="Warmup feature extraction",
+					total_steps=len(extraction_loader),
+				)
+				embeddings = self._extract_features(
+					model,
+					canonical_ids,
+					records,
+					extraction_budget=extraction_budget,
+					seed=seed,
+					stage="warmup",
+					extraction_loader=extraction_loader,
+					target=cache_entry.rows.features
+					if cache_entry is not None
+					else None,
+					progress=progress,
+					description=description,
+				)
+				self._timestamp()
+				progress.finish_stage(description)
+		if cache_entry is not None and cache_entry.rows.missing:
+			self._warmup_feature_cache.save(cache_entry)
 		training_loader = DataLoader(
 			embeddings.dataset(reference),
 			batch_size=self._config.warmup_training_batch_size,
@@ -863,6 +900,7 @@ class LoRATrainer:
 		seed: int,
 		stage: str,
 		extraction_loader: DataLoader[BranchBatch] | None = None,
+		target: torch.Tensor | None = None,
 		progress: TrainingProgress | None = None,
 		description: str = "",
 	) -> PairwiseFeatureStore:
@@ -880,6 +918,7 @@ class LoRATrainer:
 			extraction_loader,
 			tuple(int(row_id) for row_id in canonical_ids),
 			stage=stage,
+			target=target,
 			progress=progress,
 			description=description,
 		)
@@ -1055,6 +1094,7 @@ class LoRATrainer:
 		*,
 		seed: int,
 		extraction_budget: int,
+		indices: Sequence[int] | None = None,
 	) -> DataLoader[BranchBatch]:
 		"""Batch individual A/B branches with the frozen model's extraction semantics."""
 		tokens = self._tokens_for(records)
@@ -1062,6 +1102,7 @@ class LoRATrainer:
 		sampler = ExtractionBatchSampler(
 			[dataset.branch_length(index) for index in range(len(dataset))],
 			extraction_budget,
+			indices=indices,
 		)
 		workers = self._config.dataloader_workers
 		generator = torch.Generator().manual_seed(seed)

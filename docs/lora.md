@@ -133,7 +133,7 @@ compatibility first, then loads the tokenizer at the saved base revision and
 validates full input lengths before loading backbone weights. Plain-text
 checkpoints require rebuilding.
 
-| Precision | Backbone / temporary pooled CPU features | Trainable state and head computation |
+| Precision | Backbone / pooled CPU features | Trainable state and head computation |
 | --- | --- | --- |
 | `bf16` | BF16 residuals, checkpoint inputs, and features | FP32 parameters, gradients, and AdamW moments; BF16 head autocast; FP32 logits |
 | `fp16` | FP16 backbone compute; FP32 pooled features | FP32 head/state with gradient scaling |
@@ -200,9 +200,9 @@ offsets/metadata. Current train/test inputs are checked independently.
 
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
-| Head warmup, cache miss | Extract frozen eval-mode features with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Evaluate the full training set and, for holdout runs, validation after each epoch using the same temporary features; save completed head/optimizer/RNG state |
-| Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup extracts current train/validation features and recomputes both losses without training |
-| Head warmup, lower-epoch cache hit | Extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
+| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
+| Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup loads cached features, extracts missing branches, and recomputes both losses without training |
+| Head warmup, lower-epoch cache hit | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
@@ -213,10 +213,12 @@ and cache I/O. See [standalone versus inline settings](configuration.md#standalo
 Lookup prefers the exact target epoch, then the largest compatible lower epoch;
 all other cache identity fields must match.
 
-Warmup features are extracted once for needed train/validation IDs, stay in CPU
-memory, and are shared by the shuffled training loader and fixed-order train
-and validation inference loaders. All feature views are released before joint
-training. They are not persisted. For a 57,477-ID, 2,560-dimensional backbone,
+Adapter-free warmup features are persisted by branch token content and reused
+across standalone/inline runs and head configurations. Only missing unique
+branches are extracted. The current CPU tensor is shared by the shuffled
+training loader and fixed-order train/validation inference loaders; its views
+are released before joint training. See [warmup features](caching.md#warmup-features)
+for compatibility and refresh rules. For a 57,477-ID, 2,560-dimensional backbone,
 both branches' raw feature tensor is about
 0.55 GiB in BF16 or 1.10 GiB in FP32, excluding loader batches and metadata.
 
@@ -409,13 +411,14 @@ restored from cache; Joint training totals `epochs * (J + E + V)`.
 Full-data model builds use all training IDs and `E = V = 0`.
 
 Standalone warmup uses `warmup_training_batch_size` for the denominators of
-both `T` and `V`. A miss runs Warmup feature extraction followed by Head warmup,
-without Joint training. A complete hit logs cache reuse, runs Warmup feature extraction
-for current data, and then runs a separate **Cached head evaluation** stage with
+both `T` and `V`. A head miss runs Head warmup, without Joint training. Warmup
+feature extraction precedes it only when unique branches are missing. A complete
+head hit logs cache reuse and runs a separate **Cached head evaluation** stage with
 `T + V` work and approximately 20% milestones. It executes zero training epochs.
 Complete inline cache hits log reuse without creating progress records for either
-skipped warmup stage. Partial hits in either mode run extraction and Head warmup
-for only the remaining epochs, with epoch numbers continuing from the source.
+skipped warmup stage. Partial head hits in either mode run Head warmup for only
+the remaining epochs, with epoch numbers continuing from the source; extraction
+counts only missing branches. Complete feature hits have no extraction stage.
 Disabled warmup also enters Joint training directly.
 
 Logs retain `time: HH:MM:SS/HH:MM:SS`, meaning **elapsed/estimated_total**. The

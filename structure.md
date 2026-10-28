@@ -122,7 +122,7 @@ they do not expose an active frozen CLI profile.
 | `compatibility.py` | Frozen embedding and head-checkpoint compatibility construction |
 | `cache_storage.py` | Locked file sessions, atomic/multipart publication, checksums, and corruption archives |
 | `token_cache.py` | Content-addressed text encodings, compact CPU views, canonical pair tokens, and context validation |
-| `cache.py` | Per-branch SQLite frozen embeddings and rebinding to current rows |
+| `cache.py` | Per-branch SQLite frozen/warmup embeddings, lossless FP16/BF16/FP32 storage, and rebinding to current rows |
 | `extraction_batching.py` | Deterministic branch extraction plans comparing contiguous DP with best-fit by batch count, then padded tokens; stable length/iteration behavior |
 | `extractor.py` | CPU identity preparation and lazy GPU encoding of missing frozen branches |
 | `model.py` | Frozen backbone, last-real-token pooling, and `3H` pairwise MLP |
@@ -147,9 +147,10 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
 | `heads.py` | Head factory, precision wrapper, swap-equivariant harmonic/discrepancy architecture, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
-| `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission, with branch-batch progress callbacks |
+| `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
 | `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress, and standalone cached-head evaluation |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, descending compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
+| `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across standalone/inline warmup |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
 
@@ -176,7 +177,7 @@ defaults to `./results` and controls validation, submission, report, and log roo
 | `<MODEL_PATH>/models--*/` | Native HF downloads; outside training-cache multipart storage |
 | `data/raw/` | Downloaded raw CSVs |
 | `data/processed/train_validation.parquet` | Logical saved split; single file or manifest plus volumes |
-| `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen-feature, and LoRA base-plan stores |
+| `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen/warmup-feature, and LoRA base-plan stores |
 | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Skywork completed warmup, shared by SR2 and standalone warmup |
 | `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt` | SR2 production adapter/head |
 | `<RESULT_PATH>/MODEL-<timestamp>/` | Completed validation CSV, metrics, and YAML snapshot |
@@ -227,13 +228,13 @@ present in a fresh checkout.
    `scaled_uniform_zero_discrepancy_v1`, isolating earlier Xavier-initialized
    states without changing production-checkpoint compatibility.
    See [head definition](docs/lora.md#swap-equivariant-head).
-4. **Cache identities:** distinguish tokens, frozen embeddings, plans, warmup,
-   and production checkpoints. Map cached entries to current rows/labels; never
+4. **Cache identities:** distinguish tokens, frozen/warmup features, plans,
+   warmup state, and production checkpoints. Map cached entries to current rows/labels; never
    infer one compatibility from another. Version identities when their actual
    representation/algorithm changes. See [caching](docs/caching.md).
 5. **CPU preparation:** token/loader/plan preparation must not load model weights
-   or initialize CUDA. Complete frozen-embedding hits skip backbone weights while
-   retaining applicable input and hardware checks. Complete inline warmup hits
+   or initialize CUDA. Complete retained frozen-model embedding hits skip backbone
+   weights while retaining applicable input and hardware checks. Complete inline warmup hits
    skip warmup work; complete standalone hits evaluate the restored head on current
    train/validation data without training or rewriting cached state. Partial hits
    select the largest compatible lower epoch, reconstruct shuffle state with index-only
@@ -273,8 +274,12 @@ present in a fresh checkout.
    states, validate them before restoration, and retain current training-ID
    semantics. Each executed warmup epoch evaluates its complete training set with
    final weights, dropout disabled, and warmup smoothing; validation remains
-   unsmoothed. Publish only after these evaluations succeed. No persisted live
-   LoRA features or losses. See [warmup](docs/caching.md#lora-head-warmup).
+   unsmoothed. Publish head state only after these evaluations succeed.
+   Adapter-free warmup features persist separately by complete branch token content,
+   immutable backbone identity, compute precision, exact storage dtype, and extraction
+   policy. Complete feature hits skip backbone forwards; misses extract only unique
+   missing branches. Restore continuation RNG after all feature preparation.
+   No persisted live LoRA features or losses. See [warmup](docs/caching.md#lora-head-warmup).
 10. **Placement and production state:** load backbones directly with device maps;
     submission uses exactly two GPUs without replicas/offload/fallback. Production
     builds omit base weights and optimizer state; LoRA retains its Hub revision.

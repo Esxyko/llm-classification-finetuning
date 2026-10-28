@@ -99,11 +99,12 @@ stages log approximately every 20%; Joint training logs approximately every 10%
 and includes validation feature extraction. Dynamic training micro-batches do
 not change the finalized update-group count.
 
-Complete inline warmup hits log reuse without progress for skipped work. A complete
-standalone hit reports current feature extraction and a separate Cached head
-evaluation stage, executing zero training epochs. Partial hits in either mode
-report extraction and Head warmup progress only for the remaining epochs, keeping
-epoch numbers continuous with the source cache. CPU preparation, cache I/O,
+Complete inline head-warmup hits log reuse without progress for skipped work. A
+complete standalone head hit reports a separate Cached head evaluation stage,
+executing zero training epochs. Warmup feature extraction runs only for missing
+unique branches; complete feature hits log reuse without an extraction stage.
+Partial head hits in either mode report Head warmup progress only for remaining
+epochs, keeping epoch numbers continuous with the source cache. CPU preparation, cache I/O,
 saving, and publication remain outside the stage boundaries, so stage estimates
 differ from [complete-run timing](reports.md#timing-metrics). Each successfully
 completed stage prints 100% once with its actual duration on both sides;

@@ -12,7 +12,7 @@ Production checkpoints under `models/` are separate artifacts.
 | Artifact under `CACHE_PATH` | Reuse depends on | Important exclusions |
 | --- | --- | --- |
 | `token_cache/` | Text, tokenizer content/implementation, encoding options, library/schema versions | IDs, labels, split, source path, model weights, training settings |
-| `embedding_cache/` (historical frozen model) | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, attention implementation, TF32, extraction budget |
+| `embedding_cache/` (SR2 warmup and historical frozen model) | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, head/training settings, attention implementation, TF32, extraction budget |
 | `adapter_batches/plans/` | Selected sample identities/orientations and A/B lengths, checkpointing threshold, update-group size, algorithm version | Labels, source order, token content beyond lengths, second-pass budget |
 | `SR2_Qwen3_4B_lora_warmup/` | Original training ID set and effective SR2 warmup identity | Text/labels, validation IDs, precision, joint-training settings |
 
@@ -24,9 +24,10 @@ For example, reusable tokens do not establish that a head or warmup state matche
 `--refresh-cache` refreshes requested entries and mode-specific caches, not Hub
 base weights or every artifact in the cache root.
 
-LoRA features are temporary CPU tensors: warmup reuses them within that stage;
-each joint-validation/submission call extracts fresh ones with the current
-model and releases them on return. Live LoRA embeddings are never persisted.
+Adapter-free SR2 warmup features are persisted across runs and configurations;
+their in-memory views are shared within the warmup stage. Each joint-validation
+or submission call extracts fresh temporary features with the current adapters
+and releases them on return. Live LoRA embeddings are never persisted.
 
 ## Hugging Face model downloads
 
@@ -110,7 +111,8 @@ corrupt SQLite shards are archived and rebuilt.
 ## Frozen embeddings
 
 This section describes retained infrastructure for the retired frozen Qwen
-profile. SR2 uses temporary features and does not read this persistent cache.
+profile. SR2's adapter-free [warmup features](#warmup-features) share the storage
+component and directory, using a separate computation identity.
 
 Each SQLite shard identifies the exact Hub revision or local weight/configuration
 content, backbone hidden size, compute precision, pooling, storage format, and
@@ -133,10 +135,51 @@ change cache identities. Batch composition, attention, and TF32 can affect
 rounding, even though the latter two are outside the key. See
 [extraction packing](configuration.md#extraction-token-budgets).
 
-Reads check blob length/checksum; fresh vectors are checked for finite values.
-Invalid entries are recomputed and corrupt shards archived. Old dataset-wide
+Reads check blob length/checksum and finite values; fresh vectors are also checked
+for finite values. Invalid entries are recomputed and corrupt shards archived. Old dataset-wide
 embedding files and shards using retired identities are not read. See
 [historical frozen checkpoint compatibility](migration.md#historical-frozen-model).
+
+## Warmup features
+
+Standalone warmup and inline non-quantized SR2 warmup share per-branch features
+under `embedding_cache/<key>.sqlite3`. `WarmupFeatureCache` uses the shared
+`EmbeddingCache` and `CacheStorage`, including locks, checksums, atomic publication,
+and multipart storage. A first run extracts each missing unique branch once;
+later runs load hits and extract only missing branches. Identical branch tokens
+share one vector, including across train/validation partitions and full-data builds.
+
+Each shard identifies the exact Hub revision or local weight/configuration
+fingerprint, backbone hidden size, compute precision, storage dtype, and the
+`last-real-token-right-padding-no-mask-v1` pooling policy. Warmup feature schema
+and extraction versions both start at v1, independently of the head warmup schema.
+These fields isolate warmup features from historical masked frozen extraction.
+Entries hash complete, untruncated token IDs in canonical A/B orientation.
+Changing IDs, labels, split, row order, head width/dropout, optimization settings,
+seed, or extraction budget does not invalidate compatible branch vectors.
+Attention implementation and TF32 are excluded, as in retained frozen caching;
+batch composition and these settings can still affect numerical rounding.
+
+Stored vectors preserve the model's feature dtype: BF16 compute stores BF16,
+while FP16 or FP32 compute stores FP32 pooled features. BF16 is serialized as its
+raw 16-bit representation without an FP16 conversion; the shared component also
+retains the historical FP16 storage format and default cache keys. Features are
+rebound to current IDs, labels, and A/B orientation when loaders are constructed.
+
+Logs print reused/missing unique branch counts and the logical cache path.
+Complete feature hits skip all backbone forward calls and create no extraction
+progress stage. Partial hits count only actual missing-branch batches; cache I/O
+and publication remain outside extraction timing. Backbone initialization and
+hardware/input validation still occur. The shuffled head-training loader and
+fixed-order train/validation loaders share the resulting CPU tensor, whose views
+are released before joint training.
+
+`--refresh-cache` recomputes and replaces requested branch entries, preserving
+unrequested entries. Invalid vectors become misses; corrupt storage follows the
+shared archive/rebuild policy, while storage access failures remain explicit
+execution errors. Splits without `warmup_context` and retained quantized profiles
+continue using temporary extraction without this feature cache. Head state,
+losses, and current-adapter joint-validation/submission features are separate.
 
 ## LoRA batch plans
 
@@ -245,8 +288,9 @@ A complete hit in inline LoRA restores the head/optimizer/RNG state, skips all w
 feature extraction, training, and evaluation, and starts joint training with fresh
 adapters and the configured joint schedule.
 
-A partial hit at epoch `K < N` extracts current frozen features, restores the
-head/optimizer/RNG state after feature and loader preparation, and trains only
+A partial hit at epoch `K < N` loads compatible frozen features and extracts any
+missing branches, restores the head/optimizer/RNG state after feature and loader
+preparation, and trains only
 epochs `K+1` through `N` at the configured fixed warmup rate. The independent
 training-loader generator is reconstructed by replaying `K` epochs through a
 lightweight index-only DataLoader with the same length, batch size, shuffle, and
@@ -269,23 +313,26 @@ consume different RNG draws on a cache miss.
 Logs identify complete reuse, continuation, or rebuild; completed, target, and
 remaining epochs; source/target paths on hits; and precision. Reused work contributes
 no old epoch metrics or timing; joint epoch numbers retain their warmup offset.
-`warmup_epochs: 0` disables reads/writes. `--refresh-cache` bypasses every reuse
-candidate, trains from scratch, and replaces the target entry.
+`warmup_epochs: 0` disables warmup state and feature cache reads/writes.
+`--refresh-cache` bypasses every reuse candidate, refreshes requested warmup
+features, trains from scratch, and replaces the target head entry.
 Manually constructed `PreparedTrainingSplit` objects without `warmup_context`
 remain uncached; repository-prepared splits supply it.
 
 ### Standalone warmup build
 
 `model warmup --build` prepares tokens for train and validation and checks the
-same non-quantized SR2 identity, still based only on training IDs. A miss extracts
-frozen features without adapters once for both partitions and trains only the
-head on original train rows. Each epoch ends with full-training-set inference
+same non-quantized SR2 identity, still based only on training IDs. A head miss loads
+compatible frozen features and extracts missing branches without adapters for
+both partitions, then trains only the head on original train rows. Each epoch
+ends with full-training-set inference
 using warmup label smoothing, followed by unsmoothed validation inference;
 both use final epoch weights and disable dropout.
 
-A complete hit loads the backbone, restores the cached head, and extracts current
-train/validation features to recompute both losses. It executes zero training
-epochs and does not rewrite the cached state. A partial hit follows the continuation
+A complete head hit loads the backbone, restores the cached head, and loads
+compatible train/validation features, extracting only missing branches, to
+recompute both losses. It executes zero training epochs and does not rewrite the
+cached head state. A partial hit follows the continuation
 flow above, evaluates both partitions after each remaining epoch, and saves the
 target cache. Its summary displays `Resumed`, returns the target cache path, and
 counts only epochs executed in this invocation. Complete hits display `Reused`;

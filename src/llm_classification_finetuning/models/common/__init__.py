@@ -2,6 +2,7 @@
 
 from .attention import SubmissionAttention
 from .backbone import LocalBackboneFingerprint
+from .cache import EmbeddingCache, EmbeddingCacheKey, EmbeddingCacheRows
 from .cache_storage import CacheCorruptionError, CacheFileSession, CacheStorage
 from .compatibility import ModelCompatibility
 from .contracts import (
@@ -39,6 +40,9 @@ __all__ = (
 	"CacheStorage",
 	"ClassificationLoss",
 	"ConversationSerializer",
+	"EmbeddingCache",
+	"EmbeddingCacheKey",
+	"EmbeddingCacheRows",
 	"EpochMetrics",
 	"ExtractionBatchSampler",
 	"GPUEnvironment",

@@ -1,0 +1,83 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-064559-543795.log
+Running head warmup for 1.yaml: warmup
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+[transformers] [1mQwen3Model LOAD REPORT[0m from: Skywork/Skywork-Reward-V2-Qwen3-4B
+Key          | Status     |  | 
+-------------+------------+--+-
+score.weight | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:51).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 672,385 trainable parameters.
+Resuming LoRA head warmup (Warmup cache build): completed_epochs=2, target_epochs=3, remaining_epochs=1; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/be40c004de5f3799528cb79324a52f9edd39863afaf9affe5d649006f99527eb.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/c347514f1645045870ac97877991081df0165bd4dd315f10a969bcd41722a1a3.pt
+warmup build Warmup feature extraction Warmup cache build branch batch 9/45:
+progress: 20.0% work: 9.0/45.0 time: 00:05:15/00:26:13
+warmup build Warmup feature extraction Warmup cache build branch batch 18/45:
+progress: 40.0% work: 18.0/45.0 time: 00:10:43/00:26:47
+warmup build Warmup feature extraction Warmup cache build branch batch 27/45:
+progress: 60.0% work: 27.0/45.0 time: 00:16:08/00:26:54
+warmup build Warmup feature extraction Warmup cache build branch batch 36/45:
+progress: 80.0% work: 36.0/45.0 time: 00:21:32/00:26:56
+warmup build Warmup feature extraction Warmup cache build:
+progress: 100.0% work: 45.0/45.0 time: 00:26:52/00:26:52
+warmup build Head warmup Warmup cache build epoch 3/3 (total 3/3):
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:01
+warmup build Head warmup Warmup cache build epoch 3/3 (total 3/3):
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 3/3 (total 3/3):
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 3/3 (total 3/3):
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:01
+warmup build Head warmup Warmup cache build epoch 3/3 (total 3/3):
+progress: 100.0% work: 101.0/101.0 time: 00:00:01/00:00:01
+Warmup cache build head warmup epoch 3/3 (total 3/3): train_loss=0.940982 validation_loss=0.941680
+Saved LoRA head warmup (Warmup cache build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/c347514f1645045870ac97877991081df0165bd4dd315f10a969bcd41722a1a3.pt
+Model total time (warmup): 00:29:32
+Resumed head-warmup cache: /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/c347514f1645045870ac97877991081df0165bd4dd315f10a969bcd41722a1a3.pt
+Warmup train partition: 45,982 rows; executed 1 epochs.
+Final training loss: 0.940982
+Validation log loss: 0.941680
+Running head warmup for 2.yaml: warmup
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+[transformers] [1mQwen3Model LOAD REPORT[0m from: Skywork/Skywork-Reward-V2-Qwen3-4B
+Key          | Status     |  | 
+-------------+------------+--+-
+score.weight | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:00:02).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 672,385 trainable parameters.
+Resuming LoRA head warmup (Warmup cache build): completed_epochs=2, target_epochs=3, remaining_epochs=1; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/053ec0cd38d235570cac7ad938a5a39f468dce2ad636cee6b9a69c733f27c2ad.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/efe4c1210e79a583472b7bb744fe30cf023d47fb4102133c2d3d88990bb9d2d0.pt
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 86, in _validate
+    for line in process.stdout:
+                ^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 123, in main
+    return _validate()
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 73, in _validate
+    with subprocess.Popen(
+         ~~~~~~~~~~~~~~~~^
+    	command,
+     ^^^^^^^^
+    ...<8 lines>...
+    	| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as process:
+    ^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 1124, in __exit__
+    self._wait(timeout=self._sigint_wait_secs)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 2078, in _wait
+    time.sleep(delay)
+    ~~~~~~~~~~^^^^^^^
+KeyboardInterrupt

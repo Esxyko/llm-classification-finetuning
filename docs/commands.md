@@ -65,12 +65,13 @@ only on original train-partition rows using the non-quantized backbone configure
 in `warmup` (Skywork in the shipped presets). After each epoch, it evaluates the
 entire training set with the final epoch weights and warmup label smoothing,
 then evaluates validation with unsmoothed log loss. Both evaluations disable
-dropout and reuse the temporary frozen features extracted before training.
+dropout and reuse the frozen features loaded or extracted before training.
 The epoch logs and final summary report both losses to six decimal places.
 
-A complete compatible hit restores the head, loads the backbone, and extracts current
-train/validation features to recompute both losses without training or rewriting
-the warmup cache; it reports zero executed epochs. There are no adapters, joint
+A complete compatible head hit restores the head, loads the backbone, and loads
+cached train/validation features, extracting only missing branches, to recompute
+both losses without training or rewriting the head-warmup cache; it reports zero
+executed epochs. There are no adapters, joint
 training, production checkpoints, or result reports. It shares SR2's cache
 namespace; a validation run can reuse it when effective settings and training
 IDs match. If only a compatible lower-epoch cache exists, the command selects
@@ -84,8 +85,9 @@ See [warmup configuration](configuration.md#standalone-warmup) and
 
 `--refresh-cache` affects only entries requested by the selected execution mode.
 For LoRA validation/build with warmup enabled, it forces a new warmup and
-refreshes requested tokens and batch plans. Submission uses neither warmup
-states nor joint-training plans. Refresh is not a checkpoint rebuild or a
+refreshes requested tokens, warmup feature entries, and batch plans. Standalone
+warmup also refreshes its requested tokens, features, and head state. Submission
+uses neither warmup states nor joint-training plans. Refresh is not a checkpoint rebuild or a
 request to delete all existing caches; see [cache identities](caching.md).
 
 ## Batch validation

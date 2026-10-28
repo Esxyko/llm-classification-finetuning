@@ -28,7 +28,7 @@ This process-wide allocator setting requires a fresh process to take effect.
 | `data.raw_dir` | Required YAML path; root preset `data/raw` | Raw competition CSVs |
 | `data.processed_path` | Required YAML `.parquet` path; root preset `data/processed/train_validation.parquet` | Saved train/validation data, including multipart layout |
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
-| `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen embeddings, LoRA batch plans, and head-warmup states |
+| `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen/warmup features, LoRA batch plans, and head-warmup states |
 | `RESULT_PATH` | Environment or `.env`; missing/blank uses `./results` | Validation runs, submissions, comprehensive reports, and batch-run logs |
 | Production checkpoints | `./models/SR2_Qwen3_4B_lora/` | LoRA adapter/head files |
 
@@ -183,6 +183,10 @@ Lower-epoch hits train and evaluate only the remaining epochs before saving a
 separate target cache; all other identity fields must match.
 It writes `SR2_Qwen3_4B_lora_warmup/`, sharing the inline SR2 namespace. The shipped
 presets set `warmup.model_name` to `Skywork/Skywork-Reward-V2-Qwen3-4B`.
+Adapter-free features are cached separately under `embedding_cache/` and shared
+with inline warmup by token content and backbone computation identity. Head
+settings and training IDs do not affect this feature cache; see
+[warmup features](caching.md#warmup-features).
 
 Matching shared controls is insufficient for cache reuse: model/head settings
 and training IDs must also match. The current root preset and seven experiment
@@ -236,7 +240,8 @@ Features are scattered back to their original pair positions.
 
 LoRA rejects empty or over-limit branches and never truncates. Extraction plans
 stay in memory. Changing the extraction budget does not invalidate tokens,
-warmup states, or checkpoints. Historical frozen caches are described in
+warmup features, warmup states, or checkpoints. Historical frozen caches are
+described in
 [caching](caching.md#frozen-embeddings).
 
 ## Joint-training packing
@@ -271,8 +276,9 @@ Adapters follow their base layers; decoder layers remain intact.
 
 Both submission GPUs must support the selected precision. There is no automatic
 precision change, CPU/disk offload, or single-GPU submission fallback. Hardware
-checks still run on complete warmup-cache hits. Standalone warmup loads backbone
-weights on a hit to recompute current train/validation losses.
+checks still run on complete warmup-cache hits. Standalone warmup still initializes
+backbone weights on a hit, but compatible feature hits skip backbone forward
+calls while the head recomputes current train/validation losses.
 `ALL` executes SR2 on the configured device layout.
 
 Device placement can change without invalidating caches or checkpoints.

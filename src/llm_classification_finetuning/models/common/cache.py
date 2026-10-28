@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import torch
@@ -59,6 +60,11 @@ class EmbeddingCache:
 	"""Share individual branch features across training/test and configuration runs."""
 
 	CHUNK_SIZE = 256
+	_STORAGE_FORMATS: ClassVar[dict[str, tuple[torch.dtype, np.dtype]]] = {
+		"float16": (torch.float16, np.dtype("<f2")),
+		"bfloat16": (torch.bfloat16, np.dtype("<u2")),
+		"float32": (torch.float32, np.dtype("<f4")),
+	}
 
 	def __init__(self, root: Path) -> None:
 		self.root = root.resolve()
@@ -67,6 +73,15 @@ class EmbeddingCache:
 		identity = json.dumps(asdict(key), sort_keys=True, separators=(",", ":"))
 		digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
 		return self.root / f"{digest}.sqlite3"
+
+	@classmethod
+	def _storage_format(cls, key: EmbeddingCacheKey) -> tuple[torch.dtype, np.dtype]:
+		try:
+			return cls._STORAGE_FORMATS[key.storage_dtype]
+		except KeyError as error:
+			raise ModelExecutionError(
+				f"Unsupported embedding cache storage dtype: {key.storage_dtype}"
+			) from error
 
 	@staticmethod
 	def _corrupt(error: sqlite3.DatabaseError | CacheCorruptionError) -> bool:
@@ -85,12 +100,13 @@ class EmbeddingCache:
 		refresh_cache: bool = False,
 	) -> EmbeddingCacheRows:
 		"""Rebind content-addressed vectors to current row positions, leaving misses empty."""
+		dtype, numpy_dtype = self._storage_format(key)
 		positions: dict[str, list[int]] = {}
 		for index, input_key in enumerate(input_keys):
 			positions.setdefault(input_key, []).append(index)
 		missing = {name: tuple(indices) for name, indices in positions.items()}
 		features = torch.empty(
-			(len(input_keys), key.hidden_size), dtype=torch.float16, device="cpu"
+			(len(input_keys), key.hidden_size), dtype=dtype, device="cpu"
 		)
 		path = self.path(key)
 		storage = CacheStorage(path)
@@ -112,14 +128,19 @@ class EmbeddingCache:
 							):
 								if (
 									not isinstance(blob, bytes)
-									or len(blob) != 2 * key.hidden_size
+									or len(blob)
+									!= numpy_dtype.itemsize * key.hidden_size
 									or hashlib.sha256(blob).hexdigest() != checksum
 								):
 									continue
-								values = np.frombuffer(blob, dtype="<f2")
+								values = np.frombuffer(blob, dtype=numpy_dtype)
 								vector = torch.from_numpy(
-									values.astype(np.float16, copy=True)
-								)
+									values.astype(
+										numpy_dtype.newbyteorder("="), copy=True
+									)
+								).view(dtype)
+								if not torch.isfinite(vector).all():
+									continue
 								features[positions[name]] = vector
 								del missing[name]
 				except sqlite3.DatabaseError as error:
@@ -167,6 +188,7 @@ class EmbeddingCache:
 	def _save_rows(
 		self, path: Path, key: EmbeddingCacheKey, rows: EmbeddingCacheRows
 	) -> None:
+		dtype, numpy_dtype = self._storage_format(key)
 		connection = sqlite3.connect(path, timeout=30)
 		try:
 			with connection:
@@ -179,11 +201,16 @@ class EmbeddingCache:
 				vector = rows.features[positions[0]].detach().cpu()
 				if (
 					vector.shape != (key.hidden_size,)
-					or vector.dtype != torch.float16
+					or vector.dtype != dtype
 					or not torch.isfinite(vector).all()
 				):
 					raise ModelExecutionError("Cannot cache invalid frozen embeddings.")
-				blob = vector.numpy().astype("<f2", copy=False).tobytes()
+				values = (
+					vector.contiguous().view(torch.uint16).numpy()
+					if dtype == torch.bfloat16
+					else vector.numpy()
+				)
+				blob = values.astype(numpy_dtype, copy=False).tobytes()
 				pending.append((input_key, blob, hashlib.sha256(blob).hexdigest()))
 				if len(pending) == self.CHUNK_SIZE:
 					with connection:
