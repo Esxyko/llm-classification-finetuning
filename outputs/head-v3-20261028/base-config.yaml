@@ -1,0 +1,70 @@
+# SR2 v3 head-warmup baseline, frozen on 2026-10-28 (Asia/Singapore).
+# Architecture: swap_equivariant_harmonic_discrepancy_v3 (introduced in 95fb102).
+# Full preset copied from aafa28f:configs/1.yaml; warmup_epochs is fixed to 4.
+# Observed train_loss=0.925066, validation_loss=0.928415.
+# Head architecture is selected by the code version, not a YAML field.
+
+data:
+  competition: llm-classification-finetuning
+  raw_dir: data/raw
+  processed_path: data/processed/train_validation.parquet
+
+validation:
+  validation_fraction: 0.2
+  random_state: 42
+  tokenizer_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  tokenizer_revision: fd958fef475f323f4e6b195930e3dd918485c668
+  max_token_deviation: 0.005
+
+gpu:
+  device: cuda:0
+  submit_devices: [cuda:0, cuda:1]
+  precision: bf16
+  attention_implementation: sdpa
+  allow_tf32: false
+
+warmup:
+  label_smoothing: 0.0
+  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  max_length: 13866
+  hidden_size: 128
+  dropout: 0.1
+  warmup_epochs: 4
+  extraction_budget: 1081344
+  warmup_training_batch_size: 1024
+  warmup_learning_rate: 0.001
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+
+SR2_Qwen3_4B_lora:
+  label_smoothing: 0.0
+  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  max_length: 13866
+  gradient_checkpointing_threshold: 11776
+  gradient_checkpointing_budget: 141312
+  training_batch_size: 1
+  head_inference_batch_size: 4096
+  gradient_accumulation_steps: 1024
+  epochs: 2
+  extraction_budget: 786432
+  learning_rate: 0.00015
+  min_lr_ratio: 0.125
+  hidden_size: 128
+  weight_decay: 0.01
+  dropout: 0.1
+  max_grad_norm: 1.0
+  lora_dropout: 0.05
+  lora_rank: 64
+  lora_alpha: 128
+  lora_target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  random_state: 42
+  dataloader_workers: 0
