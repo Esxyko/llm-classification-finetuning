@@ -29,12 +29,19 @@ This process-wide allocator setting requires a fresh process to take effect.
 | `data.processed_path` | Required YAML `.parquet` path; root preset `data/processed/train_validation.parquet` | Saved train/validation data, including multipart layout |
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
 | `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen embeddings, LoRA batch plans, and head-warmup states |
+| `RESULT_PATH` | Environment or `.env`; missing/blank uses `./results` | Validation runs, submissions, comprehensive reports, and batch-run logs |
 | Production checkpoints | `./models/SR2_Qwen3_4B_lora/` | LoRA adapter/head files |
-| Validation, submissions, reports | `./results/` | Run artifacts and comprehensive report |
 
-Changing `MODEL_PATH` or `CACHE_PATH` does not relocate data, checkpoints, or
-reports. `DATA_PATH` is unused. `DRIVE_RESULTS_DIR` belongs to the local Colab
-notebook's copy step and is not an application configuration key.
+`RESULT_PATH` follows the same path rules as `CACHE_PATH`: surrounding
+whitespace is stripped, `~` expands, and relative values resolve from the process
+working directory. Validation runs are direct children of this root; submissions,
+comprehensive reports, and batch logs use `submit/`, `comprehensive/`, and `logs/`.
+The batch script loads `.env` and resolves relative paths from its project root,
+matching its child commands even when launched from another directory.
+
+Changing these settings selects storage for subsequent reads and writes; it does
+not move existing files. YAML data paths and production checkpoint locations are
+independent. `DATA_PATH` is unused.
 
 For example, `uv run model SR2-Qwen3-4B-lora --config configs/2.yaml` still
 resolves relative data and output paths from the project root when run there.

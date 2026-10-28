@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import NoReturn, Sequence
 
 from ..cli_config import add_config_argument
@@ -27,7 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
 		"subfolder",
 		nargs="?",
 		help=(
-			"Direct child of results containing validation.csv. Defaults to the "
+			"Direct child of RESULT_PATH (default: ./results) containing "
+			"validation.csv. Defaults to the "
 			"most recently modified result subfolder."
 		),
 	)
@@ -42,7 +42,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		config = AppConfig.load(parsed_arguments.config)
 		result = ResultSynthesizer(
 			processed_path=config.data.processed_path,
-			results_root=Path.cwd() / "results",
+			results_root=config.result_dir,
 			validation_fraction=config.validation.validation_fraction,
 		).synthesize(parsed_arguments.subfolder)
 		_print_result(result)

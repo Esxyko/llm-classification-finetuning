@@ -14,9 +14,9 @@ uv run result
 ```
 
 Without a run name, discovery selects the most recently modified eligible direct
-child of `results/`, excluding `comprehensive`, `submit`, `logs`, historical
-`test`, and `.comprehensive-*` staging/backup directories. It then validates that
-folder; it does not search backward for the latest valid run.
+child of `RESULT_PATH` (default `./results`), excluding `comprehensive`, `submit`,
+`logs`, historical `test`, and `.comprehensive-*` staging/backup directories. It
+then validates that folder; it does not search backward for the latest valid run.
 
 For a specific run, replace `RUN_NAME` with its directory name:
 
@@ -29,7 +29,7 @@ and matching validation fraction. It may contain only the required `data`,
 `validation`, and `gpu` sections. Historical snapshots containing retired model
 sections are rejected by the current loader; do not pass them directly or rewrite
 them. Current SR2 snapshots can still be used when their paths resolve correctly.
-Each invocation replaces `results/comprehensive/`, so copy
+Each invocation replaces `<RESULT_PATH>/comprehensive/`, so copy
 reports elsewhere if you want to retain several comparisons.
 
 ## Report inputs
@@ -52,7 +52,7 @@ within `[0, 1]`, and sum to one within absolute tolerance `1e-6`.
 
 ## Publication and outputs
 
-| File under `results/comprehensive/` | Contents |
+| File under `<RESULT_PATH>/comprehensive/` | Contents |
 | --- | --- |
 | `confusion_matrix.png` | 3-by-3 counts and expected-class row percentages, with swapped predictions restored to original A/B order |
 | `records.xlsx` | One source-ID record with split, expected/actual labels, incorrect count, and log loss |
@@ -93,9 +93,9 @@ excluded; `metrics.json` has no embedded `config` field or source-config path.
 
 A current SR2 snapshot can be passed to `--config`, but reproducing a run also needs matching
 data/code/dependencies and model identity. It does not capture `.env` or persist
-`MODEL_PATH`/`CACHE_PATH`. Retain historical snapshots unchanged; old model
-sections require historical code to execute; reporting uses a separate current
-configuration as described above. See [migration](migration.md).
+`MODEL_PATH`/`CACHE_PATH`/`RESULT_PATH`. Retain historical snapshots unchanged;
+old model sections require historical code to execute; reporting uses a separate
+current configuration as described above. See [migration](migration.md).
 
 ## Model metrics
 

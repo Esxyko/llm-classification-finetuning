@@ -11,7 +11,7 @@ Windows terminal or local `.env` does not configure its project process.
 1. Select a CUDA runtime. Validation/build uses one GPU; submission requires
    two. Choose precision supported by the selected devices in the YAML you will
    actually run. For a T4, use `fp16` instead of the root preset's `bf16`.
-2. Mount Drive in a notebook cell if you want persistent caches:
+2. Mount Drive in a notebook cell if you want persistent caches and results:
 
    ```python
    from google.colab import drive
@@ -36,6 +36,7 @@ Windows terminal or local `.env` does not configure its project process.
    ```dotenv
    MODEL_PATH=/content/drive/MyDrive/huggingface
    CACHE_PATH=/content/drive/MyDrive/llm-classification-finetuning/cache
+   RESULT_PATH=/content/drive/MyDrive/llm-classification-finetuning/results
    HF_ENDPOINT=https://huggingface.co
    ```
 
@@ -58,15 +59,15 @@ environment changes; configure that terminal's process or the runtime `.env`.
 
 | Path or setting | Writer and timing | Persistence in this workflow |
 | --- | --- | --- |
-| `PROJECT_DIR` under `/content/` | Git checkout, installed environment, local data and outputs | Runtime-local |
+| `PROJECT_DIR` under `/content/` | Git checkout, installed environment, and local data | Runtime-local |
 | `MODEL_PATH` on mounted Drive | HF config/tokenizer/weight loaders write missing downloads when requested | Directly to Drive; reused by later runs |
 | `CACHE_PATH` on mounted Drive | Token, embedding, batch-plan, and warmup caches publish when those stages complete | Directly to Drive; unchanged hits do not republish |
-| `PROJECT_DIR/results/` | Logs stream during batch validation; completed model runs publish predictions, metrics, and YAML | Runtime-local until copied |
+| `RESULT_PATH` on mounted Drive | Batch logs stream during execution; completed model runs publish predictions, metrics, and YAML; submissions and comprehensive reports use their subdirectories | Directly to Drive |
 | `PROJECT_DIR/models/` | `--build` publishes a production checkpoint | Runtime-local until copied separately |
-| `DRIVE_RESULTS_DIR` | Local notebook's post-run copy step | Destination only; application commands do not read this variable |
 
-Setting a path does not copy existing files. If `CACHE_PATH` points to Drive,
-cache publication happens during the run, independently of the results copy.
+Setting a path does not copy existing files. Point `CACHE_PATH` and `RESULT_PATH`
+to Drive to publish their artifacts there during the run. When `RESULT_PATH` is
+missing or blank, commands use `./results` in their working directory instead.
 Large cache sessions reconstruct working files beside their logical cache;
 allow space there for [multipart storage](caching.md#shared-storage-and-multipart-files).
 
@@ -76,10 +77,11 @@ permissions in the runtime; a shortcut's location in the Drive web interface
 alone does not establish write access. This guide does not verify any particular
 account's shortcut target.
 
-For manual runs, copy the completed result directory to Drive before releasing
-the runtime. Also preserve the matching processed split and any production
-checkpoint you need later. `MODEL_PATH` contains downloaded base weights, not
-the project's trained `adapter.pt` or `head.pt`.
+If manual runs use a runtime-local `RESULT_PATH`, copy the completed result
+directory to Drive before releasing the runtime. With `RESULT_PATH` on Drive,
+results are already written there. Also preserve the matching processed split
+and any production checkpoint you need later. `MODEL_PATH` contains downloaded
+base weights, not the project's trained `adapter.pt` or `head.pt`.
 
 ## Local notebook behavior
 
@@ -89,44 +91,44 @@ four-cell workflow is:
 
 | Cell | Action |
 | --- | --- |
-| Settings | Define repository/branch, runtime project path, model/cache paths, endpoint, and results-copy destination; export model/cache/endpoint settings |
+| Settings | Define repository/branch, runtime project path, model/cache/result paths, and endpoint; export model/cache/result/endpoint settings |
 | Drive | Mount `/content/drive` and create the model-cache directory |
-| Setup | Clone, or fetch and hard-reset the runtime checkout to the selected remote branch; write runtime `.env`; install `uv`; synchronize dependencies |
-| Validation and cleanup | Run `scripts/validate.py`; copy selected results in `finally`; flush/unmount Drive; request runtime release |
+| Setup | Clone, or fetch and hard-reset the runtime checkout to the selected remote branch; write model/cache/result paths and endpoint to runtime `.env`; install `uv`; synchronize dependencies |
+| Validation and cleanup | Run `scripts/validate.py` with results and logs written directly to `RESULT_PATH`; flush/unmount Drive in `finally`; request runtime release |
 
 The setup cell's `git reset --hard` discards tracked edits in the **runtime
 checkout**. Preserve those edits before rerunning that cell. It does not upload
 local Windows project changes; the runtime obtains code from the configured
 remote branch.
 
-### When results are copied
+### When results are written
 
-Before validation, the notebook records existing names under `results/`. Once
-the whole batch script returns, or raises an ordinary exception, its `finally`
-block copies entries whose names were not present before the run. The `logs`
-directory is always copied, even if it already existed. Existing non-log
-entries are skipped; the notebook does not continuously mirror results.
+The settings cell points `RESULT_PATH` to the mounted Drive results directory.
+Batch logs stream to `<RESULT_PATH>/logs/` throughout execution; each successful
+validation publishes its completed run directory there. Submission commands and
+report generation also use this root. There is no end-of-run results copy step.
 
-Thus completed runs and log output can be copied after a later task fails.
-The copy covers `results/`, not production checkpoints under `models/`. A killed
-kernel or terminated runtime may never execute `finally`, so this is not an
-interrupt-proof backup.
+Previously published results remain at the configured destination when a later
+task fails. An interrupted training run may have no completed result directory;
+direct output is not a live checkpoint or a guarantee against interrupted Drive
+writes. Production checkpoints under `models/` still need separate preservation.
 
-A nested cleanup block calls `drive.flush_and_unmount()`, then
-`runtime.unassign()`, even after a validation or copy error reaches it. An error
-inside cleanup can prevent its remaining calls. To continue interactive work,
+The `finally` cleanup calls `drive.flush_and_unmount()`, then
+`runtime.unassign()`, even after validation fails. An error inside cleanup can
+prevent its remaining calls. To continue interactive work,
 change the cleanup behavior before running that cell; after an unmount, later
 Drive operations require mounting again.
 
 ## Diagnose a failed run
 
 - Read the **first model error** in the streamed output or
-  `results/logs/validate-*.log`. The trailing `CalledProcessError` only reports
-  that the child command failed.
+  `<RESULT_PATH>/logs/validate-*.log` (default `results/logs/`). The trailing
+  `CalledProcessError` only reports that the child command failed.
 - Check the selected YAML, runtime working directory, and exported environment
   rather than the local Windows settings.
-- If copying failed, inspect the runtime's local `results/` and the mounted
-  destination. The notebook's cleanup can still release the runtime afterward.
+- If writing failed, inspect the configured `RESULT_PATH`, Drive mount, and
+  destination permissions. The notebook's cleanup can still release the runtime
+  afterward.
 - Use the dedicated [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128)
   for submission pins; normal `uv run` uses the training lock.
 

@@ -26,7 +26,7 @@ The training lock currently selects PyTorch `2.14.0+cu130` from the CUDA 13.0
 index. The separate [submission environment](#submission-environment-pytorch-211--cuda-128)
 uses different pins; do not synchronize the training lock into it.
 
-Copy `.env.example` to `.env` if you need credentials or custom cache paths:
+Copy `.env.example` to `.env` if you need credentials or custom storage paths:
 
 ```powershell
 Copy-Item .env.example .env
@@ -38,12 +38,17 @@ On Linux, use `cp .env.example .env`. Edit the copy before downloading raw data:
 KAGGLE_API_TOKEN=your_token_here
 MODEL_PATH=
 CACHE_PATH=cache
+RESULT_PATH=results
 ```
 
 Get a token from [Kaggle API settings](https://www.kaggle.com/settings/api).
 `.env` is ignored by Git. Existing process environment variables take precedence.
 `MODEL_PATH` selects the downloaded model cache; `CACHE_PATH` selects training
-caches. Neither changes the YAML data paths or the checkpoint/result directories.
+caches; `RESULT_PATH` selects validation runs, submissions, comprehensive reports,
+and batch logs, defaulting to `./results` when missing or blank. Relative paths
+resolve from the working directory. YAML data paths and production checkpoint
+locations are configured independently; changing a path does not move existing
+files.
 See [path rules](configuration.md#configuration-files-and-paths).
 
 ## Choose the data source

@@ -25,6 +25,10 @@ run `model` directly instead of `uv run model`.
 The processed `.parquet` path is logical; large files use a manifest and volumes.
 See [multipart storage](caching.md#shared-storage-and-multipart-files).
 
+`RESULT_PATH` selects the root for validation runs, submissions, reports, and
+batch logs; the table shows its default `./results`. See
+[path rules](configuration.md#configuration-files-and-paths).
+
 ## Model selection and execution modes
 
 `MODEL` is `SR2-Qwen3-4B-lora` or uppercase `ALL`; the separate `warmup`
@@ -114,7 +118,9 @@ It continues after missing configs or failed runs, prints a task summary, and
 exits with status `1` if any task fails.
 
 Each invocation streams script messages and combined child stdout/stderr to
-the terminal and one immediately flushed UTF-8 log under `results/logs/`.
+the terminal and one immediately flushed UTF-8 log under `<RESULT_PATH>/logs/`
+(default `./results/logs/`). The script loads `.env` from its project root and
+resolves relative result paths there, matching its child commands.
 Unexpected exceptions and keyboard interruptions also write their traceback
 before propagating. A final `CalledProcessError` in a notebook is a wrapper;
 read the earlier model error or this log for the cause.

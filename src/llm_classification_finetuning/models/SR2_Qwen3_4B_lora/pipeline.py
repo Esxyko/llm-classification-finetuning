@@ -64,10 +64,10 @@ class LoRAModelPipeline:
 			model_label=self._model_label,
 		)
 		self._result_publisher = ModelResultPublisher(
-			project_root / "results", profile.result_prefix
+			config.result_dir, profile.result_prefix
 		)
 		self._submission_publisher = ModelSubmissionPublisher(
-			project_root / "results" / "submit", profile.result_prefix
+			config.result_dir / "submit", profile.result_prefix
 		)
 
 	def run(

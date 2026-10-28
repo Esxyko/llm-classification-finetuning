@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
+from dotenv import load_dotenv
+
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
 	# "warmup": ["1.yaml"],
@@ -77,7 +79,8 @@ def _validate() -> int:
 					encoding="utf-8",
 					errors="replace",
 					bufsize=1,
-					env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+					env=os.environ
+					| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
 				) as process:
 					assert process.stdout is not None
 					for line in process.stdout:
@@ -101,7 +104,12 @@ def _validate() -> int:
 
 
 def main() -> int:
-	log_dir = PROJECT_ROOT / "results" / "logs"
+	load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
+	# Keep package initialization from filling RESULT_PATH from another cwd's .env.
+	os.environ.setdefault("RESULT_PATH", "")
+	from llm_classification_finetuning.config import resolve_result_dir
+
+	log_dir = resolve_result_dir(PROJECT_ROOT) / "logs"
 	log_dir.mkdir(parents=True, exist_ok=True)
 	generated_at = datetime.now(UTC).astimezone()
 	log_path = log_dir / f"validate-{generated_at:%Y%m%d-%H%M%S-%f}.log"

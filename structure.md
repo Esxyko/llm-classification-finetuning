@@ -78,7 +78,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | Module | Owns |
 | --- | --- |
 | `__init__.py` | Working-directory `.env` loading before library imports; PyTorch allocator and HF endpoint/Xet defaults without overriding explicit environment settings |
-| `config.py` | Immutable config objects, strict YAML validation, data/cache path resolution, and effective shared warmup settings |
+| `config.py` | Immutable config objects, strict YAML validation, data/cache/result path resolution (including shared `resolve_result_dir`), and effective shared warmup settings |
 | `model_storage.py` | Native Hub cache routing through `load_pretrained`; timed backbone loading and restoration of progress-bar settings |
 | `cli_config.py` | Shared `--config` argument |
 | `cli_output.py` | Shared download/split summaries |
@@ -163,13 +163,14 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 
 ## Files and generated artifacts
 
-Default paths assume the root preset and working directory.
+Default paths assume the root preset and working directory. `RESULT_PATH`
+defaults to `./results` and controls validation, submission, report, and log roots.
 
 | Path | Role |
 | --- | --- |
 | `config.yaml`, `configs/*.yaml` | Independent complete current presets |
 | `config_archive/` | Historical configurations; not current defaults |
-| `.env.example` | Kaggle token and model/training-cache path template |
+| `.env.example` | Kaggle token and model/training-cache/result path template |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Package/entry points, training dependencies, and Python version |
 | `requirements-submit.txt` | Separate submission installation pins |
 | `<MODEL_PATH>/models--*/` | Native HF downloads; outside training-cache multipart storage |
@@ -178,10 +179,10 @@ Default paths assume the root preset and working directory.
 | `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen-feature, and LoRA base-plan stores |
 | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Skywork completed warmup, shared by SR2 and standalone warmup |
 | `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt` | SR2 production adapter/head |
-| `results/MODEL-<timestamp>/` | Completed validation CSV, metrics, and YAML snapshot |
-| `results/submit/MODEL-<timestamp>/` | Submission CSV |
-| `results/comprehensive/` | Latest synthesized report pair |
-| `results/logs/validate-*.log` | Immediately flushed batch-run logs, including failures |
+| `<RESULT_PATH>/MODEL-<timestamp>/` | Completed validation CSV, metrics, and YAML snapshot |
+| `<RESULT_PATH>/submit/MODEL-<timestamp>/` | Submission CSV |
+| `<RESULT_PATH>/comprehensive/` | Latest synthesized report pair |
+| `<RESULT_PATH>/logs/validate-*.log` | Immediately flushed batch-run logs, including failures |
 
 Runtime artifact directories are not source modules. The saved default split
 and selected shared caches are tracked with regular Git storage; raw data,

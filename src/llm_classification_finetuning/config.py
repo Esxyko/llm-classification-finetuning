@@ -123,12 +123,13 @@ class AppConfig:
 	validation: ValidationConfig
 	gpu: GPUConfig
 	cache_dir: Path
+	result_dir: Path
 	warmup: WarmupModelConfig | None = None
 	SR2_Qwen3_4B_lora: LoRAModelConfig | None = None
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
-		"""Read YAML and .env, resolving data and cache paths from the working directory."""
+		"""Read YAML and .env, resolving data, cache, and result paths from the cwd."""
 		working_dir = Path.cwd()
 		load_dotenv(dotenv_path=working_dir / ".env", override=False)
 		resolved_config_path = config_path.expanduser().resolve()
@@ -288,6 +289,7 @@ class AppConfig:
 			cache_dir=_resolve_path(
 				working_dir, os.environ.get("CACHE_PATH", "").strip() or "cache"
 			),
+			result_dir=resolve_result_dir(working_dir),
 			data=DataConfig(
 				competition=competition,
 				raw_dir=raw_dir,
@@ -310,6 +312,13 @@ class AppConfig:
 			warmup=warmup,
 			SR2_Qwen3_4B_lora=SR2_Qwen3_4B_lora,
 		)
+
+
+def resolve_result_dir(base_dir: Path) -> Path:
+	"""Resolve RESULT_PATH after the caller loads its working-directory .env."""
+	return _resolve_path(
+		base_dir, os.environ.get("RESULT_PATH", "").strip() or "results"
+	)
 
 
 def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:

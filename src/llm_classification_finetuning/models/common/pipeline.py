@@ -89,11 +89,11 @@ class ModelPipeline:
 			checkpoint_tag=checkpoint_tag,
 		)
 		self._result_publisher = ModelResultPublisher(
-			project_root / "results",
+			config.result_dir,
 			result_prefix=profile.result_prefix,
 		)
 		self._submission_publisher = ModelSubmissionPublisher(
-			project_root / "results" / "submit",
+			config.result_dir / "submit",
 			result_prefix=profile.result_prefix,
 		)
 
