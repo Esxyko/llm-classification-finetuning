@@ -62,6 +62,8 @@ class LoRATrainingHistory:
 	training_rows: int
 	warmup_training_loss: float | None = None
 	warmup_validation_loss: float | None = None
+	executed_warmup_epochs: int = 0
+	executed_joint_epochs: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,6 +429,8 @@ class LoRATrainer:
 				flush=True,
 			)
 		losses: list[float] = []
+		executed_warmup_epochs = 0
+		executed_joint_epochs = 0
 		metrics: list[EpochMetrics] = []
 		probabilities: np.ndarray | None = None
 		warmup_training_loss: float | None = None
@@ -616,6 +620,10 @@ class LoRATrainer:
 					)
 				)
 			losses.append(loss)
+			if head_only:
+				executed_warmup_epochs += 1
+			else:
+				executed_joint_epochs += 1
 			if stage_epoch == stage_epochs:
 				self._timestamp()
 				progress.finish_stage(epoch_description)
@@ -642,6 +650,8 @@ class LoRATrainer:
 			training_rows=len(reference),
 			warmup_training_loss=warmup_training_loss,
 			warmup_validation_loss=warmup_validation_loss,
+			executed_warmup_epochs=executed_warmup_epochs,
+			executed_joint_epochs=executed_joint_epochs,
 		)
 
 	def _prepare_warmup(

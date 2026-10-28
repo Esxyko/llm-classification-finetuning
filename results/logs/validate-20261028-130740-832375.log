@@ -1,2 +1,53 @@
 Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-130740-832375.log
 Running holdout validation for 3.yaml: SR2-Qwen3-4B-lora
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Created LoRA batch plan (holdout): 45,982 rows, 89 updates, 3,307 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/213342c018bc48186cb3b163fee9cfa994dce001cb4db5f7b2426e5eb4e19ca8.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:12).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 132,793,089 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=4, target_epochs=4, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 10.3% work: 22.0/214.0 time: 00:15:08/02:27:09
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 20.1% work: 43.0/214.0 time: 00:31:28/02:36:38
+[W1028 13:45:04.098584637 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 1966080, total: 101974081536).
+[W1028 13:49:43.991752099 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 14548992, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 30.4% work: 65.0/214.0 time: 00:46:02/02:31:33
+[W1028 14:02:43.496604662 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 4063232, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 40.2% work: 86.0/214.0 time: 00:56:48/02:21:21
+[W1028 14:12:58.661492155 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 14548992, total: 101974081536).
+[W1028 14:14:04.819077972 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 4063232, total: 101974081536).
+[W1028 14:15:11.419689383 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 4063232, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training (joint validation) Validation run epoch 1/2 (total 5/6):
+progress: 50.0% work: 107.0/214.0 time: 01:10:59/02:21:57
+Validation run joint training epoch 1/2 (total 5/6): train_loss=0.907874 last_step_training_loss=0.893816 validation_loss=0.900061
+[W1028 14:26:42.484069127 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 4063232, total: 101974081536).
+[W1028 14:26:43.831016500 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 2097152 bytes (free: 1966080, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 60.3% work: 129.0/214.0 time: 01:24:09/02:19:36
+[W1028 14:36:33.343295804 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 1966080, total: 101974081536).
+[W1028 14:45:13.274170982 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 8257536, total: 101974081536).
+[W1028 14:46:02.151835374 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 2097152 bytes (free: 1966080, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 70.1% work: 150.0/214.0 time: 01:40:17/02:23:04
+[W1028 14:59:55.039466988 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 80.4% work: 172.0/214.0 time: 01:54:32/02:22:30
+[W1028 15:05:09.746093467 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 10354688, total: 101974081536).
+[W1028 15:15:45.205857228 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 10354688, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 90.2% work: 193.0/214.0 time: 02:07:27/02:21:20
+[W1028 15:23:54.981810988 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 18743296, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 100.0% work: 214.0/214.0 time: 02:21:54/02:21:54
+Validation run joint training epoch 2/2 (total 6/6): train_loss=0.710821 last_step_training_loss=0.772798 validation_loss=0.934757
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-lora-20261028-153123
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0): allocated=93.22 GiB reserved=94.31 GiB
+Model total time (SR2-Qwen3-4B-lora): 02:23:33
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.934757
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-lora-20261028-153123
+Completed 1/1 tasks.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+from contextlib import suppress
 from pathlib import Path
 
 import pandas as pd
@@ -78,53 +79,22 @@ class LoRAModelPipeline:
 	) -> ModelExecutionResult:
 		"""Reuse training tokens, batch plans and head warmup before live joint training."""
 		try:
+			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD, ModelMode.SUBMIT):
+				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
+			if mode is ModelMode.BUILD:
+				return self._run_build(refresh_cache=refresh_cache)
 			environment = GPUEnvironment(self._config.gpu)
 			submit_devices = (
 				environment.configure_submit() if mode is ModelMode.SUBMIT else None
 			)
 			device = submit_devices[0] if submit_devices else environment.configure()
-			trainer = LoRATrainer(
-				self._model_config,
-				self._config.gpu,
-				device,
-				token_cache_dir=self._config.cache_dir / "token_cache",
-				refresh_cache=refresh_cache,
-				profile=self._profile,
-			)
+			trainer = self._create_trainer(device, refresh_cache=refresh_cache)
 			if submit_devices is not None:
 				with SubmissionAttention(self._config.gpu).activate():
 					return self._run_submit(trainer, submit_devices)
-			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD):
-				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			batches = LoRATrainingBatchRepository.from_config(
 				self._config, refresh_cache=refresh_cache, profile=self._profile
 			)
-			if mode is ModelMode.BUILD:
-				training = batches.get_training(full_data=True)
-				model = trainer.create_model(
-					seed=self._model_config.random_state, revision=batches.base_revision
-				)
-				try:
-					history = trainer.fit(
-						model,
-						training,
-						batches.data.canonical_texts,
-						seed=self._model_config.random_state,
-					)
-					self._checkpoint_store.save(
-						model,
-						self._compatibility(batches.serializer_version),
-						training_source_sha256=batches.data.fingerprint,
-						gpu=self._config.gpu,
-					)
-					return ModelBuildResult(
-						checkpoint_path=self._checkpoint_store.path,
-						training_rows=history.training_rows,
-						epochs=len(history.training_losses),
-						final_training_loss=history.training_losses[-1],
-					)
-				finally:
-					del model
 			validation_result = trainer.validate(batches)
 			output_dir, validation_loss, predictions = self._result_publisher.publish(
 				validation_result,
@@ -163,9 +133,60 @@ class LoRAModelPipeline:
 				f"Could not execute {self._profile.selector}: {error}"
 			) from error
 		finally:
-			gc.collect()
-			if torch.cuda.is_initialized():
-				torch.cuda.empty_cache()
+			# Cleanup must not replace an error raised by preparation, training or saving.
+			with suppress(Exception):
+				gc.collect()
+			with suppress(Exception):
+				if torch.cuda.is_initialized():
+					torch.cuda.empty_cache()
+
+	def _create_trainer(
+		self, device: torch.device, *, refresh_cache: bool
+	) -> LoRATrainer:
+		return LoRATrainer(
+			self._model_config,
+			self._config.gpu,
+			device,
+			token_cache_dir=self._config.cache_dir / "token_cache",
+			refresh_cache=refresh_cache,
+			profile=self._profile,
+		)
+
+	def _run_build(self, *, refresh_cache: bool) -> ModelBuildResult:
+		"""Prepare full-data inputs and the output path before configuring CUDA."""
+		batches = LoRATrainingBatchRepository.from_config(
+			self._config, refresh_cache=refresh_cache, profile=self._profile
+		)
+		training = batches.get_training(full_data=True)
+		self._checkpoint_store.check_writable()
+		device = GPUEnvironment(self._config.gpu).configure()
+		trainer = self._create_trainer(device, refresh_cache=refresh_cache)
+		model = trainer.create_model(
+			seed=self._model_config.random_state, revision=batches.base_revision
+		)
+		try:
+			history = trainer.fit(
+				model,
+				training,
+				batches.data.canonical_texts,
+				seed=self._model_config.random_state,
+			)
+			self._checkpoint_store.save(
+				model,
+				self._compatibility(batches.serializer_version),
+				training_source_sha256=batches.data.fingerprint,
+				gpu=self._config.gpu,
+			)
+			return ModelBuildResult(
+				checkpoint_path=self._checkpoint_store.path,
+				training_rows=history.training_rows,
+				epochs=len(history.training_losses),
+				final_training_loss=history.training_losses[-1],
+				executed_warmup_epochs=history.executed_warmup_epochs,
+				executed_joint_epochs=history.executed_joint_epochs,
+			)
+		finally:
+			del model
 
 	def _run_submit(
 		self,

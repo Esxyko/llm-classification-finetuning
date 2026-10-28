@@ -40,6 +40,8 @@ class ModelBuildResult:
 	final_training_loss: float
 	cache_path: Path | None = None
 	cache_reused: bool = False
+	executed_warmup_epochs: int | None = None
+	executed_joint_epochs: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

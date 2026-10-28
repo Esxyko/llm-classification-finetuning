@@ -44,6 +44,27 @@ Build a tagged adapter/head checkpoint on all IDs:
 uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag experiment
 ```
 
+Build prepares the saved data, full conversation tokens, and full-data batch
+plan on CPU, then probes the checkpoint destination before configuring CUDA
+or loading model weights. Every original ID from both partitions contributes
+one training row; there is no holdout evaluation during a build. Compatible token, batch,
+and frozen-feature caches are reused. The full-data head-warmup cache is keyed
+by all training IDs, so a train-partition-only head cache is not a complete hit.
+Exact warmup hits skip that stage, while compatible lower-epoch hits execute
+only the remaining warmup epochs before joint training.
+
+The build summary reports actual executed epochs separately for head warmup
+and joint training, followed by the final training loss and checkpoint path.
+The total epoch count excludes cached warmup epochs. For example, an exact
+warmup hit with two configured joint epochs reports zero executed warmup epochs
+and two executed joint epochs.
+
+Saving writes a temporary checkpoint and reloads it on CPU using the same
+metadata, finite-tensor, and head-architecture checks used by submission.
+Only a validated temporary file replaces the selected checkpoint. A failed
+write or validation leaves the previous checkpoint intact and cleans up the
+temporary file; this check does not reload base weights or run GPU inference.
+
 Then, in the [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
 load the corresponding checkpoint with a compatible submission configuration:
 

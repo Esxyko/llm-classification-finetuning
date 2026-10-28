@@ -1,2 +1,45 @@
 Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-130248-317708.log
 Running holdout validation for 2.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Created LoRA batch plan (holdout): 45,982 rows, 22 updates, 3,363 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/55f79aa2a623d36092235cbafc7e5f0fdfefb3a22508aa4b0fb553b2f84a7c1c.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:44).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 132,793,089 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=4, target_epochs=4, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/3 (total 5/7):
+progress: 10.0% work: 12.0/120.0 time: 00:34:36/05:45:59
+[W1028 13:56:39.156601522 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 4063232, total: 101974081536).
+[W1028 14:10:30.840217877 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 14548992, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 1/3 (total 5/7) branch batch 2/15:
+progress: 20.0% work: 24.0/120.0 time: 01:05:49/05:29:05
+[W1028 14:12:10.385615995 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 6160384, total: 101974081536).
+[W1028 14:12:43.674070640 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 8257536, total: 101974081536).
+[W1028 14:12:47.983335644 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 4063232, total: 101974081536).
+[W1028 14:12:51.105543813 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 18743296, total: 101974081536).
+[W1028 14:12:53.052396734 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 14548992, total: 101974081536).
+[W1028 14:13:09.310227583 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 1966080, total: 101974081536).
+[W1028 14:13:17.754166312 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 8257536, total: 101974081536).
+[W1028 14:13:40.724025638 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 10354688, total: 101974081536).
+[W1028 14:15:29.129895982 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 8257536, total: 101974081536).
+[W1028 14:15:31.917668423 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 8257536, total: 101974081536).
+[W1028 14:15:53.532429191 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 6160384, total: 101974081536).
+[W1028 14:15:57.660440031 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 12451840, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 1/3 (total 5/7) branch batch 14/15:
+progress: 30.0% work: 36.0/120.0 time: 01:12:24/04:01:20
+Validation run joint training epoch 1/3 (total 5/7): train_loss=0.910567 last_step_training_loss=0.938413 validation_loss=0.901917
+[W1028 14:31:56.483944509 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 20840448, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/3 (total 6/7):
+progress: 40.0% work: 48.0/120.0 time: 01:32:27/03:51:07
+[W1028 14:43:17.738581220 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 14548992, total: 101974081536).
+[W1028 14:43:20.271330538 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 2097152 bytes (free: 1966080, total: 101974081536).
+[W1028 15:08:21.464558985 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 18743296, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/3 (total 6/7):
+progress: 50.0% work: 60.0/120.0 time: 02:03:26/04:06:51
+[W1028 15:18:58.342792547 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 16646144, total: 101974081536).
+[W1028 15:18:58.413402717 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 6160384, total: 101974081536).
+GPU memory peak before failure (SR2-Qwen3-4B-lora, cuda:0): allocated=93.68 GiB reserved=94.31 GiB
+Error: CUDA ran out of memory during LoRA execution. Lower SR2_Qwen3_4B_lora.gradient_checkpointing_threshold when positive, or lower gradient_checkpointing_budget (0 disables singleton merging), or lower warmup.extraction_budget for warmup extraction, warmup.warmup_training_batch_size for warmup head training, SR2_Qwen3_4B_lora.extraction_budget for joint-validation/submission extraction, or training_batch_size or head_inference_batch_size for the affected stage. Keep max_length at least as large as the longest required input; inputs are never truncated. Gradient checkpointing is automatic above the threshold, or for all joint-training batches when the threshold is 0. Singletons above the checkpointing budget still run alone without truncation. Use fp16/bf16 instead of fp32. Increase gradient_accumulation_steps to preserve the effective training batch when lowering the micro-batch.
+Failed holdout validation for 2.yaml: SR2-Qwen3-4B-lora (exit code 1)
+Completed 0/1 tasks.
+Failed tasks: 2.yaml: SR2-Qwen3-4B-lora

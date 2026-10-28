@@ -86,6 +86,25 @@ class LoRACheckpointStore:
 		self._build_command = build_command
 		self._model_label = model_label
 
+	def check_writable(self) -> None:
+		"""Probe the destination before training without touching existing weights."""
+		try:
+			self.path.parent.mkdir(parents=True, exist_ok=True)
+			if self.path.exists():
+				if not self.path.is_file():
+					raise ValueError("checkpoint destination must be a regular file")
+				if not os.access(self.path, os.W_OK):
+					raise PermissionError("existing checkpoint is not writable")
+			with tempfile.NamedTemporaryFile(
+				dir=self.path.parent, prefix=".adapter-", suffix=".write-check"
+			) as probe:
+				probe.write(b"\0")
+				probe.flush()
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Cannot write {self._model_label} checkpoint {self.path}: {error}"
+			) from error
+
 	def save(
 		self,
 		model: LoRAQwenClassifier,
@@ -94,15 +113,13 @@ class LoRACheckpointStore:
 		training_source_sha256: str,
 		gpu: GPUConfig,
 	) -> None:
-		"""Stage adapters, head, and metadata together, then atomically replace."""
+		"""Reload and validate staged CPU tensors before atomic publication."""
 		temporary_path: Path | None = None
 		try:
 			adapters = self._cpu_state(
 				get_peft_model_state_dict(model.backbone, save_embedding_layers=False)
 			)
 			head = self._cpu_state(model.classifier.state_dict())
-			self._validate_state(adapters, "adapter_state_dict")
-			self._validate_state(head, "head_state_dict")
 			self.path.parent.mkdir(parents=True, exist_ok=True)
 			with tempfile.NamedTemporaryFile(
 				dir=self.path.parent, prefix=".adapter-", suffix=".tmp.pt", delete=False
@@ -123,6 +140,9 @@ class LoRACheckpointStore:
 				},
 				temporary_path,
 			)
+			# Release the CPU snapshot before loading a second copy for validation.
+			del adapters, head
+			self._load_checkpoint(temporary_path, compatibility)
 			os.replace(temporary_path, self.path)
 			temporary_path = None
 		except Exception as error:
@@ -138,13 +158,19 @@ class LoRACheckpointStore:
 
 	def load(self, expected: LoRACheckpointCompatibility) -> LoadedLoRACheckpoint:
 		"""Validate training identity without imposing the original GPU settings."""
-		if not self.path.is_file():
+		return self._load_checkpoint(self.path, expected)
+
+	def _load_checkpoint(
+		self, path: Path, expected: LoRACheckpointCompatibility
+	) -> LoadedLoRACheckpoint:
+		"""Apply identical CPU loading checks to staged and published checkpoints."""
+		if not path.is_file():
 			raise ModelExecutionError(
-				f"{self._model_label} checkpoint not found: {self.path}. Run '{self._build_command}' "
+				f"{self._model_label} checkpoint not found: {path}. Run '{self._build_command}' "
 				"with the matching --config first."
 			)
 		try:
-			checkpoint = torch.load(self.path, map_location="cpu", weights_only=True)
+			checkpoint = torch.load(path, map_location="cpu", weights_only=True)
 			if not isinstance(checkpoint, dict) or not isinstance(
 				checkpoint.get("metadata"), dict
 			):
@@ -207,7 +233,7 @@ class LoRACheckpointStore:
 			)
 		except Exception as error:
 			raise ModelExecutionError(
-				f"Could not load {self._model_label} checkpoint {self.path}: {error}"
+				f"Could not load {self._model_label} checkpoint {path}: {error}"
 			) from error
 
 	def restore(

@@ -269,6 +269,10 @@ def _print_result(selector: str, result: ModelExecutionResult) -> None:
 			f"Trained {selector} on {result.training_rows:,} rows for "
 			f"{result.epochs} epochs."
 		)
+		if result.executed_warmup_epochs is not None:
+			print(f"Executed head warmup epochs: {result.executed_warmup_epochs}")
+		if result.executed_joint_epochs is not None:
+			print(f"Executed joint training epochs: {result.executed_joint_epochs}")
 		print(f"Final training loss: {result.final_training_loss:.6f}")
 		print(f"Wrote model checkpoint: {result.checkpoint_path}")
 	elif isinstance(result, ModelSubmitResult):

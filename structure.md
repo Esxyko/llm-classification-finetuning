@@ -113,7 +113,7 @@ they do not expose an active frozen CLI profile.
 
 | Module | Owns |
 | --- | --- |
-| `contracts.py` | Execution modes, pipeline interface, and validation/build/submit/warmup result summaries |
+| `contracts.py` | Execution modes, pipeline interface, and validation/build/submit/warmup result summaries, including optional executed warmup/joint epoch counts for builds |
 | `inputs.py` | Processed/test table loading, strict split/orientation/ID validation, multipart reads, and reconstructed source fingerprints |
 | `data.py` | Tokenizer-injected official chat-template serialization and pairwise training/test repositories |
 | `hardware.py` | CUDA/precision validation, direct loading maps, dual-GPU layer placement, and per-run allocator peaks |
@@ -148,11 +148,11 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress, and standalone cached-head evaluation |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, and standalone cached-head evaluation |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, descending compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
 | `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across standalone/inline warmup |
-| `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
-| `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
+| `checkpoint.py` | Destination write preflight, portable adapter/head persistence, shared CPU validation of staged/published files before atomic replacement, revision retention, and architecture/input compatibility |
+| `pipeline.py` | LoRA holdout/submission orchestration and independent full-data build flow with CPU preparation/write preflight before GPU setup, cleanup preserving execution errors, and non-quantized dual-GPU submission |
 
 ### Reporting
 
@@ -235,7 +235,11 @@ present in a fresh checkout.
    infer one compatibility from another. Version identities when their actual
    representation/algorithm changes. See [caching](docs/caching.md).
 5. **CPU preparation:** token/loader/plan preparation must not load model weights
-   or initialize CUDA. Complete retained frozen-model embedding hits skip backbone
+   or initialize CUDA. Full-data LoRA builds complete data/token/plan preparation
+   and checkpoint write preflight before configuring CUDA or loading weights;
+   staged checkpoints must pass submission's CPU loading checks before replacing
+   the previous production artifact. Complete retained frozen-model embedding hits
+   skip backbone
    weights while retaining applicable input and hardware checks. Complete inline warmup hits
    skip warmup work; complete standalone hits evaluate the restored head on current
    train/validation data without training or rewriting cached state. Partial hits

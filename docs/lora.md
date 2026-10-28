@@ -258,6 +258,12 @@ There is no early-stopping checkpoint selection: holdout publication uses the
 final epoch. Reused warmup contributes no old losses, timings, or executed epochs;
 joint epoch numbers retain their configured warmup offset.
 
+`LoRATrainingHistory.executed_warmup_epochs` and `executed_joint_epochs` count
+only epochs executed by the current call, including zero warmup epochs for
+an exact hit or disabled warmup. Full-data builds expose both counters through
+`ModelBuildResult` and the CLI summary; `ModelBuildResult.epochs` remains their
+sum. Its optional stage counters default to `None` for other callers.
+
 For warmup identity and restoration details, see [warmup caches](caching.md#lora-head-warmup).
 
 ### Cosine learning-rate decay
@@ -479,6 +485,14 @@ rather than silently changing precision or shortening inputs.
 a checkpoint tag. It contains adapters, the FP32 head, and compatibility metadata;
 **base weights and optimizer state are not stored**. It is an inference artifact,
 not a checkpoint for resuming interrupted joint training.
+
+Before initializing CUDA, full-data builds prepare their data/tokens/batch plan
+and probe the destination directory and any existing checkpoint's writability.
+Saving reloads the staged file on CPU with the same validation used by
+submission, then atomically replaces the destination. Failed writes or staged
+validation preserve the previous checkpoint and clean up the temporary file.
+The CPU snapshot used for serialization is released before readback; neither
+the probe nor readback loads base weights or runs inference.
 
 Loading checks model name, serializer, classifier width/dropout, head
 architecture, LoRA rank/alpha/dropout/targets, schema/classes, pooling/truncation
