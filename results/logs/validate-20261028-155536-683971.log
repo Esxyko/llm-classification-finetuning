@@ -1,0 +1,39 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-155536-683971.log
+Running holdout validation for 2.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (holdout): 45,982 rows, 44 updates, 3,309 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/e73b8c694ddbb3643754608a31c562925b1431d6ed336153253254e5d5f4a0ee.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:03:58).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 132,793,089 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=4, target_epochs=4, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 10.5% work: 13.0/124.0 time: 00:14:20/02:16:46
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 20.2% work: 25.0/124.0 time: 00:29:40/02:27:09
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 5/6):
+progress: 30.6% work: 38.0/124.0 time: 00:46:34/02:31:56
+[W1028 17:04:38.649960177 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 6160384, total: 101974081536).
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 1/2 (total 5/6) branch batch 6/15:
+progress: 40.3% work: 50.0/124.0 time: 01:06:57/02:46:03
+SR2_Qwen3_4B_lora validation Joint training (joint validation) Validation run epoch 1/2 (total 5/6):
+progress: 50.0% work: 62.0/124.0 time: 01:11:39/02:23:17
+Validation run joint training epoch 1/2 (total 5/6): train_loss=0.906221 last_step_training_loss=0.928502 validation_loss=0.895229
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 60.5% work: 75.0/124.0 time: 01:32:08/02:32:19
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 70.2% work: 87.0/124.0 time: 01:44:27/02:28:52
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 80.6% work: 100.0/124.0 time: 02:00:15/02:29:06
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 2/2 (total 6/6) branch batch 6/15:
+progress: 90.3% work: 112.0/124.0 time: 02:18:32/02:33:23
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/2 (total 6/6):
+progress: 100.0% work: 124.0/124.0 time: 02:23:13/02:23:13
+Validation run joint training epoch 2/2 (total 6/6): train_loss=0.787196 last_step_training_loss=0.810716 validation_loss=0.924173
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-lora-20261028-182336
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0): allocated=93.48 GiB reserved=94.11 GiB
+Model total time (SR2-Qwen3-4B-lora): 02:27:48
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.924173
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-lora-20261028-182336
+Completed 1/1 tasks.
