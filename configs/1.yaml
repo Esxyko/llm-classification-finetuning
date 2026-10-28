@@ -39,12 +39,12 @@ SR2_Qwen3_4B_lora:
   gradient_checkpointing_threshold: 12288
   gradient_checkpointing_budget: 147456
   training_batch_size: 1
-  head_inference_batch_size: 4096
+  head_inference_batch_size: 1024
   gradient_accumulation_steps: 1024
   epochs: 2
   extraction_budget: 720896
-  learning_rate: 0.00015
-  min_lr_ratio: 0.125
+  learning_rate: 0.0001
+  min_lr_ratio: 1
   hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1
