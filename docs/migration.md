@@ -72,13 +72,28 @@ structure checks also reject old states with relabeled metadata. Historical
 weights, caches, results, and configuration snapshots are not converted or edited.
 See the [current head definition](lora.md#swap-equivariant-head).
 
-The current marker is `swap_equivariant_harmonic_discrepancy_v2`. Batched A/B
+The next marker was `swap_equivariant_harmonic_discrepancy_v2`. Batched A/B
 projections and the shared win readout are retained, while the relative tie
 correction changes from `s - 2q + b` to `s - q + b`; win logits contain no `q`.
 Parameter names/shapes and storage schemas are unchanged, but predictions for
 the same weights change. V2 selects new warmup keys and rejects v1 production
 checkpoints through the architecture marker. Rebuild for v2; historical v1
 artifacts are preserved without automatic weight conversion.
+
+The current marker is `swap_equivariant_harmonic_discrepancy_v3`. L/M now occupy
+contiguous blocks of one bias-free input projection, while X/Y use a separate
+projection of the FP32 parameter difference L-M plus the new shared B3. X/Y have
+no GELU; their undropped values feed harmonic fusion and the discrepancy branch.
+The single correction q now contributes to all outputs as
+`[r_A + q, r_B + q, s - q + b]`. The only scalar output bias remains b.
+V3 retains the scaled-uniform initialization version
+`scaled_uniform_zero_discrepancy_v1` and initializes B3 to zero. Adapter/head
+schema v2, warmup schema v5, configuration fields, and artifact namespaces remain
+unchanged. Earlier harmonic/discrepancy v1/v2 and tie-from-wins checkpoints require
+rebuilding; v3 selects new warmup keys and its exact tensor checks reject the
+old layout even with relabeled metadata. Historical artifacts remain intact,
+and token, adapter-free feature, and batch-plan caches retain their existing
+compatibility rules.
 
 `model warmup --build` now uses the SR2 profile and writes
 `SR2_Qwen3_4B_lora_warmup/`. Current presets select

@@ -24,10 +24,11 @@ and [configuration](configuration.md) for the complete fields and parser default
 | SR2 | `SR2_Qwen3_4B_lora` | `Skywork/Skywork-Reward-V2-Qwen3-4B` | `SR2_Qwen3_4B_lora` / `SR2_Qwen3_4B_lora_warmup` |
 
 SR2 loads Skywork's Transformer through `AutoModel`, omitting its scalar reward
-head. Its comparison head uses shared cross projections, harmonic fusion, and
-an absolute-difference correction. The implementation and public Python APIs
-now live in `models/SR2_Qwen3_4B_lora/`. Head size, rank,
-smoothing, rates, and epochs may differ between presets; read their actual values.
+head. Its comparison head uses shared cross projections for wins and separate
+linear-difference projections for harmonic fusion and an absolute-difference
+correction. The implementation and public Python APIs now live in
+`models/SR2_Qwen3_4B_lora/`. Head size, rank, smoothing, rates, and epochs may
+differ between presets; read their actual values.
 
 SR2 and the standalone `warmup` command use the same SR2 cache namespace.
 The shipped presets select Skywork for both; reuse additionally requires
@@ -41,11 +42,13 @@ $$
 \begin{aligned}
 P_1 &= \operatorname{GELU}(AL+BM+B_1),\\
 P_2 &= \operatorname{GELU}(BL+AM+B_1),\\
-P' &= \frac{2P_1\odot P_2}{|P_1|+|P_2|+10^{-8}},\\
-Q &= \operatorname{GELU}(|P_1-P_2|N+B_2),\\
+X &= A(L-M)+B_3,\\
+Y &= B(L-M)+B_3,\\
+P' &= \frac{2X\odot Y}{|X|+|Y|+10^{-8}},\\
+Q &= \operatorname{GELU}(|X-Y|N+B_2),\\
 q &= (Q\odot m_Q)T,\\
-\operatorname{logit}_A &= (P_1\odot m_P)R,\\
-\operatorname{logit}_B &= (P_2\odot m_P)R,\\
+\operatorname{logit}_A &= (P_1\odot m_P)R+q,\\
+\operatorname{logit}_B &= (P_2\odot m_P)R+q,\\
 \operatorname{logit}_{tie} &= (P'\odot m_{P'})S-q+b.
 \end{aligned}
 $$
@@ -57,49 +60,60 @@ distributions $U(-\sqrt{3}\sigma,\sqrt{3}\sigma)$ with these standard deviations
 
 | Matrices | Standard deviation $\sigma$ |
 | --- | --- |
-| $L,M$ (`self_projection`, `cross_projection`) | $1/\sqrt{2D}$ |
+| $L,M$ (two `input_projection.weight` blocks) | $1/\sqrt{2D}$ |
 | $N$ (`discrepancy_projection`) | $1/\sqrt{h}$ |
 | $R,S$ (`win_readout`, `tie_readout`) | $0.1/\sqrt{h}$ |
 
 $T$ (`discrepancy_readout`) is initialized to zero. Each bound is computed from
 the corresponding layer's actual input dimension. $L$ and $M$ are shared across
-A/B branches. The hidden biases $B_1,B_2$ and the sole scalar output bias $b$
-are trainable and initialized to zero. The head has $2Dh+h^2+5h+1$ trainable
-parameters. Biases use the existing head learning rate and weight decay.
+A/B branches. The hidden biases $B_1,B_2,B_3\in\mathbb{R}^h$ and the sole
+scalar output bias $b$ are trainable and initialized to zero. $B_1$ is
+`win_projection_bias`, $B_2$ is `discrepancy_projection.bias`, and $B_3$ is
+`tie_projection_bias`. The head has $2Dh+h^2+6h+1$ trainable parameters.
+Biases use the existing head learning rate and weight decay.
 
 Fusion multiplication/division, absolute values, and mask multiplication act
-elementwise. Both $P'$ and $Q$ use **undropped** $P_1,P_2$. Each sample's win
-branches share $m_P$; $m_P,m_{P'},m_Q$ are mutually independent standard dropout
-masks with $1/(1-p)$ scaling. Evaluation disables dropout. The correction $q$
-is computed once for the tie branch. Swapping inputs exchanges win logits and preserves
-the tie logit under the same masks.
+elementwise. $X,Y$ have no GELU, and both $P'$ and $Q$ use **undropped** $X,Y$.
+Each sample's win branches share $m_P$; $m_P,m_{P'},m_Q$ are mutually independent
+standard dropout masks with $1/(1-p)$ scaling. Evaluation disables dropout. The correction $q$
+is computed once, added to both win scores, and subtracted from the tie score.
+Swapping inputs exchanges win logits and preserves the tie logit under the same
+masks.
 
-The implementation batches A/B as `[batch, 2, D]`, applying each of L and M once
-and reversing M's branch axis before addition. GELU, shared-mask multiplication,
-and the R readout operate on both win branches together. This reduces linear
-calls from nine to six without changing the trainable parameter layout.
+The implementation batches A/B as `[batch, 2, D]` and stores $L^\top,M^\top$
+as contiguous blocks of one bias-free `Linear(D, 2h)`. One call computes both
+projections for both inputs; M's branch axis is reversed before addition. $B_1$
+is added in the projection output dtype. GELU, shared-mask multiplication, and
+the R readout operate on both win branches together.
 
-The tie logit uses `s - q + b`, with unit correction magnitude. Win logits have
-no $q$ term. This replaces the harmonic/discrepancy v1 relative output
-$[r_A,r_B,s-2q+b]$; it changes predictions for the same weights, rather than
-applying a common logit shift. The v2 architecture marker isolates v1 warmup
-states and rejects v1 production checkpoints without converting historical files.
+Every forward computes $L-M$ from the FP32 parameter blocks before projecting
+$X,Y$ together with their shared $B_3$. The difference retains gradients to both
+blocks and is neither an independent parameter nor cached across forwards.
+This projection follows the existing mixed-precision policy; subtracting the
+low-precision L/M projection results is not equivalent. The head uses six
+linear calls: packed L/M, L-M, N, R, S, and T. It reuses the batched inputs and
+weight views without concatenating full L/M weights on each call.
 
-Before harmonic fusion, $P_1,P_2$ are converted to FP32 inside a region with
-autocast disabled; the entire fusion formula, including the fixed epsilon
-$10^{-8}$, stays FP32 through dropout. Other matrix multiplications retain the
-existing head precision policy. Both win readouts are converted to FP32 together;
-$s$ and $q$ are FP32 before the tie calculation, and $b$ is FP32.
-Returned FP32 logits are ordered A-win, B-win, tie.
+Before harmonic fusion, $X,Y$ are converted to FP32 inside a region with
+autocast disabled. The entire fusion formula, including multiplication, absolute
+values, addition, the fixed epsilon $10^{-8}$, and division, stays FP32 through
+dropout. Other matrix multiplications retain the existing head precision policy.
+Both win readouts are converted to FP32 together; $s,q$ are also FP32 before
+computing $[r_A+q,r_B+q,s-q+b]$. The sole scalar output bias $b$ is FP32, and
+all readout additions/subtractions and returned logits are FP32. Output order
+is A-win, B-win, tie.
 
 These weights are trained directly. The architecture marker is
-`swap_equivariant_harmonic_discrepancy_v2`; adapter/head checkpoint schema is v2
+`swap_equivariant_harmonic_discrepancy_v3`; adapter/head checkpoint schema is v2
 and warmup schema is v5. The marker selects different warmup cache keys and
-rejects harmonic/discrepancy v1 and earlier tie-from-wins v1/v2 checkpoints
-without converting their weights.
+rejects harmonic/discrepancy v1/v2 and earlier tie-from-wins v1/v2 checkpoints
+without converting their weights. Exact parameter-name/shape checks additionally
+reject the earlier layout without the fused L/M storage and $B_3$.
 Rebuild those checkpoints with the matching configuration; warmup is regenerated.
 The initialization policy is versioned separately as
-`scaled_uniform_zero_discrepancy_v1` in the SR2 warmup identity. This isolates
+`scaled_uniform_zero_discrepancy_v1` in the SR2 warmup identity; the new zero
+$B_3$ follows this same policy, while the v3 architecture marker isolates the
+changed layout and behavior. Initialization versioning isolates
 earlier Xavier-initialized warmup states without changing production-checkpoint
 compatibility or the architecture/schema versions. See
 [warmup identity](caching.md#identity).

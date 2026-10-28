@@ -6,13 +6,14 @@ import math
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from ..common.model import PairwiseClassificationHead
 
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_harmonic_discrepancy_v2"
+SR2 = "swap_equivariant_harmonic_discrepancy_v3"
 # Bump this version whenever the SR2 initialization policy changes.
 SR2_INITIALIZATION_VERSION = "scaled_uniform_zero_discrepancy_v1"
 
@@ -161,10 +162,10 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 
 
 class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
-	"""Combine cross-projected wins with harmonic and discrepancy representations."""
+	"""Combine cross-projected wins with independently projected tie features."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_harmonic_abs_diff"
+	EMBEDDING_COMBINATION = "cross_projected_linear_diff_harmonic_abs_diff"
 	EPSILON = 1e-8
 
 	def __init__(
@@ -177,9 +178,16 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 	) -> None:
 		super().__init__()
 		self._compute_dtype = compute_dtype
-		# L carries B1 and is reused for both branches; M has no bias.
-		self.self_projection = nn.Linear(backbone_hidden_size, hidden_size, bias=True)
-		self.cross_projection = nn.Linear(backbone_hidden_size, hidden_size, bias=False)
+		# Contiguous weight blocks store L.T and M.T without a per-forward copy.
+		self.input_projection = nn.Linear(
+			backbone_hidden_size, 2 * hidden_size, bias=False
+		)
+		self.win_projection_bias = nn.Parameter(
+			torch.zeros(hidden_size, dtype=torch.float32)
+		)
+		self.tie_projection_bias = nn.Parameter(
+			torch.zeros(hidden_size, dtype=torch.float32)
+		)
 		# N carries B2; R, S, and T have no output biases.
 		self.discrepancy_projection = nn.Linear(hidden_size, hidden_size, bias=True)
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
@@ -190,12 +198,8 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 		self.dropout = nn.Dropout(dropout)
 		for layer, bound in (
 			(
-				self.self_projection,
-				math.sqrt(3.0 / (2 * self.self_projection.in_features)),
-			),
-			(
-				self.cross_projection,
-				math.sqrt(3.0 / (2 * self.cross_projection.in_features)),
+				self.input_projection,
+				math.sqrt(3.0 / (2 * self.input_projection.in_features)),
 			),
 			(
 				self.discrepancy_projection,
@@ -212,11 +216,11 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 
 	@classmethod
 	def embedding_combination(cls) -> str:
-		"""Return the marker for cross projections, fusion, and absolute differences."""
+		"""Return the marker for cross-projected wins and linear-difference ties."""
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
-		"""Return FP32 logits with batched win readout and a unit tie correction."""
+		"""Return FP32 logits with one discrepancy correction shared by all outputs."""
 		if h_a.shape != h_b.shape or h_a.ndim != 2:
 			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
 		with torch.autocast(
@@ -224,21 +228,33 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 			dtype=torch.bfloat16,
 			enabled=self._compute_dtype == torch.bfloat16,
 		):
-			# Batch both branches so L and M each require only one linear call.
+			# One linear call covers both branches and both L/M weight blocks.
 			branches = torch.stack((h_a, h_b), dim=1)
-			wins = self.activation(
-				self.self_projection(branches) + self.cross_projection(branches).flip(1)
+			self_features, cross_features = self.input_projection(branches).chunk(
+				2, dim=-1
 			)
-			p1, p2 = wins.unbind(dim=1)
-			# Both derived representations use the undropped win features.
+			wins = self.activation(
+				self_features
+				+ cross_features.flip(1)
+				+ self.win_projection_bias.to(dtype=self_features.dtype)
+			)
 			with torch.autocast(device_type=h_a.device.type, enabled=False):
-				p1_fp32, p2_fp32 = wins.float().unbind(dim=1)
-				denominator = p1_fp32.abs() + p2_fp32.abs() + self.EPSILON
-				fused = 2 * p1_fp32 * p2_fp32 / denominator
-			discrepancy = self.activation(self.discrepancy_projection((p1 - p2).abs()))
+				l_weight, m_weight = self.input_projection.weight.chunk(2, dim=0)
+				# Subtract the FP32 parameters before autocast projects either branch.
+				difference_weight = l_weight.float() - m_weight.float()
+			# X/Y have their own shared B3 and no activation or dropout.
+			tie_features = F.linear(
+				branches, difference_weight, self.tie_projection_bias
+			)
+			x, y = tie_features.unbind(dim=1)
+			with torch.autocast(device_type=h_a.device.type, enabled=False):
+				x_fp32, y_fp32 = tie_features.float().unbind(dim=1)
+				denominator = x_fp32.abs() + y_fp32.abs() + self.EPSILON
+				fused = 2 * x_fp32 * y_fp32 / denominator
+			discrepancy = self.activation(self.discrepancy_projection((x - y).abs()))
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
-				win_mask = self.dropout(torch.ones_like(p1))
+				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
 			# Separate dropout calls draw independent fusion and discrepancy masks.
 			fused = self.dropout(fused)
@@ -246,6 +262,7 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 			win_logits = self.win_readout(wins).squeeze(-1).float()
 			s = self.tie_readout(fused).float()
 			q = self.discrepancy_readout(discrepancy).float()
+		win_logits = win_logits + q
 		tie = s - q + self.tie_bias
 		return torch.cat((win_logits, tie), dim=-1)
 

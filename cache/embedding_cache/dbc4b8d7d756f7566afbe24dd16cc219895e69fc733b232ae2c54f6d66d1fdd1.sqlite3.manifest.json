@@ -1,0 +1,57 @@
+{
+  "parts": [
+    {
+      "name": "000001-eda10ee07fe25a86c7076de3701f15fb782558bab61115acc199dc7837ebeacd.part",
+      "sha256": "eda10ee07fe25a86c7076de3701f15fb782558bab61115acc199dc7837ebeacd",
+      "size": 103809024
+    },
+    {
+      "name": "000002-b77179517e092abc0e32313c4ab0a51a943595834c079e450ba20ad9fc8569b5.part",
+      "sha256": "b77179517e092abc0e32313c4ab0a51a943595834c079e450ba20ad9fc8569b5",
+      "size": 103809024
+    },
+    {
+      "name": "000003-2368017a7837ec1ad22c0befd607fc3e32caeb8b3a3a0558f03388ad786b46cf.part",
+      "sha256": "2368017a7837ec1ad22c0befd607fc3e32caeb8b3a3a0558f03388ad786b46cf",
+      "size": 103809024
+    },
+    {
+      "name": "000004-74f05dc203e227f149a3d6b07e292acde7b38847bc17c5cf3f36f01ef8c568d7.part",
+      "sha256": "74f05dc203e227f149a3d6b07e292acde7b38847bc17c5cf3f36f01ef8c568d7",
+      "size": 103809024
+    },
+    {
+      "name": "000005-669579d4bb6fc05e657e4dd9b58ebe3c8d1593bb5007110724a06cf001872596.part",
+      "sha256": "669579d4bb6fc05e657e4dd9b58ebe3c8d1593bb5007110724a06cf001872596",
+      "size": 103809024
+    },
+    {
+      "name": "000006-909b6a3edf34bf84ffbb9bbcc8ee394cb3c37fd205cafc73fa38d56d402b064f.part",
+      "sha256": "909b6a3edf34bf84ffbb9bbcc8ee394cb3c37fd205cafc73fa38d56d402b064f",
+      "size": 103809024
+    },
+    {
+      "name": "000007-1c2c9d88fc4726c3c0b8b2dff39dfbc058880b99fd07a768518334d46789ff20.part",
+      "sha256": "1c2c9d88fc4726c3c0b8b2dff39dfbc058880b99fd07a768518334d46789ff20",
+      "size": 103809024
+    },
+    {
+      "name": "000008-e9e7f45404993fe056ddc3d1ea7bc69438610ed94efe64d825636097abc0365c.part",
+      "sha256": "e9e7f45404993fe056ddc3d1ea7bc69438610ed94efe64d825636097abc0365c",
+      "size": 103809024
+    },
+    {
+      "name": "000009-ae201ea50abdafd1bcd80ef2a2021fa9c7b7dc3ad8927b4e7d7727e97f5d2c48.part",
+      "sha256": "ae201ea50abdafd1bcd80ef2a2021fa9c7b7dc3ad8927b4e7d7727e97f5d2c48",
+      "size": 103809024
+    },
+    {
+      "name": "000010-f39843b5349ccb84a87a4feb04e1ba55251405ba8f4ebfda3f24dc91835f829d.part",
+      "sha256": "f39843b5349ccb84a87a4feb04e1ba55251405ba8f4ebfda3f24dc91835f829d",
+      "size": 66781184
+    }
+  ],
+  "sha256": "8dc482900ba280fdab8b40745a66298be894be01aef624e729cbf60305a1f196",
+  "size": 1001062400,
+  "version": 1
+}

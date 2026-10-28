@@ -218,14 +218,16 @@ update counts follow finalized merged groups. See
 
 SR2 and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. Both use the
-`swap_equivariant_harmonic_discrepancy_v2` head architecture and warmup schema v5.
-This head uses shared cross projections, harmonic fusion, a discrepancy correction,
-and one scalar output bias. Its architecture marker selects new cache keys within
-the existing namespace; harmonic/discrepancy v1 and earlier tie-from-wins v1/v2
-entries remain on disk and are not reused or migrated. V2 changes the tie
-correction from `s - 2q + b` to `s - q + b`, retaining the v1 parameter layout;
-the architecture marker distinguishes these semantics. Exact head/optimizer
-tensor names and shapes additionally reject incompatible head structures.
+`swap_equivariant_harmonic_discrepancy_v3` head architecture and warmup schema v5.
+This head packs L/M into one projection for the wins and separately projects
+X/Y with the FP32 parameter difference L-M and a shared zero-initialized B3.
+Undropped X/Y feed harmonic fusion and the discrepancy branch. The correction q
+is computed once for outputs `[r_A + q, r_B + q, s - q + b]`, with one scalar
+output bias. The architecture marker selects new cache keys within the existing
+namespace; harmonic/discrepancy v1/v2 and earlier tie-from-wins v1/v2 entries
+remain on disk and are not reused or migrated. Exact head/optimizer tensor names
+and shapes additionally reject earlier structures without the fused L/M layout
+and B3, even if their metadata is relabeled.
 Warmup is regenerated for the new architecture.
 Submission does not use warmup caches.
 
@@ -235,9 +237,11 @@ to form the cache key and must match the selected source exactly when loading. E
 Xavier-initialized SR2 entries lack this field and therefore select different
 keys; they remain on disk without reuse or migration. Initialization versioning
 does not change the head architecture, warmup schema v5, production-checkpoint
-compatibility, or other heads' cache identities. New-version entries remain
-shared by standalone and inline SR2 warmup when all identity fields match.
-Token and batch-plan caches retain their own reuse rules.
+compatibility, or other heads' cache identities. V3 retains this initialization
+version, including zero B3; its architecture marker independently isolates the
+new head. Compatible v3 entries remain shared by standalone and inline SR2 warmup
+when all identity fields match. Token, adapter-free feature, and batch-plan
+caches retain their own reuse rules because their representations are unchanged.
 
 For a target of `N` warmup epochs, lookup first checks the exact `N`-epoch key,
 then checks `N-1` down to `1`, changing only `warmup_epochs` in the metadata.

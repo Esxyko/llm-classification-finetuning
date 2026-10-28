@@ -145,7 +145,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
-| `heads.py` | Head factory, precision wrapper, swap-equivariant harmonic/discrepancy architecture, and retained legacy head definitions |
+| `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
 | `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress, and standalone cached-head evaluation |
@@ -209,21 +209,23 @@ present in a fresh checkout.
    Encode with the same tokenizer and `add_special_tokens=False`. Predictions
    use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/models.md#build-and-submit).
-3. **Profile objectives:** SR2 uses shared cross projections with harmonic fusion
-   and a discrepancy correction, on original rows only. Derive both symmetric
-   features before dropout; share one win mask and use independent fusion and
-   discrepancy masks. Compute the correction once for the tie branch. Architecture
-   `swap_equivariant_harmonic_discrepancy_v2` uses zero-mean uniform weights with
-   standard deviations `1/sqrt(2D)` for self/cross projections, `1/sqrt(h)` for
+3. **Profile objectives:** SR2 uses fused shared L/M cross projections for wins
+   and separately projects X/Y with L-M plus shared B3, on original rows only.
+   Compute L-M from FP32 parameter blocks before projection; X/Y have no GELU.
+   Derive harmonic fusion and discrepancy features from undropped X/Y; share one
+   win mask and use independent fusion and discrepancy masks. Compute q once and
+   reuse it for all three outputs. Architecture
+   `swap_equivariant_harmonic_discrepancy_v3` uses zero-mean uniform weights with
+   standard deviations `1/sqrt(2D)` for L/M weight blocks, `1/sqrt(h)` for
    the discrepancy projection, and `0.1/sqrt(h)` for win/tie readouts, derived
-   from actual layer dimensions. The discrepancy readout, hidden biases, and
+   from actual layer dimensions. The discrepancy readout, B1/B2/B3 biases, and
    sole FP32 scalar tie bias start at zero. Harmonic fusion (epsilon `1e-8`)
    and final logit arithmetic stay FP32.
-   Batch A/B projections and the shared win readout; wins have no `q` term and
-   tie uses `s - q + b`. V2 removes the v1 factor of two without changing the
-   parameter layout; its architecture marker isolates v1 state.
-   Its marker and exact parameter structure isolate warmup caches and reject
-   earlier tie-from-wins production checkpoints.
+   Batch A/B inputs once, use one packed L/M projection, one L-M projection,
+   and one shared win readout, for six linear calls in total. Outputs are
+   `[r_A + q, r_B + q, s - q + b]`, with FP32 readout additions/subtractions.
+   The v3 marker and exact fused parameter structure isolate warmup caches and
+   reject harmonic/discrepancy v1/v2 and earlier tie-from-wins checkpoints.
    SR2 warmup additionally versions initialization as
    `scaled_uniform_zero_discrepancy_v1`, isolating earlier Xavier-initialized
    states without changing production-checkpoint compatibility.

@@ -74,13 +74,15 @@ See [checkpoint flags](commands.md#model-selection-and-execution-modes),
 ## Checkpoint compatibility
 
 SR2 retains adapter/head schema v2 and uses the
-`swap_equivariant_harmonic_discrepancy_v2` architecture with shared cross
-projections, harmonic fusion, an absolute-difference correction, and one scalar
-tie bias. Artifact paths remain unchanged. The architecture marker and exact
-head tensor structure reject earlier tie-from-wins v1/v2 checkpoints; the
-architecture marker also rejects harmonic/discrepancy v1 checkpoints, which
-must be rebuilt with the matching configuration. Existing warmup files are
-preserved; the new architecture selects new cache keys and regenerates warmup.
+`swap_equivariant_harmonic_discrepancy_v3` architecture with fused L/M win
+projections, independent linear-difference X/Y features for harmonic fusion and
+the discrepancy correction, and one scalar tie bias. The same correction is
+added to both win logits and subtracted from the tie logit. Artifact paths remain
+unchanged. The architecture marker rejects harmonic/discrepancy v1/v2 and earlier
+tie-from-wins v1/v2 checkpoints; exact head tensor checks additionally enforce the
+fused projection and new B3 bias. Rebuild earlier checkpoints with the matching
+configuration. Existing warmup files are preserved; the new architecture selects
+new cache keys and regenerates warmup.
 See [adapter/head checks](lora.md#checkpoints) for the enforced fields and pinned
 Hub revision. Historical Qwen checkpoints are not converted into SR2 checkpoints.
 
