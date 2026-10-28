@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
 	# "warmup": ["1.yaml"],
-	"warmup": ["1.yaml", "2.yaml", "3.yaml", "4.yaml"],
+	"warmup": ["1.yaml", "2.yaml", "4.yaml", "5.yaml"],
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

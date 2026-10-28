@@ -37,6 +37,10 @@ it as `cache_dir`. `Skywork/Skywork-Reward-V2-Qwen3-4B`, for example, uses
 Hugging Face manages revisions, locks, and resumable downloads. Files persist
 across processes without archive packing or unpacking.
 
+Backbone weight loading prints start/end messages with elapsed time and hides
+Hugging Face progress bars and Transformers `LOAD REPORT` logs. Other warnings
+and loading exceptions retain their normal behavior.
+
 Missing/blank `MODEL_PATH` preserves native Hugging Face cache settings.
 Explicit local model directories load directly. `HF_HOME` and authentication
 settings are preserved. Model downloads are outside the multipart policy below;

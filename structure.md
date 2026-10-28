@@ -79,7 +79,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | --- | --- |
 | `__init__.py` | Working-directory `.env` loading before library imports; PyTorch allocator and HF endpoint/Xet defaults without overriding explicit environment settings |
 | `config.py` | Immutable config objects, strict YAML validation, data/cache/result path resolution (including shared `resolve_result_dir`), and effective shared warmup settings |
-| `model_storage.py` | Native Hub cache routing through `load_pretrained`; timed backbone loading and restoration of progress-bar settings |
+| `model_storage.py` | Native Hub cache routing through `load_pretrained`; timed backbone loading with scoped load-report suppression and restoration of progress-bar settings |
 | `cli_config.py` | Shared `--config` argument |
 | `cli_output.py` | Shared download/split summaries |
 | `errors.py` | Expected domain-error hierarchy |

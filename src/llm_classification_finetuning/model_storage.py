@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from logging import Filter, LogRecord
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 from .timing import format_duration
+
+
+class _LoadReportFilter(Filter):
+	"""Suppress Transformers weight-loading report records."""
+
+	def filter(self, record: LogRecord) -> bool:
+		return " LOAD REPORT" not in record.getMessage()
 
 
 def load_pretrained(loader: Callable[..., Any], model_name: str, **kwargs: Any) -> Any:
@@ -22,7 +30,7 @@ def load_pretrained(loader: Callable[..., Any], model_name: str, **kwargs: Any) 
 def load_model_weights(
 	loader: Callable[..., Any], model_name: str, **kwargs: Any
 ) -> Any:
-	"""Load weights with start/end logs instead of Hugging Face progress bars."""
+	"""Load weights with start/end logs, hiding progress bars and load reports."""
 	from huggingface_hub.utils import (
 		are_progress_bars_disabled,
 		disable_progress_bars,
@@ -32,12 +40,16 @@ def load_model_weights(
 
 	progress_enabled = logging.is_progress_bar_enabled()
 	hub_progress_disabled = are_progress_bars_disabled()
+	model_logger = logging.get_logger("transformers.modeling_utils")
+	load_report_filter = _LoadReportFilter()
 	started = perf_counter()
 	print(f"Loading weights: {model_name}.", flush=True)
 	logging.disable_progress_bar()
+	model_logger.addFilter(load_report_filter)
 	try:
 		model = load_pretrained(loader, model_name, **kwargs)
 	finally:
+		model_logger.removeFilter(load_report_filter)
 		if progress_enabled:
 			logging.enable_progress_bar()
 		if hub_progress_disabled:
