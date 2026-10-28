@@ -355,6 +355,8 @@ class LoRATrainer:
 			entry = warmup_cache_entry or self._prepare_warmup(context, seed=seed)
 		warmup_cache_entry = None
 		reused_warmup = entry is not None and entry.state is not None
+		completed_warmup_epochs = entry.completed_epochs if entry is not None else 0
+		remaining_warmup_epochs = self._config.warmup_epochs - completed_warmup_epochs
 		mode = (
 			"validation"
 			if validation is not None and not self._warmup_only
@@ -398,20 +400,24 @@ class LoRATrainer:
 		optimizer = AdamW(parameter_groups, weight_decay=self._config.weight_decay)
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
 		if reused_warmup:
-			self._warmup_cache.restore(entry, model.classifier, optimizer, scaler)
+			status = "Resuming" if remaining_warmup_epochs else "Reused"
 			print(
-				f"Reused {self._model_label} head warmup ({description}): "
-				f"skipping {self._config.warmup_epochs} warmup epochs; "
+				f"{status} {self._model_label} head warmup ({description}): "
+				f"completed_epochs={completed_warmup_epochs}, "
+				f"target_epochs={self._config.warmup_epochs}, "
+				f"remaining_epochs={remaining_warmup_epochs}; "
 				f"source_precision={entry.state['source_precision']}, "
-				f"source_quantization={entry.metadata['training_quantization']}, "
-				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
+				f"source_quantization={entry.state['metadata']['training_quantization']}, "
+				f"precision={self._gpu.precision}; "
+				f"source={entry.source_cache_path or self._warmup_cache.path(entry)}; "
+				f"target={self._warmup_cache.path(entry)}",
 				flush=True,
 			)
-			# Release CPU head/moment copies before joint training starts.
-			entry = None
 		elif entry is not None:
 			print(
 				f"Rebuilding {self._model_label} head warmup ({description}): "
+				f"completed_epochs=0, target_epochs={self._config.warmup_epochs}, "
+				f"remaining_epochs={remaining_warmup_epochs}; "
 				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
 				flush=True,
 			)
@@ -423,8 +429,10 @@ class LoRATrainer:
 		total_epochs = self._config.warmup_epochs + (
 			0 if self._warmup_only else self._config.epochs
 		)
-		first_epoch = self._config.warmup_epochs + 1 if reused_warmup else 1
-		if self._config.warmup_epochs and (not reused_warmup or self._warmup_only):
+		first_epoch = completed_warmup_epochs + 1
+		if self._config.warmup_epochs and (
+			remaining_warmup_epochs or self._warmup_only
+		):
 			# Extraction has its own stage, outside every warmup epoch timer.
 			loader, warmup_training, warmup_validation = self._create_warmup_loaders(
 				model,
@@ -435,7 +443,20 @@ class LoRATrainer:
 				progress=progress,
 				description=description,
 			)
-		if self._warmup_only and reused_warmup:
+		if reused_warmup:
+			if remaining_warmup_epochs:
+				self._advance_warmup_shuffle(
+					loader, seed=seed, completed_epochs=completed_warmup_epochs
+				)
+			# Extraction and loader preparation must not advance the cached training RNG.
+			self._warmup_cache.restore(entry, model.classifier, optimizer, scaler)
+			# Retain only the target identity when a resumed run still needs publication.
+			entry = (
+				replace(entry, state=None, source_cache_path=None)
+				if remaining_warmup_epochs
+				else None
+			)
+		if self._warmup_only and reused_warmup and not remaining_warmup_epochs:
 			self._timestamp()
 			progress.start_stage(
 				stage="Cached head evaluation",
@@ -465,14 +486,14 @@ class LoRATrainer:
 				)
 			self._timestamp()
 			progress.finish_stage(f"{description} cached head")
-		elif self._config.warmup_epochs and not reused_warmup:
+		elif remaining_warmup_epochs:
 			warmup_steps = OptimizerGroupLayout(
 				len(reference), self._config.warmup_training_batch_size
 			).update_count
 			self._timestamp()
 			progress.start_stage(
 				stage="Head warmup",
-				total_steps=self._config.warmup_epochs
+				total_steps=remaining_warmup_epochs
 				* (warmup_steps + training_evaluation_steps + validation_steps),
 			)
 		for epoch in range(first_epoch, total_epochs + 1):
@@ -749,6 +770,25 @@ class LoRATrainer:
 			training_loss=loss_total.item() / rows_total,
 			last_step_training_loss=group_loss_total.item() / group_rows,
 		)
+
+	@staticmethod
+	def _advance_warmup_shuffle(
+		loader: DataLoader[list[torch.Tensor]], *, seed: int, completed_epochs: int
+	) -> None:
+		"""Replay only index batches to recover the legacy loader's shuffle state."""
+		generator = torch.Generator().manual_seed(seed)
+		# Replay DataLoader iteration as well as sampling: each epoch draws a base seed.
+		index_loader = DataLoader(
+			range(len(loader.dataset)),
+			batch_size=loader.batch_size,
+			shuffle=True,
+			drop_last=loader.drop_last,
+			generator=generator,
+		)
+		for _ in range(completed_epochs):
+			for _ in index_loader:
+				pass
+		loader.generator.set_state(generator.get_state())
 
 	def _create_warmup_loaders(
 		self,

@@ -152,7 +152,8 @@ historical epoch losses or times; joint epoch numbering retains the configured
 warmup offset. `model ALL` times each model separately. Builds do not write
 `metrics.json`; their summaries count only epochs executed in that invocation.
 Standalone warmup reports current train and validation losses on cache hits as
-well, while its executed epoch count remains zero.
+well. Complete hits execute zero training epochs; partial hits count only the
+remaining epochs trained in the current invocation.
 
 The [progress counter](models.md#training-progress) excludes extraction and
 publication, so its time estimate has a different scope.

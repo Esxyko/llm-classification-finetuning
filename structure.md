@@ -148,8 +148,8 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, swap-equivariant harmonic/discrepancy architecture, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | Temporary no-gradient features for warmup, joint validation, or submission, with branch-batch progress callbacks |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress, and standalone cached-head evaluation |
-| `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, validation, atomic storage, and restoration |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress, and standalone cached-head evaluation |
+| `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, descending compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
 | `checkpoint.py` | Portable adapter/head persistence, revision retention, and architecture/input compatibility |
 | `pipeline.py` | LoRA holdout/build/submission orchestration and cleanup; non-quantized dual-GPU submission |
 
@@ -232,9 +232,13 @@ present in a fresh checkout.
    representation/algorithm changes. See [caching](docs/caching.md).
 5. **CPU preparation:** token/loader/plan preparation must not load model weights
    or initialize CUDA. Complete frozen-embedding hits skip backbone weights while
-   retaining applicable input and hardware checks. Inline warmup hits skip warmup
-   work; standalone warmup hits load weights and evaluate the restored head on
-   current train/validation data without training or rewriting cached state.
+   retaining applicable input and hardware checks. Complete inline warmup hits
+   skip warmup work; complete standalone hits evaluate the restored head on current
+   train/validation data without training or rewriting cached state. Partial hits
+   select the largest compatible lower epoch, reconstruct shuffle state with index-only
+   replay, restore training RNG after feature preparation, and execute only remaining
+   epochs before publishing a separate target cache. Progress and metrics count only
+   newly executed work; schema v5 and existing cache keys remain unchanged.
 6. **LoRA inputs and attention:** never truncate adapter inputs. Right-pad without
    masks, pool the last real token, and preserve scoped SDPA/checkpoint
    recomputation settings. Restore global predicates/flags after failures.

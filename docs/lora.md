@@ -201,7 +201,8 @@ offsets/metadata. Current train/test inputs are checked independently.
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
 | Head warmup, cache miss | Extract frozen eval-mode features with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Evaluate the full training set and, for holdout runs, validation after each epoch using the same temporary features; save completed head/optimizer/RNG state |
-| Head warmup, cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup extracts current train/validation features and recomputes both losses without training |
+| Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup extracts current train/validation features and recomputes both losses without training |
+| Head warmup, lower-epoch cache hit | Extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
@@ -209,6 +210,8 @@ The shared warmup section supplies epochs, head batch size, learning rate,
 extraction budget, and smoothing. Inline warmup's remaining model/head settings
 come from the selected LoRA section. `warmup_epochs: 0` skips warmup extraction
 and cache I/O. See [standalone versus inline settings](configuration.md#standalone-warmup).
+Lookup prefers the exact target epoch, then the largest compatible lower epoch;
+all other cache identity fields must match.
 
 Warmup features are extracted once for needed train/validation IDs, stay in CPU
 memory, and are shared by the shuffled training loader and fixed-order train
@@ -401,16 +404,19 @@ For an inline holdout run, let `W` and `J` be the warmup/joint update counts abo
 `V = ceil(original_validation_rows / head_inference_batch_size)`, and `E` be the
 number of branch batches in each joint-validation extraction loader. Warmup
 extraction counts its own loader's batches; Head warmup totals
-`warmup_epochs * (W + T + V)`; Joint training totals `epochs * (J + E + V)`.
+`remaining_warmup_epochs * (W + T + V)`, where remaining epochs exclude those
+restored from cache; Joint training totals `epochs * (J + E + V)`.
 Full-data model builds use all training IDs and `E = V = 0`.
 
 Standalone warmup uses `warmup_training_batch_size` for the denominators of
 both `T` and `V`. A miss runs Warmup feature extraction followed by Head warmup,
-without Joint training. A hit logs cache reuse, runs Warmup feature extraction
+without Joint training. A complete hit logs cache reuse, runs Warmup feature extraction
 for current data, and then runs a separate **Cached head evaluation** stage with
 `T + V` work and approximately 20% milestones. It executes zero training epochs.
-Inline cache hits log reuse without creating progress records for either skipped
-warmup stage. Disabled warmup also enters Joint training directly.
+Complete inline cache hits log reuse without creating progress records for either
+skipped warmup stage. Partial hits in either mode run extraction and Head warmup
+for only the remaining epochs, with epoch numbers continuing from the source.
+Disabled warmup also enters Joint training directly.
 
 Logs retain `time: HH:MM:SS/HH:MM:SS`, meaning **elapsed/estimated_total**. The
 right-hand duration is the current stage's estimated total, calculated as

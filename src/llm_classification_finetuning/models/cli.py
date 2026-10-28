@@ -249,7 +249,11 @@ def _selected_mode(arguments: argparse.Namespace) -> ModelMode:
 
 def _print_result(selector: str, result: ModelExecutionResult) -> None:
 	if isinstance(result, WarmupBuildResult):
-		status = "Reused" if result.cache_reused else "Created"
+		status = (
+			("Resumed" if result.epochs else "Reused")
+			if result.cache_reused
+			else "Created"
+		)
 		print(f"{status} head-warmup cache: {result.cache_path}")
 		print(
 			f"Warmup train partition: {result.training_rows:,} rows; executed {result.epochs} epochs."

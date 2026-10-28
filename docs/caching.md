@@ -188,13 +188,20 @@ Submission does not use warmup caches.
 
 SR2 also includes `head_initialization_version` in its warmup metadata, currently
 `scaled_uniform_zero_discrepancy_v1`. The full metadata is hashed with SHA-256
-to form the cache key and must match exactly when loading. Earlier
+to form the cache key and must match the selected source exactly when loading. Earlier
 Xavier-initialized SR2 entries lack this field and therefore select different
 keys; they remain on disk without reuse or migration. Initialization versioning
 does not change the head architecture, warmup schema v5, production-checkpoint
 compatibility, or other heads' cache identities. New-version entries remain
 shared by standalone and inline SR2 warmup when all identity fields match.
 Token and batch-plan caches retain their own reuse rules.
+
+For a target of `N` warmup epochs, lookup first checks the exact `N`-epoch key,
+then checks `N-1` down to `1`, changing only `warmup_epochs` in the metadata.
+The first fully validated state is selected. Missing, corrupt, or incompatible
+candidates are skipped; higher-epoch states are never used for a smaller target.
+Lookup computes existing keys directly and supports both single-file and multipart
+caches. Existing schema-v5 entries need no migration.
 
 ### Identity
 
@@ -204,6 +211,9 @@ Token and batch-plan caches retain their own reuse rules.
 | Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, SR2 initialization version, quantization, schema | Local path spelling when contents match |
 | Head dropout, A/B objective, warmup epochs/batch size/rate, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
 | Non-quantized training identity for active profiles | LoRA rank/alpha/dropout/targets; joint learning rates, epochs, batch size, accumulation, and token controls |
+
+Warmup epochs remain part of each stored key. A lower-epoch entry is compatible
+as a continuation source only when every other identity field matches.
 
 **Editing training text or labels while keeping the same IDs can reuse stale
 warmup state. Use `--refresh-cache` when that state must be retrained.** Tokens
@@ -227,21 +237,40 @@ evaluation both succeed, the cache atomically stores:
 
 It contains no adapters, features, or loss metrics. CPU loading validates metadata,
 exact head/moment shapes, FP32 dtypes, finite values, and restorable scaler/RNG states
-before changing the model. Missing/corrupt/incompatible states rebuild; write
+before changing the model. If no candidate is valid, warmup rebuilds; write
 failures are model execution errors. Retired-profile heads and earlier schemas
 are not reused.
 
-A hit in inline LoRA restores the head/optimizer/RNG state, skips all warmup
+A complete hit in inline LoRA restores the head/optimizer/RNG state, skips all warmup
 feature extraction, training, and evaluation, and starts joint training with fresh
-adapters and fixed joint rates. Only FP16-to-FP16 reuse restores the gradient scaler; other precision
+adapters and the configured joint schedule.
+
+A partial hit at epoch `K < N` extracts current frozen features, restores the
+head/optimizer/RNG state after feature and loader preparation, and trains only
+epochs `K+1` through `N` at the configured fixed warmup rate. The independent
+training-loader generator is reconstructed by replaying `K` epochs through a
+lightweight index-only DataLoader with the same length, batch size, shuffle, and
+seed. Replay reads no features and executes no model work. This preserves the
+existing shuffle sequence without adding state to schema v5. Completed source
+epochs contribute no historical losses or timing. The remaining Head warmup
+progress covers only `N-K` epochs, while epoch numbers retain their target offset.
+
+After the target epoch's train and any validation evaluation succeed, the resumed
+state is atomically saved under the target `N`-epoch key. The source cache is
+preserved; a failed continuation does not publish the target. Only the configured
+target is saved, not each intermediate epoch.
+
+Only FP16-to-FP16 reuse restores the gradient scaler; other precision
 transitions initialize a scaler for the current mode. Across changed precision
 or LoRA settings, reuse continues the original cached warmup rather than
 reproducing a fresh warmup under the new settings. Adapter initialization can
 consume different RNG draws on a cache miss.
 
-Logs identify reuse/rebuild, source path, and precision. Reused work contributes
+Logs identify complete reuse, continuation, or rebuild; completed, target, and
+remaining epochs; source/target paths on hits; and precision. Reused work contributes
 no old epoch metrics or timing; joint epoch numbers retain their warmup offset.
-`warmup_epochs: 0` disables reads/writes. `--refresh-cache` forces replacement.
+`warmup_epochs: 0` disables reads/writes. `--refresh-cache` bypasses every reuse
+candidate, trains from scratch, and replaces the target entry.
 Manually constructed `PreparedTrainingSplit` objects without `warmup_context`
 remain uncached; repository-prepared splits supply it.
 
@@ -254,10 +283,14 @@ head on original train rows. Each epoch ends with full-training-set inference
 using warmup label smoothing, followed by unsmoothed validation inference;
 both use final epoch weights and disable dropout.
 
-A hit loads the backbone, restores the cached head, and extracts current
+A complete hit loads the backbone, restores the cached head, and extracts current
 train/validation features to recompute both losses. It executes zero training
-epochs and does not rewrite the cached state. The summary reports both losses
-on hits and misses; no historical loss values are reused. This evaluation does
+epochs and does not rewrite the cached state. A partial hit follows the continuation
+flow above, evaluates both partitions after each remaining epoch, and saves the
+target cache. Its summary displays `Resumed`, returns the target cache path, and
+counts only epochs executed in this invocation. Complete hits display `Reused`;
+fresh builds display `Created`. The summary reports both losses on all paths;
+no historical loss values are reused. This evaluation does
 not change the existing cache identity or schema v5. There is no joint plan,
 production checkpoint, or result report.
 

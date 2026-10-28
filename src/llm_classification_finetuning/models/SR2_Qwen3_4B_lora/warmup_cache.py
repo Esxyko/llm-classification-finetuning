@@ -41,11 +41,17 @@ class WarmupCacheContext:
 
 @dataclass(frozen=True, slots=True)
 class WarmupCacheEntry:
-	"""A checked cache lookup, including misses, reusable throughout one fit."""
+	"""Target identity and an optional checked state from a completed warmup."""
 
 	metadata: dict[str, Any]
 	state: dict[str, Any] | None
 	cache_path: Path | None = None
+	source_cache_path: Path | None = None
+
+	@property
+	def completed_epochs(self) -> int:
+		"""Return the source's completed epochs, rather than the requested target."""
+		return 0 if self.state is None else self.state["metadata"]["warmup_epochs"]
 
 
 class HeadWarmupCache:
@@ -73,7 +79,7 @@ class HeadWarmupCache:
 		self._head_architecture = head_architecture
 
 	def path(self, entry: WarmupCacheEntry) -> Path:
-		"""Retain the real source path when a cache is shared across profiles."""
+		"""Return the target publication path, including across shared profiles."""
 		return entry.cache_path or self._path_for_metadata(entry.metadata)
 
 	def _path_for_metadata(self, metadata: dict[str, Any]) -> Path:
@@ -85,7 +91,7 @@ class HeadWarmupCache:
 	def prepare(
 		self, context: WarmupCacheContext, *, seed: int, refresh: bool = False
 	) -> WarmupCacheEntry:
-		"""Load and fully check an optional cache without changing global RNG state."""
+		"""Select the largest valid epoch up to the target without changing RNG."""
 		config = self._config
 		metadata = {
 			**asdict(context),
@@ -121,25 +127,34 @@ class HeadWarmupCache:
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))
 		if refresh:
 			return entry
-		try:
-			with CacheStorage(self.path(entry)).open("r") as session:
-				payload = torch.load(
-					session.path, map_location="cpu", weights_only=True
+		for epochs in range(config.warmup_epochs, 0, -1):
+			source_metadata = {**metadata, "warmup_epochs": epochs}
+			source_path = self._path_for_metadata(source_metadata)
+			try:
+				storage = CacheStorage(source_path)
+				if not storage.exists():
+					continue
+				with storage.open("r") as session:
+					payload = torch.load(
+						session.path, map_location="cpu", weights_only=True
+					)
+				self._validate(payload, source_metadata)
+				return WarmupCacheEntry(
+					metadata, payload, self.path(entry), source_path
 				)
-			self._validate(payload, metadata)
-			return WarmupCacheEntry(metadata, payload, self.path(entry))
-		except (
-			OSError,
-			ValueError,
-			TypeError,
-			RuntimeError,
-			EOFError,
-			pickle.UnpicklingError,
-			KeyError,
-			IndexError,
-			OverflowError,
-		):
-			return entry
+			except (
+				OSError,
+				ValueError,
+				TypeError,
+				RuntimeError,
+				EOFError,
+				pickle.UnpicklingError,
+				KeyError,
+				IndexError,
+				OverflowError,
+			):
+				continue
+		return entry
 
 	def save(
 		self,

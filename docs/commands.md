@@ -64,12 +64,15 @@ then evaluates validation with unsmoothed log loss. Both evaluations disable
 dropout and reuse the temporary frozen features extracted before training.
 The epoch logs and final summary report both losses to six decimal places.
 
-A compatible hit restores the head, loads the backbone, and extracts current
+A complete compatible hit restores the head, loads the backbone, and extracts current
 train/validation features to recompute both losses without training or rewriting
 the warmup cache; it reports zero executed epochs. There are no adapters, joint
 training, production checkpoints, or result reports. It shares SR2's cache
 namespace; a validation run can reuse it when effective settings and training
-IDs match. Normal full-data model builds train on both partitions.
+IDs match. If only a compatible lower-epoch cache exists, the command selects
+the largest completed epoch, trains the remaining epochs, and writes a separate
+target cache. The summary displays `Resumed` and counts only newly executed epochs.
+Normal full-data model builds train on both partitions.
 See [warmup configuration](configuration.md#standalone-warmup) and
 [cache reuse](caching.md#standalone-warmup-build).
 

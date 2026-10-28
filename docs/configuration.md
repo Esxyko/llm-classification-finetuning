@@ -155,7 +155,7 @@ SR2 takes exactly these controls from `warmup`:
 
 | `warmup` field | Effect inside a LoRA run |
 | --- | --- |
-| `warmup_epochs` | Head-only epochs; `0` disables warmup and its cache I/O |
+| `warmup_epochs` | Target head-only epochs; reuse the exact target or continue from the largest compatible lower epoch; `0` disables warmup and its cache I/O |
 | `warmup_training_batch_size` | Head forward batch size during warmup |
 | `warmup_learning_rate` | Fixed warmup head learning rate |
 | `extraction_budget` | Warmup backbone extraction token budget |
@@ -170,8 +170,10 @@ Standalone warmup requires positive `warmup_epochs` and uses the saved train
 partition for training, the SR2 comparison head, and original rows only.
 It also reads validation for evaluation. Epoch-end inference reports the full
 training loss with warmup smoothing and validation's unsmoothed log loss;
-both inference loaders use `warmup_training_batch_size`. Cache hits recompute
+both inference loaders use `warmup_training_batch_size`. Complete cache hits recompute
 both losses from the restored head and current data without training.
+Lower-epoch hits train and evaluate only the remaining epochs before saving a
+separate target cache; all other identity fields must match.
 It writes `SR2_Qwen3_4B_lora_warmup/`, sharing the inline SR2 namespace. The shipped
 presets set `warmup.model_name` to `Skywork/Skywork-Reward-V2-Qwen3-4B`.
 
