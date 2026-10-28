@@ -1,0 +1,53 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_harmonic_abs_diff",
+  "epochs": [
+    {
+      "epoch": 5,
+      "last_step_training_loss": 0.9368093151438833,
+      "total_time": "01:12:53",
+      "training_loss": 0.9141452173016981,
+      "training_time": "01:05:03",
+      "validation_loss": 0.9040333220625816,
+      "validation_time": "00:07:48"
+    },
+    {
+      "epoch": 6,
+      "last_step_training_loss": 0.8261206898845798,
+      "total_time": "01:12:50",
+      "training_loss": 0.8316680054090355,
+      "training_time": "01:05:02",
+      "validation_loss": 0.9071021665330035,
+      "validation_time": "00:07:48"
+    },
+    {
+      "epoch": 7,
+      "last_step_training_loss": 0.7448568104826748,
+      "total_time": "01:12:50",
+      "training_loss": 0.7433681205992624,
+      "training_time": "01:05:02",
+      "validation_loss": 0.9484011603210635,
+      "validation_time": "00:07:48"
+    }
+  ],
+  "generated_at": "2026-10-28T19:30:57+00:00",
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-lora-20261028-193057",
+  "source_training_rows": 45982,
+  "total_time": "03:40:10",
+  "training_rows": 45982,
+  "training_time": "03:15:07",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.9484011603210635,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:23:24",
+  "config_total_time": "03:40:10",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 100742167552,
+    "peak_reserved_bytes": 101265178624
+  }
+}
