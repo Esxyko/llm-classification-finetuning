@@ -25,7 +25,7 @@ warmup:
   dropout: 0.1
   warmup_epochs: 4
   extraction_budget: 1081344
-  warmup_training_batch_size: 512
+  warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   weight_decay: 0.01
   max_grad_norm: 1.0
