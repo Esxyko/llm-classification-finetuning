@@ -1,0 +1,103 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-093606-099919.log
+Running head warmup for 1.yaml: warmup
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:02).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 672,513 trainable parameters.
+Resuming LoRA head warmup (Warmup cache build): completed_epochs=4, target_epochs=5, remaining_epochs=1; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/218bd82cd45e81e9b5bea767e97b84b104fdfd5f9b5b2f3118d88ac83fbe7b2e.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/d74e939410a9f2e920e80fd04f8179d5a14166c15cd4077ee97f96ca494fe0c7.pt
+LoRA warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+warmup build Head warmup Warmup cache build epoch 5/5 (total 5/5):
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:02
+warmup build Head warmup Warmup cache build epoch 5/5 (total 5/5):
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 5/5 (total 5/5):
+progress: 60.4% work: 61.0/101.0 time: 00:00:01/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 5/5 (total 5/5):
+progress: 80.2% work: 81.0/101.0 time: 00:00:01/00:00:01
+warmup build Head warmup Warmup cache build epoch 5/5 (total 5/5):
+progress: 100.0% work: 101.0/101.0 time: 00:00:01/00:00:01
+Warmup cache build head warmup epoch 5/5 (total 5/5): train_loss=0.920060 validation_loss=0.929456
+Saved LoRA head warmup (Warmup cache build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/d74e939410a9f2e920e80fd04f8179d5a14166c15cd4077ee97f96ca494fe0c7.pt
+Model total time (warmup): 00:01:52
+Resumed head-warmup cache: /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/d74e939410a9f2e920e80fd04f8179d5a14166c15cd4077ee97f96ca494fe0c7.pt
+Warmup train partition: 45,982 rows; executed 1 epochs.
+Final training loss: 0.920060
+Validation log loss: 0.929456
+Running head warmup for 2.yaml: warmup
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:00:02).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 672,513 trainable parameters.
+Resuming LoRA head warmup (Warmup cache build): completed_epochs=3, target_epochs=4, remaining_epochs=1; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/f1f261f762fa70b4d27d9a894d4b24b66690710036947818129bc09e1ed211d6.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/6e2df09df2ef1ed5feee2e359a6b6d394510d19b2dca47d31291c6849c63e6d5.pt
+LoRA warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+warmup build Head warmup Warmup cache build epoch 4/4 (total 4/4):
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:02
+warmup build Head warmup Warmup cache build epoch 4/4 (total 4/4):
+progress: 40.1% work: 81.0/202.0 time: 00:00:01/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 4/4 (total 4/4):
+progress: 60.4% work: 122.0/202.0 time: 00:00:01/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 4/4 (total 4/4):
+progress: 80.2% work: 162.0/202.0 time: 00:00:01/00:00:01
+warmup build Head warmup Warmup cache build epoch 4/4 (total 4/4):
+progress: 100.0% work: 202.0/202.0 time: 00:00:01/00:00:01
+Warmup cache build head warmup epoch 4/4 (total 4/4): train_loss=0.937389 validation_loss=0.946674
+Saved LoRA head warmup (Warmup cache build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/6e2df09df2ef1ed5feee2e359a6b6d394510d19b2dca47d31291c6849c63e6d5.pt
+Model total time (warmup): 00:00:23
+Resumed head-warmup cache: /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/6e2df09df2ef1ed5feee2e359a6b6d394510d19b2dca47d31291c6849c63e6d5.pt
+Warmup train partition: 45,982 rows; executed 1 epochs.
+Final training loss: 0.937389
+Validation log loss: 0.946674
+Running head warmup for 4.yaml: warmup
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:00:02).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 672,513 trainable parameters.
+Resuming LoRA head warmup (Warmup cache build): completed_epochs=4, target_epochs=5, remaining_epochs=1; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/e8dceacf263959e385d0ec736c714369845c4f56907ecd2bbff964ee3326fc54.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/ee19cf58693baaee19e37e311c47eecb530b0ac28f1b981cdd69e2fe08e8422a.pt
+LoRA warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+warmup build Head warmup Warmup cache build epoch 5/5 (total 5/5):
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:02
+warmup build Head warmup Warmup cache build epoch 5/5 (total 5/5):
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 5/5 (total 5/5):
+progress: 60.8% work: 31.0/51.0 time: 00:00:01/00:00:01
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 5/5 (total 5/5):
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+warmup build Head warmup Warmup cache build epoch 5/5 (total 5/5):
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Warmup cache build head warmup epoch 5/5 (total 5/5): train_loss=0.989727 validation_loss=0.988952
+Saved LoRA head warmup (Warmup cache build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/ee19cf58693baaee19e37e311c47eecb530b0ac28f1b981cdd69e2fe08e8422a.pt
+Model total time (warmup): 00:00:22
+Resumed head-warmup cache: /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/ee19cf58693baaee19e37e311c47eecb530b0ac28f1b981cdd69e2fe08e8422a.pt
+Warmup train partition: 45,982 rows; executed 1 epochs.
+Final training loss: 0.989727
+Validation log loss: 0.988952
+Running head warmup for 5.yaml: warmup
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:00:02).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 672,513 trainable parameters.
+Rebuilding LoRA head warmup (Warmup cache build): completed_epochs=0, target_epochs=3, remaining_epochs=3; precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/47f85b67804526299be44b4b5686f36744461fea3774dd98e6411cafcd920304.pt
+LoRA warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 1/3 (total 1/3):
+progress: 20.1% work: 61.0/303.0 time: 00:00:01/00:00:03
+Warmup cache build head warmup epoch 1/3 (total 1/3): train_loss=1.186089 validation_loss=1.155418
+warmup build Head warmup Warmup cache build epoch 2/3 (total 2/3):
+progress: 40.3% work: 122.0/303.0 time: 00:00:01/00:00:02
+warmup build Head warmup (head warmup training evaluation) Warmup cache build epoch 2/3 (total 2/3):
+progress: 60.1% work: 182.0/303.0 time: 00:00:01/00:00:02
+Warmup cache build head warmup epoch 2/3 (total 2/3): train_loss=1.057083 validation_loss=1.025893
+warmup build Head warmup Warmup cache build epoch 3/3 (total 3/3):
+progress: 80.2% work: 243.0/303.0 time: 00:00:02/00:00:02
+warmup build Head warmup Warmup cache build epoch 3/3 (total 3/3):
+progress: 100.0% work: 303.0/303.0 time: 00:00:02/00:00:02
+Warmup cache build head warmup epoch 3/3 (total 3/3): train_loss=0.992601 validation_loss=0.965454
+Saved LoRA head warmup (Warmup cache build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/47f85b67804526299be44b4b5686f36744461fea3774dd98e6411cafcd920304.pt
+Model total time (warmup): 00:00:23
+Created head-warmup cache: /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/47f85b67804526299be44b4b5686f36744461fea3774dd98e6411cafcd920304.pt
+Warmup train partition: 45,982 rows; executed 3 epochs.
+Final training loss: 0.992601
+Validation log loss: 0.965454
+Completed 4/4 tasks.

@@ -18,12 +18,12 @@ gpu:
   allow_tf32: false
 
 warmup:
-  label_smoothing: 0.09
+  label_smoothing: 0.00
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  warmup_epochs: 3
+  warmup_epochs: 4
   extraction_budget: 1081344
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.0015
