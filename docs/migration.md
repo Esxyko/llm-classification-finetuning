@@ -180,8 +180,8 @@ decay with `SR2_Qwen3_4B.min_lr_ratio: 0.125` and
 `SR2_Qwen3_4B.lr_decay_power: 2.0` as parser defaults. Standalone and inline
 warmup use polynomial decay with `warmup.warmup_min_lr_ratio: 0.125` and
 `warmup.warmup_lr_decay_power: 2.0`, independently of joint decay. The exponents
-accept finite positive numbers. These defaults apply even when the fields are
-omitted from older YAML.
+accept finite positive numbers or `e` (Euler's number). These defaults apply even
+when the fields are omitted from older YAML.
 Set either head ratio to `1` to restore its fixed learning rate and reuse legacy
 fixed-rate head caches, including lower-epoch continuation. With decay enabled,
 `polynomial_v1` schedule metadata, the minimum ratio, and the exponent isolate

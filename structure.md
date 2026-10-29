@@ -301,8 +301,9 @@ present in a fresh checkout.
    rate and one cosine curve across all joint epochs; each consumed optimizer
    group advances decay once, including FP16-skipped updates. Head warmup has
    its own polynomial curve across all warmup epochs; both head exponents default
-   to `2.0` and accept finite positive values. A minimum ratio of `1` keeps
-   either stage's rate fixed. See
+   to `2.0` and accept finite positive values or `e`, resolved to Euler's number
+   before training, snapshotting, and cache identity construction. A minimum
+   ratio of `1` keeps either stage's rate fixed. See
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented

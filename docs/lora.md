@@ -286,11 +286,13 @@ lr = warmup_learning_rate * (warmup_min_lr_ratio
      + (1 - warmup_min_lr_ratio) * (1 - p) ** warmup_lr_decay_power)
 ```
 
-The warmup exponent `warmup.warmup_lr_decay_power` defaults to `2.0` and must be
-a finite positive number. Frozen SR2 maps its independent `epochs`,
-`training_batch_size`, `learning_rate`, `min_lr_ratio`, and `lr_decay_power` to
-these warmup settings. Its exponent also defaults to `2.0`. With that exponent,
-the rate multiplier at `p = 0.5` is `min_lr_ratio + (1 - min_lr_ratio) * 0.25`.
+The warmup exponent `warmup.warmup_lr_decay_power` defaults to `2.0` and accepts
+a finite positive number or `e` (Euler's number, `2.718281828459045`). Frozen SR2
+maps its independent `epochs`, `training_batch_size`, `learning_rate`,
+`min_lr_ratio`, and `lr_decay_power` to
+these warmup settings. Its exponent also defaults to `2.0` and accepts `e`.
+With the default exponent, the rate multiplier at `p = 0.5` is
+`min_lr_ratio + (1 - min_lr_ratio) * 0.25`.
 Only exact target-epoch caches are compatible with decay; changing the target
 or exponent starts a complete new head-training curve on a cache miss.
 

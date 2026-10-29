@@ -117,9 +117,9 @@ The following names apply independently inside each relevant section.
 | `training_batch_size`, `epochs`, `learning_rate` | Frozen SR2 and LoRA | Positive integers for batches/epochs; positive number for rate |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | Frozen SR2 and LoRA | Number in `[0, 1]`; default `0.125`; minimum learning rate as a fraction of `learning_rate` |
-| `lr_decay_power` | Frozen SR2 | Finite positive number; default `2.0`; polynomial learning-rate decay exponent |
+| `lr_decay_power` | Frozen SR2 | Finite positive number or `e` (Euler's number); default `2.0`; polynomial learning-rate decay exponent |
 | `warmup_min_lr_ratio` | `warmup` | Number in `[0, 1]`; default `0.125`; minimum head-warmup learning rate as a fraction of `warmup_learning_rate` |
-| `warmup_lr_decay_power` | `warmup` | Finite positive number; default `2.0`; polynomial warmup decay exponent |
+| `warmup_lr_decay_power` | `warmup` | Finite positive number or `e` (Euler's number); default `2.0`; polynomial warmup decay exponent |
 | `max_grad_norm` | Frozen SR2 and LoRA | Positive number |
 | `lora_rank`, `lora_alpha` | LoRA | Positive integers |
 | `lora_dropout` | LoRA | Number in `[0, 1)` |
@@ -157,8 +157,12 @@ Frozen SR2 uses polynomial decay across all head-training epochs, controlled by
 polynomial curve controlled by `warmup.warmup_lr_decay_power` (default `2.0`),
 from `warmup.warmup_learning_rate` to
 `warmup.warmup_learning_rate * warmup.warmup_min_lr_ratio`, with the ratio also
-defaulting to `0.125`. Both exponents must be finite positive numbers. The first
-update uses the initial rate, the final update uses the minimum, and a single
+defaulting to `0.125`. Both exponents accept finite positive numbers or the
+case-insensitive string `e`, resolved to `math.e` (`2.718281828459045`). YAML
+accepts both `lr_decay_power: e` and `lr_decay_power: "e"`; warmup supports the
+same forms. Effective configuration snapshots, checkpoint metadata, and cache
+identities use the resolved numeric exponent. The first update uses the initial
+rate, the final update uses the minimum, and a single
 update uses the initial rate. Set `SR2_Qwen3_4B.min_lr_ratio: 1` or
 `warmup.warmup_min_lr_ratio: 1` to retain fixed-rate head training. See
 [learning-rate decay](lora.md#learning-rate-decay) for formulas and update counting.

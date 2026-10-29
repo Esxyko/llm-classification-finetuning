@@ -407,8 +407,11 @@ def _load_warmup_fields(
 	)
 	if not 0.0 <= warmup_min_lr_ratio <= 1.0:
 		raise ConfigurationError(f"{field('warmup_min_lr_ratio')} must be in [0, 1].")
+	raw_decay_power = section.get("warmup_lr_decay_power", 2.0)
+	if isinstance(raw_decay_power, str) and raw_decay_power.strip().lower() == "e":
+		raw_decay_power = math.e
 	warmup_lr_decay_power = _require_float(
-		section.get("warmup_lr_decay_power", 2.0), field("warmup_lr_decay_power")
+		raw_decay_power, field("warmup_lr_decay_power")
 	)
 	if warmup_lr_decay_power <= 0.0:
 		raise ConfigurationError(
