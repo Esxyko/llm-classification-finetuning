@@ -1,0 +1,79 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_harmonic_abs_diff",
+  "epochs": [
+    {
+      "epoch": 1,
+      "total_time": "00:00:02",
+      "training_loss": 1.1084212311084365,
+      "training_time": "00:00:02",
+      "validation_loss": 1.0977564124347543,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 2,
+      "total_time": "00:00:01",
+      "training_loss": 0.9855410738594043,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9768797235210961,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 3,
+      "total_time": "00:00:01",
+      "training_loss": 0.9827542194032788,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9763445681206503,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 4,
+      "total_time": "00:00:01",
+      "training_loss": 0.9616893824557877,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9562354726239669,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 5,
+      "total_time": "00:00:01",
+      "training_loss": 0.957311760580227,
+      "training_time": "00:00:01",
+      "validation_loss": 0.952497009569378,
+      "validation_time": "00:00:00"
+    }
+  ],
+  "executed_training_epochs": 5,
+  "generated_at": "2026-10-29T16:51:33+00:00",
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-20261029-165133",
+  "source_training_rows": 45982,
+  "total_time": "00:01:49",
+  "training_rows": 45982,
+  "training_time": "00:00:06",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.952497009569378,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:00:01",
+  "config_total_time": "00:01:49",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 142669312,
+    "peak_reserved_bytes": 157286400,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 142669312,
+        "peak_reserved_bytes": 157286400
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 130757120,
+        "peak_reserved_bytes": 157286400
+      }
+    }
+  }
+}
