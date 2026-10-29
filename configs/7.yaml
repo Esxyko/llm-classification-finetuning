@@ -28,6 +28,7 @@ SR2_Qwen3_4B:
   training_batch_size: 1024
   learning_rate: 0.001
   min_lr_ratio: 0.125
+  lr_decay_power: 2.0
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
@@ -44,6 +45,7 @@ warmup:
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
   warmup_min_lr_ratio: 0.125
+  warmup_lr_decay_power: 2.0
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42

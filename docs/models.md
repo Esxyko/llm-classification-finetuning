@@ -34,9 +34,10 @@ uv run model SR2-Qwen3-4B --build --checkpoint-tag experiment
 `SR2-Qwen3-4B` freezes the same Skywork backbone and trains the same current
 SR2 swap-equivariant head without creating adapters. Its independent
 `SR2_Qwen3_4B` section uses ordinary `epochs`, `training_batch_size`, and
-`learning_rate` fields, plus `min_lr_ratio` (default `0.125`), and does not require
-`warmup` or LoRA sections. The optimizer, cosine learning-rate decay, clipping,
-precision, full-input serialization, and pooling follow head warmup. Training
+`learning_rate` fields, plus `min_lr_ratio` (default `0.125`) and `lr_decay_power`
+(default `2.0`), and does not require `warmup` or LoRA sections. The optimizer,
+polynomial learning-rate decay, clipping, precision, full-input serialization,
+and pooling follow head warmup. Training
 and inference use original rows only;
 the backbone stays in evaluation mode during feature extraction/head training.
 
@@ -96,7 +97,7 @@ and frozen-feature caches are reused. The full-data head-warmup cache is keyed
 by all training IDs, so a train-partition-only head cache is not a complete hit.
 Exact warmup hits skip that stage. With `warmup_min_lr_ratio: 1`, compatible
 lower-epoch hits execute only the remaining warmup epochs before joint training;
-cosine decay requires an exact target-epoch hit or a complete new curve.
+polynomial decay requires an exact target-epoch hit or a complete new curve.
 
 The build summary reports actual executed epochs separately for head warmup
 and joint training, followed by the final training loss, checkpoint path, and

@@ -113,6 +113,45 @@ class _CosineLearningRateSchedule:
 		self._step_index += 1
 
 
+class _PolynomialLearningRateSchedule:
+	"""Set the head's polynomial rate per planned update, including FP16 skips."""
+
+	def __init__(
+		self,
+		optimizer: AdamW,
+		*,
+		learning_rate: float,
+		min_lr_ratio: float,
+		power: float,
+		total_steps: int,
+	) -> None:
+		if total_steps <= 0:
+			raise ValueError("Polynomial decay requires at least one optimizer update.")
+		self._optimizer = optimizer
+		self._learning_rate = learning_rate
+		self._min_lr_ratio = min_lr_ratio
+		self._power = power
+		self._total_steps = total_steps
+		self._step_index = 0
+
+	def step(self) -> None:
+		"""Apply the current update's rate before the optimizer attempts its step."""
+		if self._step_index >= self._total_steps:
+			raise RuntimeError(
+				"Polynomial decay exceeded the planned optimizer updates."
+			)
+		progress = (
+			self._step_index / (self._total_steps - 1) if self._total_steps > 1 else 0.0
+		)
+		multiplier = (
+			self._min_lr_ratio
+			+ (1.0 - self._min_lr_ratio) * (1.0 - progress) ** self._power
+		)
+		for group in self._optimizer.param_groups:
+			group["lr"] = self._learning_rate * multiplier
+		self._step_index += 1
+
+
 class LoRATrainer:
 	"""Run adapter or frozen-head optimization on one configured CUDA device."""
 
@@ -357,7 +396,7 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
-		"""Train the head, then optionally adapters, with independent cosine curves."""
+		"""Train the head with polynomial decay, then adapters with cosine decay."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		reference = training.reference
@@ -408,7 +447,9 @@ class LoRATrainer:
 		warmup_training: DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
 		joint_validation_loader: DataLoader[BranchBatch] | None = None
-		lr_schedule: _CosineLearningRateSchedule | None = None
+		lr_schedule: (
+			_CosineLearningRateSchedule | _PolynomialLearningRateSchedule | None
+		) = None
 		parameter_groups = [
 			{
 				"params": list(model.classifier.parameters()),
@@ -536,12 +577,13 @@ class LoRATrainer:
 				len(reference), self._config.warmup_training_batch_size
 			).update_count
 			# Fixed-rate continuation keeps its legacy cache and shuffle behavior.
-			# Cosine cache hits require the exact target, so a miss starts at step 0.
+			# Polynomial hits require the exact target, so a miss starts at step 0.
 			if self._config.warmup_min_lr_ratio != 1.0:
-				lr_schedule = _CosineLearningRateSchedule(
+				lr_schedule = _PolynomialLearningRateSchedule(
 					optimizer,
 					learning_rate=self._config.warmup_learning_rate,
 					min_lr_ratio=self._config.warmup_min_lr_ratio,
+					power=self._config.warmup_lr_decay_power,
 					total_steps=warmup_steps * self._config.warmup_epochs,
 				)
 			self._timestamp()
@@ -738,7 +780,9 @@ class LoRATrainer:
 		*,
 		head_only: bool = False,
 		optimizer_group_rows: tuple[int, ...] | None = None,
-		lr_schedule: _CosineLearningRateSchedule | None = None,
+		lr_schedule: (
+			_CosineLearningRateSchedule | _PolynomialLearningRateSchedule | None
+		) = None,
 		progress: TrainingProgress | None = None,
 		description: str = "Build",
 	) -> _EpochTrainingLosses:

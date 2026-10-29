@@ -91,7 +91,7 @@ class HeadWarmupCache:
 	def prepare(
 		self, context: WarmupCacheContext, *, seed: int, refresh: bool = False
 	) -> WarmupCacheEntry:
-		"""Match a full cosine curve or continue fixed-rate state without drawing RNG."""
+		"""Match a polynomial curve or continue fixed-rate state without drawing RNG."""
 		config = self._config
 		metadata = {
 			**asdict(context),
@@ -112,10 +112,11 @@ class HeadWarmupCache:
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
-		# Keep legacy fixed-rate keys; cosine curves depend on the target epochs.
+		# Keep legacy fixed-rate keys; polynomial curves depend on the target epochs.
 		if config.warmup_min_lr_ratio != 1.0:
-			metadata["warmup_lr_schedule"] = "cosine_v1"
+			metadata["warmup_lr_schedule"] = "polynomial_v1"
 			metadata["warmup_min_lr_ratio"] = config.warmup_min_lr_ratio
+			metadata["warmup_lr_decay_power"] = config.warmup_lr_decay_power
 		# Preserve existing unsmoothed cache identities while isolating smoothed warmup.
 		label_smoothing = (
 			config.warmup_label_smoothing

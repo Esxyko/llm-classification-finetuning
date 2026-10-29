@@ -117,7 +117,9 @@ The following names apply independently inside each relevant section.
 | `training_batch_size`, `epochs`, `learning_rate` | Frozen SR2 and LoRA | Positive integers for batches/epochs; positive number for rate |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | Frozen SR2 and LoRA | Number in `[0, 1]`; default `0.125`; minimum learning rate as a fraction of `learning_rate` |
+| `lr_decay_power` | Frozen SR2 | Finite positive number; default `2.0`; polynomial learning-rate decay exponent |
 | `warmup_min_lr_ratio` | `warmup` | Number in `[0, 1]`; default `0.125`; minimum head-warmup learning rate as a fraction of `warmup_learning_rate` |
+| `warmup_lr_decay_power` | `warmup` | Finite positive number; default `2.0`; polynomial warmup decay exponent |
 | `max_grad_norm` | Frozen SR2 and LoRA | Positive number |
 | `lora_rank`, `lora_alpha` | LoRA | Positive integers |
 | `lora_dropout` | LoRA | Number in `[0, 1)` |
@@ -127,18 +129,18 @@ The following names apply independently inside each relevant section.
 `warmup` additionally requires `warmup_epochs` (integer at least `0`),
 `warmup_training_batch_size` (positive integer), `warmup_learning_rate` and
 `max_grad_norm` (positive numbers). It does not accept `training_batch_size`,
-`epochs`, `learning_rate`, `min_lr_ratio`, or `A/B_swap`.
+`epochs`, `learning_rate`, `min_lr_ratio`, `lr_decay_power`, or `A/B_swap`.
 
-Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the four
+Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the
 `warmup_*` optimization keys.
 Internal `ab_swap`, `warmup_extraction_budget`, and `warmup_label_smoothing` are
 not YAML fields. See [migration](migration.md) for retired keys.
 
-`SR2_Qwen3_4B` trains only the SR2 head with cosine-decayed `learning_rate`, using
-`training_batch_size` for both optimization groups and head inference. It accepts
+`SR2_Qwen3_4B` trains only the SR2 head with polynomial-decayed `learning_rate`,
+using `training_batch_size` for both optimization groups and head inference. It accepts
 the common model fields above, `epochs`, `training_batch_size`, `learning_rate`,
-`min_lr_ratio`, and `max_grad_norm`; it rejects LoRA, joint-training, and
-`warmup_*` controls.
+`min_lr_ratio`, `lr_decay_power`, and `max_grad_norm`; it rejects LoRA,
+joint-training, and `warmup_*` controls.
 Its independent section needs neither `warmup` nor `SR2_Qwen3_4B_lora`.
 Shipped values were copied once from each preset's warmup settings; changing
 either section later does not modify the other. Compatible training states and
@@ -148,13 +150,18 @@ Joint training uses `learning_rate` for both adapters and the classifier head.
 One cosine curve spans all joint epochs and reaches
 `learning_rate * min_lr_ratio` on the final planned optimizer update; a run with
 only one update uses the initial rate. `min_lr_ratio: 0` decays to zero, while
-`1` keeps the rate fixed. Omitting the field uses `0.125`. Frozen SR2 uses the
-same rule across its head-training epochs. Head warmup has an independent curve
+`1` keeps the rate fixed. Omitting the field uses `0.125`.
+
+Frozen SR2 uses polynomial decay across all head-training epochs, controlled by
+`SR2_Qwen3_4B.lr_decay_power` (default `2.0`). Head warmup has an independent
+polynomial curve controlled by `warmup.warmup_lr_decay_power` (default `2.0`),
 from `warmup.warmup_learning_rate` to
 `warmup.warmup_learning_rate * warmup.warmup_min_lr_ratio`, with the ratio also
-defaulting to `0.125`. Set `SR2_Qwen3_4B.min_lr_ratio: 1` or
+defaulting to `0.125`. Both exponents must be finite positive numbers. The first
+update uses the initial rate, the final update uses the minimum, and a single
+update uses the initial rate. Set `SR2_Qwen3_4B.min_lr_ratio: 1` or
 `warmup.warmup_min_lr_ratio: 1` to retain fixed-rate head training. See
-[cosine decay](lora.md#cosine-learning-rate-decay) for update counting.
+[learning-rate decay](lora.md#learning-rate-decay) for formulas and update counting.
 
 ## Label smoothing
 
@@ -180,10 +187,11 @@ SR2 takes exactly these controls from `warmup`:
 
 | `warmup` field | Effect inside a LoRA run |
 | --- | --- |
-| `warmup_epochs` | Target head-only epochs; cosine decay reuses only the exact target, while fixed-rate training can continue from a compatible lower epoch; `0` disables warmup and its cache I/O |
+| `warmup_epochs` | Target head-only epochs; polynomial decay reuses only the exact target, while fixed-rate training can continue from a compatible lower epoch; `0` disables warmup and its cache I/O |
 | `warmup_training_batch_size` | Head forward batch size during warmup |
 | `warmup_learning_rate` | Initial warmup head learning rate |
 | `warmup_min_lr_ratio` | Final warmup rate as a fraction of its initial rate; independent of joint `min_lr_ratio` |
+| `warmup_lr_decay_power` | Polynomial warmup decay exponent; default `2.0`; independent of frozen SR2's exponent |
 | `extraction_budget` | Warmup backbone extraction token budget |
 | `label_smoothing` | Warmup training objective |
 

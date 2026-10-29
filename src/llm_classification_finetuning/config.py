@@ -23,6 +23,7 @@ LORA_WARMUP_FIELDS = (
 	"warmup_training_batch_size",
 	"warmup_learning_rate",
 	"warmup_min_lr_ratio",
+	"warmup_lr_decay_power",
 )
 
 
@@ -95,6 +96,7 @@ class WarmupModelConfig:
 	ab_swap: str
 	label_smoothing: float = field(default=0.0, kw_only=True)
 	warmup_min_lr_ratio: float = field(default=0.125, kw_only=True)
+	warmup_lr_decay_power: float = field(default=2.0, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +105,7 @@ class SR2ModelConfig(ModelConfig):
 
 	max_grad_norm: float = field(kw_only=True)
 	min_lr_ratio: float = field(default=0.125, kw_only=True)
+	lr_decay_power: float = field(default=2.0, kw_only=True)
 
 	def as_warmup_config(self) -> WarmupModelConfig:
 		"""Translate public model fields into the shared head-training configuration."""
@@ -404,6 +407,13 @@ def _load_warmup_fields(
 	)
 	if not 0.0 <= warmup_min_lr_ratio <= 1.0:
 		raise ConfigurationError(f"{field('warmup_min_lr_ratio')} must be in [0, 1].")
+	warmup_lr_decay_power = _require_float(
+		section.get("warmup_lr_decay_power", 2.0), field("warmup_lr_decay_power")
+	)
+	if warmup_lr_decay_power <= 0.0:
+		raise ConfigurationError(
+			f"{field('warmup_lr_decay_power')} must be greater than 0."
+		)
 	workers = _require_integer(
 		section.get("dataloader_workers"), field("dataloader_workers")
 	)
@@ -422,6 +432,7 @@ def _load_warmup_fields(
 		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
 		warmup_learning_rate=positive_float("warmup_learning_rate"),
 		warmup_min_lr_ratio=warmup_min_lr_ratio,
+		warmup_lr_decay_power=warmup_lr_decay_power,
 		max_grad_norm=positive_float("max_grad_norm"),
 		random_state=_require_integer(
 			section.get("random_state"), field("random_state")
