@@ -14,7 +14,8 @@ underlying output and saves it under `results/logs/validate-*.log`.
 | Config file missing or paths unexpectedly point elsewhere | Run from the intended project root or supply `--config`; relative data/cache/output paths follow the working directory, not the YAML parent |
 | `.env` edit has no effect | Existing environment variables take precedence; check the actual process, especially a notebook's `os.environ` and its subprocesses |
 | Kaggle download fails | Accept competition rules, verify `KAGGLE_API_TOKEN`, and check connectivity; the saved processed split does not require a raw download |
-| Config/model/tokenizer download fails | Check endpoint, network, and repository access; `MODEL_PATH` only selects cache storage |
+| Offline config/model/tokenizer load fails | Check the reported model, revision, local/cache path, and original missing-file error; restore the complete cache including blobs and shards, or download separately with `HF_HUB_OFFLINE=0` before rerunning offline |
+| Online config/model/tokenizer download fails | Check endpoint, network, and repository access; `MODEL_PATH` only selects cache storage |
 
 For `CAS Client Error` / `401 Unauthorized`, the failing request may be Xet
 rather than the repository itself. With the default mirror, package initialization

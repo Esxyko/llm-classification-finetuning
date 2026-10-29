@@ -249,7 +249,7 @@ class LoRATrainer:
 		device_map: dict[str, str] | None = None,
 		quantize_backbone: bool | None = None,
 	) -> LoRAQwenClassifier:
-		"""Initialize an adapter-bearing or frozen backbone and a fresh SR2 head."""
+		"""Initialize joint training eagerly or a head with deferred frozen extraction."""
 		set_seed(seed)
 		model = LoRAQwenClassifier(
 			self._config,
@@ -789,7 +789,7 @@ class LoRATrainer:
 		"""Optimize one epoch and report its average and last optimizer-group loss."""
 		criterion = self._warmup_criterion if head_only else self._criterion
 		model.train()
-		if head_only:
+		if head_only and model.backbone is not None:
 			model.backbone.eval()
 		optimizer.zero_grad(set_to_none=True)
 		effective_batch_size = (
@@ -952,6 +952,9 @@ class LoRATrainer:
 					),
 				)
 			else:
+				if model.warmup_only:
+					# Loading is needed only on misses, outside extraction-stage timing.
+					model.load_frozen_backbone()
 				extraction_loader = self._create_extraction_loader(
 					canonical_ids,
 					records,

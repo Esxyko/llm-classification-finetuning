@@ -9,6 +9,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+from .errors import ModelExecutionError
 from .timing import format_duration
 
 
@@ -20,11 +21,35 @@ class _LoadReportFilter(Filter):
 
 
 def load_pretrained(loader: Callable[..., Any], model_name: str, **kwargs: Any) -> Any:
-	"""Apply MODEL_PATH to Hub downloads; retain standard behavior otherwise."""
+	"""Route Hub storage and explain missing local files during offline execution."""
+	from huggingface_hub.constants import HF_HUB_OFFLINE
+
 	model_path = os.environ.get("MODEL_PATH", "").strip()
 	if model_path and not Path(model_name).expanduser().is_dir():
 		kwargs["cache_dir"] = str(Path(model_path).expanduser().resolve())
-	return loader(model_name, **kwargs)
+	if HF_HUB_OFFLINE:
+		kwargs["local_files_only"] = True
+	try:
+		return loader(model_name, **kwargs)
+	except OSError as error:
+		if not (HF_HUB_OFFLINE or kwargs.get("local_files_only")):
+			raise
+		from huggingface_hub.constants import HF_HUB_CACHE
+
+		location = (
+			str(Path(model_name).expanduser().resolve())
+			if Path(model_name).expanduser().is_dir()
+			else str(kwargs.get("cache_dir") or HF_HUB_CACHE)
+		)
+		raise ModelExecutionError(
+			f"Offline Hugging Face load failed for {model_name!r} "
+			f"(revision={kwargs.get('revision') or 'main'}, location={location}). "
+			"Required local files are missing or unreadable. Restore the complete "
+			"config/tokenizer/weight cache, including all referenced shards and blobs, "
+			"at MODEL_PATH (or the configured local model directory). "
+			"Download missing files separately with HF_HUB_OFFLINE=0 before rerunning. "
+			f"Original error: {error}"
+		) from error
 
 
 def load_model_weights(

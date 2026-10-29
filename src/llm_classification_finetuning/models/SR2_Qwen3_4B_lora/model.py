@@ -11,11 +11,12 @@ from peft.tuners.tuners_utils import BaseTunerLayer
 from torch import Tensor, nn
 from torch.nn import functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
-from transformers import AutoModel, BitsAndBytesConfig
+from transformers import AutoConfig, AutoModel, BitsAndBytesConfig
 from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
-from ...model_storage import load_model_weights
+from ...errors import ModelExecutionError
+from ...model_storage import load_model_weights, load_pretrained
 from ..common import ABSwapAverager, GPUEnvironment
 from .data import BranchBatch, PairwiseBatch
 from .heads import EXPT, EXPT2, SR2, create_classification_head
@@ -52,6 +53,20 @@ class LoRAQwenClassifier(nn.Module):
 		self.feature_dtype = (
 			torch.bfloat16 if self.dtype == torch.bfloat16 else torch.float32
 		)
+		if warmup_only:
+			# Config/tokenizer identities remain mandatory even on complete feature hits.
+			base_config = load_pretrained(
+				AutoConfig.from_pretrained, config.model_name, revision=revision
+			)
+			self.base_revision = getattr(base_config, "_commit_hash", None)
+			self.backbone_hidden_size = int(base_config.hidden_size)
+			self.backbone = None
+			self._frozen_model_name = config.model_name
+			self._frozen_attention = gpu.attention_implementation
+			self._frozen_device_map = device_map
+			self._gradient_checkpointing_enabled = False
+			self._initialize_head(config)
+			return
 		if quantize_backbone and device_map is not None:
 			raise ValueError(
 				"4-bit adapter training requires a single training device."
@@ -91,41 +106,77 @@ class LoRAQwenClassifier(nn.Module):
 						module.to(dtype=torch.bfloat16)
 		self.base_revision = getattr(backbone.config, "_commit_hash", None)
 		self.backbone_hidden_size = int(backbone.config.hidden_size)
-		if warmup_only:
-			self.backbone = backbone
-		else:
-			self.backbone = get_peft_model(
-				backbone,
-				LoraConfig(
-					task_type=TaskType.FEATURE_EXTRACTION,
-					r=config.lora_rank,
-					lora_alpha=config.lora_alpha,
-					lora_dropout=config.lora_dropout,
-					target_modules=list(config.lora_target_modules),
-					bias="none",
-				),
-				# Keep adapter parameters, their gradients, and AdamW moments in FP32.
-				autocast_adapter_dtype=True,
-			)
-			if self.dtype == torch.bfloat16:
-				# Fix the input policy once for forward and checkpoint recomputation.
-				# Autocast handles adapter matmuls with FP32 adapter parameters.
-				for module in self.backbone.modules():
-					if isinstance(module, BaseTunerLayer):
-						module.cast_input_dtype_enabled = False
+		self.backbone = get_peft_model(
+			backbone,
+			LoraConfig(
+				task_type=TaskType.FEATURE_EXTRACTION,
+				r=config.lora_rank,
+				lora_alpha=config.lora_alpha,
+				lora_dropout=config.lora_dropout,
+				target_modules=list(config.lora_target_modules),
+				bias="none",
+			),
+			# Keep adapter parameters, their gradients, and AdamW moments in FP32.
+			autocast_adapter_dtype=True,
+		)
+		if self.dtype == torch.bfloat16:
+			# Fix the input policy once for forward and checkpoint recomputation.
+			# Autocast handles adapter matmuls with FP32 adapter parameters.
+			for module in self.backbone.modules():
+				if isinstance(module, BaseTunerLayer):
+					module.cast_input_dtype_enabled = False
 		self._gradient_checkpointing_enabled = self.backbone.is_gradient_checkpointing
 		self._set_gradient_checkpointing(False)
+		self._initialize_head(config)
+
+	def _initialize_head(self, config: WarmupModelConfig) -> None:
+		"""Allocate real random head parameters, independently of deferred extraction."""
 		self.classifier = create_classification_head(
 			self.backbone_hidden_size,
 			config.hidden_size,
 			config.dropout,
 			compute_dtype=self.feature_dtype,
-			head_architecture=head_architecture,
-		).to(device=device, dtype=torch.float32)
+			head_architecture=self.head_architecture,
+		).to(device=self.device, dtype=torch.float32)
+
+	def load_frozen_backbone(self) -> None:
+		"""Load weights only for missing features without advancing the head's RNG."""
+		if self.backbone is not None:
+			return
+		if not self.warmup_only:
+			raise ModelExecutionError(
+				"Joint training requires an initialized backbone."
+			)
+		with torch.random.fork_rng(devices=list(range(torch.cuda.device_count()))):
+			backbone = load_model_weights(
+				AutoModel.from_pretrained,
+				self._frozen_model_name,
+				revision=self.base_revision,
+				dtype=self.dtype,
+				attn_implementation=self._frozen_attention,
+				device_map=self._frozen_device_map
+				if self._frozen_device_map is not None
+				else {"": str(self.device)},
+				quantization_config=None,
+			)
+		if (
+			getattr(backbone.config, "_commit_hash", None) != self.base_revision
+			or int(backbone.config.hidden_size) != self.backbone_hidden_size
+		):
+			raise ModelExecutionError(
+				"Loaded frozen backbone does not match the prepared model identity."
+			)
+		backbone.config.use_cache = False
+		backbone.requires_grad_(False)
+		backbone.gradient_checkpointing_disable()
+		backbone.disable_input_require_grads()
+		self.backbone = backbone.eval()
 
 	def train(self, mode: bool = True) -> LoRAQwenClassifier:
 		"""Disable checkpointing for evaluation; joint encoding selects training state."""
 		super().train(mode)
+		if self.warmup_only and self.backbone is not None:
+			self.backbone.eval()
 		if not mode:
 			self._set_gradient_checkpointing(False)
 		return self
@@ -167,6 +218,8 @@ class LoRAQwenClassifier(nn.Module):
 
 	def encode_branch(self, branch: BranchBatch) -> Tensor:
 		"""Encode one batch of branches for extraction or differentiable training."""
+		if self.backbone is None:
+			self.load_frozen_backbone()
 		if not self.training or not torch.is_grad_enabled():
 			self._set_gradient_checkpointing(False)
 		input_device = self.backbone.get_input_embeddings().weight.device

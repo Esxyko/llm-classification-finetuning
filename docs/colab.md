@@ -38,10 +38,17 @@ Windows terminal or local `.env` does not configure its project process.
    CACHE_PATH=/content/drive/MyDrive/llm-classification-finetuning/cache
    RESULT_PATH=/content/drive/MyDrive/llm-classification-finetuning/results
    HF_ENDPOINT=https://huggingface.co
+   HF_HUB_OFFLINE=1
    ```
 
    Set Kaggle credentials only if downloading raw files. The saved processed
    manifest and all volumes from Git are sufficient for model validation.
+   Populate `MODEL_PATH` with the complete native Hugging Face cache before
+   running: config, tokenizer, refs/snapshots/blobs, and all weight shards. The
+   separate local `download.ipynb` sets `HF_HUB_OFFLINE=0` for this preparation.
+   Execution stays offline and reports any missing required local files instead
+   of downloading them. Set offline mode before importing HF libraries; restart
+   the kernel if they were already imported with different settings.
 5. Run the selected configuration:
 
    ```shell
@@ -62,7 +69,7 @@ environment changes; configure that terminal's process or the runtime `.env`.
 | Path or setting | Writer and timing | Persistence in this workflow |
 | --- | --- | --- |
 | `PROJECT_DIR` under `/content/` | Git checkout, installed environment, and local data | Runtime-local |
-| `MODEL_PATH` on mounted Drive | HF config/tokenizer/weight loaders write missing downloads when requested | Directly to Drive; reused by later runs |
+| `MODEL_PATH` on mounted Drive | Separate online download preparation populates the native cache; offline model execution reads it | Directly on Drive; reused by later runs |
 | `CACHE_PATH` on mounted Drive | Token, embedding, batch-plan, and warmup caches publish when those stages complete | Directly to Drive; unchanged hits do not republish |
 | `RESULT_PATH` on mounted Drive | Batch logs stream during execution; completed model runs publish predictions, metrics, and YAML; submissions and comprehensive reports use their subdirectories | Directly to Drive |
 | `PROJECT_DIR/models/` | `--build` publishes adapter/head and the merged backbone directory | Runtime-local until copied separately |
@@ -95,9 +102,9 @@ does not depend on them. Both use four cells:
 
 | Cell | Action |
 | --- | --- |
-| Settings | Define repository/branch, runtime project path, model/cache/result paths, and endpoint; export model/cache/result/endpoint settings; the build notebook also defines `BUILD_OUTPUT_PATH` |
+| Settings | Define repository/branch, runtime project path, model/cache/result paths, endpoint, and `HF_HUB_OFFLINE=1`; export these settings before HF imports; the build notebook also defines `BUILD_OUTPUT_PATH` |
 | Drive | Mount `/content/drive` and create the model-cache directory |
-| Setup | Clone, or fetch and hard-reset the runtime checkout to the selected remote branch; write model/cache/result paths and endpoint to runtime `.env`; install `uv`; synchronize dependencies |
+| Setup | Clone, or fetch and hard-reset the runtime checkout to the selected remote branch; write model/cache/result paths, endpoint, and `HF_HUB_OFFLINE=1` to runtime `.env`; install `uv`; synchronize dependencies |
 | Run and cleanup | The validation notebook runs `scripts/validate.py`, then flushes/unmounts Drive and requests runtime release in `finally`; the build notebook runs `scripts/build.py`, saves SR2 build outputs, then performs cleanup |
 
 The setup cell's `git reset --hard` discards tracked edits in the **runtime

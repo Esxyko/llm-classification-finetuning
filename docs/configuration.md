@@ -28,6 +28,7 @@ This process-wide allocator setting requires a fresh process to take effect.
 | `data.raw_dir` | Required YAML path; root preset `data/raw` | Raw competition CSVs |
 | `data.processed_path` | Required YAML `.parquet` path; root preset `data/processed/train_validation.parquet` | Saved train/validation data, including multipart layout |
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
+| `HF_HUB_OFFLINE` | Environment or `.env`; runtime template and Colab validation/build use `1` | Load required HF files locally without Hub requests; use `0` in a separate download process to fill missing files |
 | `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen/warmup features, LoRA batch plans, and head-warmup states |
 | `RESULT_PATH` | Environment or `.env`; missing/blank uses `./results` | Validation runs, submissions, comprehensive reports, and batch-run logs |
 | Production checkpoints | `./models/SR2_Qwen3_4B/`, `./models/SR2_Qwen3_4B_lora/` | Frozen head or LoRA adapter/head files |

@@ -37,6 +37,14 @@ it as `cache_dir`. `Skywork/Skywork-Reward-V2-Qwen3-4B`, for example, uses
 Hugging Face manages revisions, locks, and resumable downloads. Files persist
 across processes without archive packing or unpacking.
 
+The runtime `.env` and Colab validation/build notebooks enable `HF_HUB_OFFLINE=1`.
+Project loaders then pass `local_files_only=True`, reading the existing config,
+tokenizer, and required weights without contacting the Hub. Populate a complete
+native cache first, including refs, snapshot files, blobs, and every weight shard;
+the separate `download.ipynb` explicitly uses `HF_HUB_OFFLINE=0`. Missing or
+unreadable required files report the model, revision, resolved cache/local path,
+and original error. Downloads must run separately with offline mode disabled.
+
 Backbone weight loading prints start/end messages with elapsed time and hides
 Hugging Face progress bars and Transformers `LOAD REPORT` logs. Other warnings
 and loading exceptions retain their normal behavior.
@@ -171,10 +179,18 @@ retains the historical FP16 storage format and default cache keys. Features are
 rebound to current IDs, labels, and A/B orientation when loaders are constructed.
 
 Logs print reused/missing unique branch counts and the logical cache path.
-Complete feature hits skip all backbone forward calls and create no extraction
-progress stage. Partial hits count only actual missing-branch batches; cache I/O
-and publication remain outside extraction timing. Backbone initialization and
-hardware/input validation still occur. The shuffled head-training loader and
+Frozen SR2 and standalone head-only warmup create their classifier from model
+configuration, then check features before loading any backbone weights. Complete
+feature hits train/evaluate only the head and create no extraction progress stage.
+Partial hits load the frozen backbone lazily and extract only missing unique
+branches, checking its revision and hidden size against the prepared identity.
+Config/tokenizer, local-weight fingerprint, hardware, and input validation still
+run. Head parameters use their normal seeded random initialization; deferred
+weight loading saves/restores CPU/CUDA RNG state so cache misses do not advance
+the head's random stream. Existing cache identities and schemas remain unchanged.
+Inline LoRA warmup retains its eagerly initialized adapter-bearing model for the
+following joint stage. Cache I/O and publication remain outside extraction timing.
+The shuffled head-training loader and
 fixed-order train/validation loaders share the resulting CPU tensor, whose views
 are released before joint training.
 

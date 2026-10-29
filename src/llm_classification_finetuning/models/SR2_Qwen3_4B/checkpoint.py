@@ -59,8 +59,11 @@ class SR2HeadCheckpointStore:
 		"""Read back the staged head before replacing the previous artifact."""
 		temporary_path: Path | None = None
 		try:
-			if not model.warmup_only or any(
-				parameter.requires_grad for parameter in model.backbone.parameters()
+			if not model.warmup_only or (
+				model.backbone is not None
+				and any(
+					parameter.requires_grad for parameter in model.backbone.parameters()
+				)
 			):
 				raise ValueError(
 					"SR2 head checkpoints require an adapter-free frozen backbone"

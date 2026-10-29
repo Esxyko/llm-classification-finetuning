@@ -93,7 +93,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | --- | --- |
 | `__init__.py` | Working-directory `.env` loading before library imports; PyTorch allocator and HF endpoint/Xet defaults without overriding explicit environment settings |
 | `config.py` | Immutable config objects, strict YAML validation, data/cache/result path resolution (including shared `resolve_result_dir`), and effective shared warmup settings |
-| `model_storage.py` | Native Hub cache routing through `load_pretrained`; timed backbone loading with scoped load-report suppression and restoration of progress-bar settings |
+| `model_storage.py` | Native Hub cache routing through `load_pretrained`, offline local-only loading and actionable missing-file errors; timed backbone loading with scoped load-report suppression and restoration of progress-bar settings |
 | `cli_config.py` | Shared `--config` argument |
 | `cli_output.py` | Shared download/split summaries |
 | `errors.py` | Expected domain-error hierarchy |
@@ -167,7 +167,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, warmup identity context, and explicit frozen-head config/full-data preparation |
 | `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
-| `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
+| `model.py` | Differentiable shared backbone/adapters, config-only head initialization with lazy frozen-backbone loading on feature misses and CPU/CUDA RNG preservation, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
 | `trainer.py` | CPU submission-token preparation, polynomial head/warmup and independent cosine joint learning-rate curves, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, exact polynomial-curve or descending fixed-rate compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
@@ -192,7 +192,7 @@ defaults to `./results` and controls validation, submission, report, and log roo
 | --- | --- |
 | `config.yaml`, `configs/*.yaml` | Independent complete current presets |
 | `config_archive/` | Historical configurations; not current defaults |
-| `.env.example` | Kaggle token and model/training-cache/result path template |
+| `.env.example` | Kaggle token, model/training-cache/result paths, and offline HF execution template |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Package/entry points, training dependencies, and Python version |
 | `requirements-submit.txt` | Separate submission installation pins |
 | `<MODEL_PATH>/models--*/` | Native HF downloads; outside training-cache multipart storage |
@@ -318,8 +318,12 @@ present in a fresh checkout.
    unsmoothed. Publish head state only after these evaluations succeed.
    Adapter-free warmup features persist separately by complete branch token content,
    immutable backbone identity, compute precision, exact storage dtype, and extraction
-   policy. Complete feature hits skip backbone forwards; misses extract only unique
-   missing branches. Restore continuation RNG after all feature preparation.
+   policy. Frozen SR2 and head-only warmup initialize only the head on complete
+   feature hits; misses lazily load/check the frozen backbone and extract only
+   unique missing branches without advancing the head's CPU/CUDA RNG. Config,
+   tokenizer, local-content identity, hardware, and input validation remain
+   mandatory. LoRA joint models keep eager adapter/backbone initialization.
+   Restore continuation RNG after all feature preparation.
    No persisted live LoRA features or losses. See [warmup](docs/caching.md#lora-head-warmup).
 10. **Placement and production state:** load backbones directly with device maps;
     submission uses exactly two GPUs without replicas/offload/fallback. Production

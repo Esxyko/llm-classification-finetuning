@@ -96,7 +96,14 @@ model/head settings and training IDs; see
 ## Hugging Face downloads
 
 Project initialization loads the working-directory `.env` before Hugging Face
-imports. It defaults `HF_ENDPOINT` to `https://hf-mirror.com`, preserving an
+imports. The supplied `.env.example` enables `HF_HUB_OFFLINE=1` for execution
+from a complete local model cache. Populate that cache in a separate download
+process with `HF_HUB_OFFLINE=0` (or use the local `download.ipynb`) before training.
+Keep the full native Hub layout, including refs, snapshots, blobs, and all shards.
+Offline project loaders set `local_files_only=True`; a missing required file
+reports the model, revision, cache/local path, and original error.
+
+Package initialization defaults `HF_ENDPOINT` to `https://hf-mirror.com`, preserving an
 existing value. To use the official endpoint, set `HF_ENDPOINT=https://huggingface.co`
 in `.env` or the process environment before starting the command.
 
