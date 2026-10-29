@@ -239,8 +239,10 @@ update counts follow finalized merged groups. See
 `SR2_Qwen3_4B` uses the same token, adapter-free feature, and completed head
 state caches as standalone/inline LoRA warmup. Its independent `epochs`,
 `training_batch_size`, `learning_rate`, and `lr_decay_base` map to
-the shared `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate`,
-and `warmup_lr_decay_base` settings. Matching curves share head state without
+the shared internal `warmup_epochs`, `warmup_training_batch_size`,
+`warmup_learning_rate`, and `warmup_lr_decay_base` settings. The public `warmup`
+section uses the same unprefixed names as frozen SR2; this naming change leaves
+cache identities unchanged. Matching curves share head state without
 changing the cache namespace or schema. Other compatibility rules below,
 including training ID sets and the treatment of changed text/labels, still apply.
 
@@ -281,7 +283,7 @@ new head. Compatible v3 entries remain shared by standalone and inline SR2 warmu
 when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 
-With exponential decay (`warmup_lr_decay_base > 1`), lookup checks only the exact
+With exponential decay (`warmup.lr_decay_base > 1`), lookup checks only the exact
 target `N`-epoch key. Metadata additionally includes
 `warmup_lr_schedule: exponential_epoch_v1` and `warmup_lr_decay_base`, retaining
 the original base rather than its logarithm. The existing `warmup_epochs` field
@@ -291,7 +293,7 @@ are not continuation sources. Earlier polynomial/cosine entries and old
 fixed-rate entries are not reused for exponential decay; they remain on disk
 without migration.
 
-With `warmup_lr_decay_base: 1`, both extra fields are omitted, preserving old
+With `warmup.lr_decay_base: 1`, both extra fields are omitted, preserving old
 fixed-rate identities. Lookup first checks the exact `N`-epoch key,
 then checks `N-1` down to `1`, changing only `warmup_epochs` in the metadata.
 The first fully validated state is selected. Missing, corrupt, or incompatible
@@ -368,7 +370,7 @@ consume different RNG draws on a cache miss.
 Logs identify complete reuse, continuation, or rebuild; completed, target, and
 remaining epochs; source/target paths on hits; and precision. Reused work contributes
 no old epoch metrics or timing; joint epoch numbers retain their warmup offset.
-`warmup_epochs: 0` disables warmup state and feature cache reads/writes.
+`warmup.epochs: 0` disables warmup state and feature cache reads/writes.
 `--refresh-cache` bypasses every reuse candidate, refreshes requested warmup
 features, trains from scratch, and replaces the target head entry.
 Manually constructed `PreparedTrainingSplit` objects without `warmup_context`

@@ -344,15 +344,8 @@ def resolve_result_dir(base_dir: Path) -> Path:
 
 def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 	section_name = "SR2_Qwen3_4B"
-	section = _require_mapping(root.get(section_name), section_name)
-	keys = set(SR2ModelConfig.__dataclass_fields__) - {"ab_swap"}
-	_reject_unknown_keys(section, keys, section_name)
+	shared = _load_warmup_model_config(root, section_name)
 	aliases = {name: name.removeprefix("warmup_") for name in LORA_WARMUP_FIELDS}
-	values = dict(section)
-	for internal, public in aliases.items():
-		if public in values:
-			values[internal] = values.pop(public)
-	shared = _load_warmup_fields(values, section_name, field_aliases=aliases)
 	if shared.warmup_epochs <= 0:
 		raise ConfigurationError(f"{section_name}.epochs must be greater than 0.")
 	values = asdict(shared)
@@ -361,11 +354,21 @@ def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 	return SR2ModelConfig(**values)
 
 
-def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
-	section = _require_mapping(root.get("warmup"), "warmup")
-	keys = set(WarmupModelConfig.__dataclass_fields__) - {"ab_swap"}
-	_reject_unknown_keys(section, keys, "warmup")
-	return _load_warmup_fields(section, "warmup")
+def _load_warmup_model_config(
+	root: Mapping[str, Any], section_name: str = "warmup"
+) -> WarmupModelConfig:
+	"""Map public head-training fields to the shared internal warmup settings."""
+	section = _require_mapping(root.get(section_name), section_name)
+	aliases = {name: name.removeprefix("warmup_") for name in LORA_WARMUP_FIELDS}
+	keys = {
+		aliases.get(name, name) for name in WarmupModelConfig.__dataclass_fields__
+	} - {"ab_swap"}
+	_reject_unknown_keys(section, keys, section_name)
+	values = dict(section)
+	for internal, public in aliases.items():
+		if public in values:
+			values[internal] = values.pop(public)
+	return _load_warmup_fields(values, section_name, field_aliases=aliases)
 
 
 def _load_warmup_fields(
@@ -447,9 +450,9 @@ def _load_lora_model_config(
 	_reject_unknown_keys(section, keys, section_name)
 	if warmup is None:
 		raise ConfigurationError(
-			f"{section_name} requires a 'warmup' section. Move "
-			"warmup_epochs, warmup_training_batch_size, and warmup_learning_rate "
-			"there; set warmup.warmup_epochs to 0 to disable head warmup."
+			f"{section_name} requires a 'warmup' section with epochs, "
+			"training_batch_size, learning_rate, and other head-warmup settings; "
+			"set warmup.epochs to 0 to disable head warmup."
 		)
 
 	def field(name: str) -> str:

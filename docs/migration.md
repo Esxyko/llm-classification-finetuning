@@ -167,9 +167,10 @@ execute; persistent branch-cache details remain in
 | LoRA `inference_batch_size` | `head_inference_batch_size`; keep the head batch count |
 | LoRA `head_learning_rate` | Remove; `learning_rate` now controls both adapters and the classifier head during joint training |
 | Frozen SR2 `min_lr_ratio` / `lr_decay_power` | Remove both; configure `lr_decay_base` (default `1.5`) for exponential decay once per epoch |
-| `warmup.warmup_min_lr_ratio` / `warmup.warmup_lr_decay_power` | Remove both; configure `warmup.warmup_lr_decay_base` (default `1.5`) |
-| LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section |
-| `warmup_ratio` | Choose explicit `warmup.warmup_epochs`, batch size, learning rate, and extraction budget |
+| `warmup.warmup_min_lr_ratio` / `warmup.warmup_lr_decay_power` | Remove both; configure `warmup.lr_decay_base` (default `1.5`) |
+| `warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, `warmup.warmup_learning_rate`, `warmup.warmup_lr_decay_base` | Remove the field prefixes: `warmup.epochs`, `warmup.training_batch_size`, `warmup.learning_rate`, `warmup.lr_decay_base` |
+| LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section as `epochs`, `training_batch_size`, and `learning_rate` |
+| `warmup_ratio` | Choose explicit `warmup.epochs`, batch size, learning rate, and extraction budget |
 | LoRA/warmup `A/B_swap` | Remove; active LoRA and standalone warmup always use original rows |
 | `training_token_budget` or Boolean `gradient_checkpointing` | Use the two current checkpointing/packing controls below |
 
@@ -179,7 +180,7 @@ Set `min_lr_ratio: 1` to keep the shared learning rate fixed. Configurations
 containing `head_learning_rate` fail strict unknown-key validation; remove it
 before using current commands. Frozen SR2 head training now uses exponential
 decay with `SR2_Qwen3_4B.lr_decay_base: 1.5` as the parser default. Standalone and
-inline warmup use `warmup.warmup_lr_decay_base: 1.5`, independently of joint
+inline warmup use `warmup.lr_decay_base: 1.5`, independently of joint
 decay. Each base must be a finite number at least `1`. The scheduler computes
 `decay_rate = ln(base)` and sets `lr = initial_lr * exp(-decay_rate * epoch_index)`
 at the beginning of each zero-based epoch; learning rates stay fixed within an

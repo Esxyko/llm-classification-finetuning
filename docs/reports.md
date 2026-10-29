@@ -28,7 +28,8 @@ Use a current-format `report.yaml` with the run's original processed Parquet
 and matching validation fraction. It may contain only the required `data`,
 `validation`, and `gpu` sections. Historical snapshots containing retired model
 sections are rejected by the current loader; do not pass them directly or rewrite
-them. Current SR2 snapshots can still be used when their paths resolve correctly.
+them. SR2 snapshots using current field names can still be used when their paths
+resolve correctly; older warmup field prefixes require a separate migrated copy.
 Each invocation replaces `<RESULT_PATH>/comprehensive/`, so copy
 reports elsewhere if you want to retain several comparisons.
 
@@ -88,7 +89,9 @@ resolved data paths, and contains only shared sections plus the current model:
 | LoRA SR2 | `data`, `validation`, `gpu`, `warmup`, `SR2_Qwen3_4B_lora` |
 
 LoRA snapshots keep shared warmup controls under `warmup`, omit internal resolved
-fields, and omit `A/B_swap` from both model and warmup sections. Each section
+fields, and omit `A/B_swap` from both model and warmup sections. Warmup fields use
+`epochs`, `training_batch_size`, `learning_rate`, and `lr_decay_base` without
+repeating the section name. Each section
 retains its own extraction budget and smoothing value. Other model sections are
 excluded; `metrics.json` has no embedded `config` field or source-config path.
 Frozen SR2 snapshots use its independent public fields and also omit `A/B_swap`.

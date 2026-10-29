@@ -94,7 +94,7 @@ or loading model weights. Every original ID from both partitions contributes
 one training row; there is no holdout evaluation during a build. Compatible token, batch,
 and frozen-feature caches are reused. The full-data head-warmup cache is keyed
 by all training IDs, so a train-partition-only head cache is not a complete hit.
-Exact warmup hits skip that stage. With `warmup_lr_decay_base: 1`, compatible
+Exact warmup hits skip that stage. With `warmup.lr_decay_base: 1`, compatible
 lower-epoch hits execute only the remaining warmup epochs before joint training;
 exponential decay requires an exact target-epoch hit or a complete new run.
 

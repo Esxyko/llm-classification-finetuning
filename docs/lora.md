@@ -214,7 +214,7 @@ offsets/metadata. Current train/test inputs are checked independently.
 
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
-| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head at `warmup_learning_rate / warmup_lr_decay_base ** epoch_index`, starting at epoch index `0` and keeping the rate fixed within each epoch | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
+| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head at `warmup.learning_rate / warmup.lr_decay_base ** epoch_index`, starting at epoch index `0` and keeping the rate fixed within each epoch | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
 | Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup loads cached features, extracts missing branches, and recomputes both losses without training |
 | Head warmup, lower-epoch cache hit (fixed rate only) | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
@@ -223,10 +223,10 @@ offsets/metadata. Current train/test inputs are checked independently.
 The shared warmup section supplies epochs, head batch size, learning rate,
 exponential decay base, extraction budget, and smoothing.
 Inline warmup's remaining model/head settings come from the selected LoRA section.
-`warmup_epochs: 0` skips warmup extraction
+`warmup.epochs: 0` skips warmup extraction
 and cache I/O. See [standalone versus inline settings](configuration.md#standalone-warmup).
 Exponential decay reuses only an exact target-epoch cache. Fixed-rate warmup
-(`warmup_lr_decay_base: 1`) can also continue from the largest compatible lower
+(`warmup.lr_decay_base: 1`) can also continue from the largest compatible lower
 epoch; all other cache identity fields must match.
 
 Adapter-free warmup features are persisted by branch token content and reused
@@ -246,7 +246,7 @@ batches of 8, 8, 8, and 3, but update groups of 8, 8, and 11 rows.
 
 | Stage | Target rows per update | Updates per nonempty epoch |
 | --- | --- | --- |
-| Warmup | `warmup_training_batch_size` | `max(1, rows // warmup_training_batch_size)` |
+| Warmup | `warmup.training_batch_size` | `max(1, rows // warmup.training_batch_size)` |
 | Joint | `G = training_batch_size * gradient_accumulation_steps` | `max(1, rows // G)` |
 
 `gradient_accumulation_steps` applies only to joint training. Both stages use
@@ -274,15 +274,15 @@ Frozen SR2 head training and standalone/inline warmup use exponential decay
 once per epoch. LoRA joint training uses an independent cosine curve once per
 planned optimizer update.
 
-For head-training epoch index `epoch_index` from `0` through `warmup_epochs - 1`:
+For head-training epoch index `epoch_index` from `0` through `warmup.epochs - 1`:
 
 ```text
-decay_rate = ln(warmup_lr_decay_base)
-lr = warmup_learning_rate * exp(-decay_rate * epoch_index)
-   = warmup_learning_rate / warmup_lr_decay_base ** epoch_index
+decay_rate = ln(warmup.lr_decay_base)
+lr = warmup.learning_rate * exp(-decay_rate * epoch_index)
+   = warmup.learning_rate / warmup.lr_decay_base ** epoch_index
 ```
 
-The warmup base `warmup.warmup_lr_decay_base` defaults to `1.5` and accepts a
+The warmup base `warmup.lr_decay_base` defaults to `1.5` and accepts a
 finite number at least `1`. Frozen SR2 maps its independent `epochs`,
 `training_batch_size`, `learning_rate`, and `lr_decay_base` to these warmup
 settings. Its base also defaults to `1.5`. Both keep the original base in
@@ -334,7 +334,7 @@ Extraction completes before head inference, stores temporary CPU features, and
 releases them on return. Features are never reused across joint epochs/runs.
 Warmup train and validation inference instead reuse that stage's frozen features.
 Inline warmup uses `head_inference_batch_size` for both evaluations; standalone
-warmup uses `warmup_training_batch_size`. Logs distinguish warmup training
+warmup uses `warmup.training_batch_size`. Logs distinguish warmup training
 evaluation, warmup validation, joint validation, and submission; joint-validation
 timing includes both extraction and head inference. Validation/submission still work when warmup is
 disabled. See [extraction packing](configuration.md#extraction-token-budgets).
@@ -457,7 +457,7 @@ extraction counts its own loader's batches; Head warmup totals
 restored from cache; Joint training totals `epochs * (J + E + V)`.
 Full-data model builds use all training IDs and `E = V = 0`.
 
-Standalone warmup uses `warmup_training_batch_size` for the denominators of
+Standalone warmup uses `warmup.training_batch_size` for the denominators of
 both `T` and `V`. A head miss runs Head warmup, without Joint training. Warmup
 feature extraction precedes it only when unique branches are missing. A complete
 head hit logs cache reuse and runs a separate **Cached head evaluation** stage with
@@ -493,7 +493,7 @@ Adjust the setting for the stage that actually failed:
 | Stage | Main controls |
 | --- | --- |
 | Warmup backbone extraction | Lower `warmup.extraction_budget` |
-| Warmup head training | Lower `warmup.warmup_training_batch_size` |
+| Warmup head training | Lower `warmup.training_batch_size` |
 | Joint backbone training | Lower a positive checkpointing threshold; lower the second-pass budget or set it to `0` |
 | Fixed initial joint batches, threshold `0` | Lower `training_batch_size`; adjust accumulation if retaining effective batch size |
 | Joint-validation / submission extraction | Lower the selected LoRA section's `extraction_budget` |

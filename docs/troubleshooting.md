@@ -67,7 +67,7 @@ Match an OOM to its stage before adjusting settings:
 | Failing stage | Setting to reduce |
 | --- | --- |
 | LoRA warmup extraction | `warmup.extraction_budget` |
-| LoRA warmup head | `warmup.warmup_training_batch_size` |
+| LoRA warmup head | `warmup.training_batch_size` |
 | LoRA joint training, positive threshold | `gradient_checkpointing_threshold` and/or `gradient_checkpointing_budget` |
 | LoRA fixed initial batches, threshold `0` | `training_batch_size`; adjust accumulation to retain target update size |
 | LoRA joint-validation/submission extraction | Selected model section's `extraction_budget` |
