@@ -19,8 +19,11 @@ five-fold result directories; retain them for the corresponding historical code.
 
 ## Retired profiles
 
-The only active model selector is `SR2-Qwen3-4B-lora`; `warmup` is a separate
-build-only utility. On 2026-10-27, frozen `qwen3-4b` and
+The active model selectors are `SR2-Qwen3-4B` (frozen head training, validation/build)
+and `SR2-Qwen3-4B-lora` (validation/build/submit); `warmup` is a separate
+build-only utility. The new frozen SR2 profile uses the current Skywork backbone
+and SR2 head, independently of the retired frozen Qwen profile.
+On 2026-10-27, frozen `qwen3-4b` and
 `qwen3-4b-lora-EXPT2` were retired. Other retired selectors include `qwen3-1.7b`,
 `qwen3-1.7b-mono-input`, `qwen3-4b-qlora`, `qwen3-4b-lora`, and
 `qwen3-4b-lora-EXPT`. They are not CLI choices or members of `ALL`.
@@ -197,7 +200,7 @@ not supported YAML keys. Configure their documented public fields instead.
 | Legacy per-model tokens or batch-plan directories | Not read by current shared token/plan caches |
 | LoRA batch-plan schemas before v4 | Rebuilt when needed |
 | Warmup schemas before v5 or incompatible historical model/head identities | Not reused by active SR2 |
-| Historical frozen head checkpoints, including schemas before v3 | Retained for historical code; no active frozen profile or conversion to SR2 |
+| Historical frozen head checkpoints, including schemas before v3 | Retained for historical code; incompatible with the new frozen SR2 head and not converted |
 | Adapter/head schema v1 or another head architecture | Rebuild for the current schema-v2 SR2 head |
 | Plain-text SR2 warmup / adapter-head checkpoint | New serializer keys for warmup; retrain production checkpoint for chat-template input |
 | Historical quantized adapter/head checkpoints | Incompatible with active non-quantized LoRA profiles |

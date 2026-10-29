@@ -40,6 +40,16 @@ class EpochMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class FinalEvaluationMetrics:
+	"""Current losses and evaluation times when no training epochs were executed."""
+
+	training_loss: float
+	validation_loss: float | None
+	training_time_seconds: float
+	validation_time_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class ValidationTrainingResult:
 	"""Final probabilities, selected row counts, and metrics for one holdout run."""
 
@@ -49,21 +59,36 @@ class ValidationTrainingResult:
 	total_time_seconds: float
 	training_rows: int
 	source_training_rows: int
+	final_evaluation: FinalEvaluationMetrics | None = None
 
 	@property
 	def final_loss(self) -> float:
-		"""Return the final epoch validation loss."""
+		"""Return the final executed epoch or current cached-head validation loss."""
+		if self.final_evaluation is not None:
+			if self.final_evaluation.validation_loss is None:
+				raise ModelExecutionError(
+					"The final evaluation has no validation loss."
+				)
+			return self.final_evaluation.validation_loss
 		return self.epochs[-1].validation_loss
 
 	@property
 	def training_time_seconds(self) -> float:
-		"""Sum training time across all executed epochs."""
-		return sum(epoch.training_time_seconds for epoch in self.epochs)
+		"""Sum current training phases, including cached-head training-set evaluation."""
+		return sum(epoch.training_time_seconds for epoch in self.epochs) + (
+			self.final_evaluation.training_time_seconds
+			if self.final_evaluation is not None
+			else 0.0
+		)
 
 	@property
 	def validation_time_seconds(self) -> float:
-		"""Sum validation time across all executed epochs."""
-		return sum(epoch.validation_time_seconds for epoch in self.epochs)
+		"""Sum current epoch or cached-head validation evaluation time."""
+		return sum(epoch.validation_time_seconds for epoch in self.epochs) + (
+			self.final_evaluation.validation_time_seconds
+			if self.final_evaluation is not None
+			else 0.0
+		)
 
 
 @dataclass(frozen=True, slots=True)

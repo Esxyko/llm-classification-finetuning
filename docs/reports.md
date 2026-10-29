@@ -84,12 +84,14 @@ resolved data paths, and contains only shared sections plus the current model:
 
 | Run | Included sections |
 | --- | --- |
-| SR2 | `data`, `validation`, `gpu`, `warmup`, `SR2_Qwen3_4B_lora` |
+| Frozen SR2 | `data`, `validation`, `gpu`, `SR2_Qwen3_4B` |
+| LoRA SR2 | `data`, `validation`, `gpu`, `warmup`, `SR2_Qwen3_4B_lora` |
 
 LoRA snapshots keep shared warmup controls under `warmup`, omit internal resolved
 fields, and omit `A/B_swap` from both model and warmup sections. Each section
 retains its own extraction budget and smoothing value. Other model sections are
 excluded; `metrics.json` has no embedded `config` field or source-config path.
+Frozen SR2 snapshots use its independent public fields and also omit `A/B_swap`.
 
 A current SR2 snapshot can be passed to `--config`, but reproducing a run also needs matching
 data/code/dependencies and model identity. It does not capture `.env` or persist
@@ -104,6 +106,13 @@ Current metrics use `validation_strategy: holdout`, `validation_loss`, and a fla
 `training_rows` counts the rows selected by the profile's A/B policy. There are
 no fold counters or cross-fold means. Training can use label smoothing, but
 validation/reporting log loss is unsmoothed.
+
+Frozen SR2 includes `executed_training_epochs`, counting only this invocation's
+training. An exact compatible head-cache hit has `epochs: []` and
+`executed_training_epochs: 0`; current train/validation losses and phase times
+are recorded under `cached_head_evaluation`. Its final `validation_loss` and
+top-level phase times come from that evaluation, without fabricated epoch rows.
+Partial hits include only the epochs actually executed, with continuous numbers.
 
 | Profile | `head_architecture` | `embedding_combination` |
 | --- | --- | --- |
@@ -127,7 +136,7 @@ seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
 | Epoch `training_time` | That epoch's training phase, including full-training-set inference at the end of warmup epochs |
 | Epoch `validation_time` | Validation phase; joint LoRA validation includes fresh extraction plus head inference |
 | Epoch `total_time` | Epoch setup and training/validation; excludes warmup feature extraction performed before epochs |
-| Top-level `training_time`, `validation_time` | Sums of executed epoch phase durations |
+| Top-level `training_time`, `validation_time` | Sums of executed epoch phase durations, or current cached-head evaluation times for an exact frozen-SR2 hit |
 | Final `total_time`, `config_total_time` | Complete successful model run: initialization, input/cache/embedding preparation, training, validation, cleanup, and publication |
 
 Warmup train and validation inference reuse their shared extracted features.
@@ -164,8 +173,9 @@ publication, so its time estimate has a different scope.
 Holdout validation, full-data builds, and standalone warmup monitor PyTorch
 allocator peaks on `gpu.device`. Monitoring starts before GPU work and model
 loading and continues through saving, export, cleanup, and result publication.
-Full-data builds first complete CPU input/batch preparation and both output-path
-write preflights, then start monitoring. Each model invocation has its own
+Full-data builds first complete CPU input/batch preparation and output-path
+write preflights (one head destination for frozen SR2, two outputs for LoRA),
+then start monitoring. Each model invocation has its own
 statistics, including under `ALL` and batch scripts. Submission does not enable
 monitoring.
 

@@ -34,6 +34,7 @@ flowchart TD
     Run --> Report["PNG and XLSX report"]
     Build --> Checkpoint["SR2 adapter/head checkpoint"]
     Build --> Merged["Merged backbone and tokenizer"]
+    Build --> Head["Frozen SR2 head checkpoint"]
     Checkpoint --> Submit["Submission inference"]
     Test["Test CSV and template"] --> Submit
     Submit --> CSV["submission.csv"]
@@ -42,8 +43,9 @@ flowchart TD
 The saved split included in Git can enter this flow without downloading raw data.
 Standalone warmup is optional; inline LoRA runs create/reuse their compatible
 warmup state. Validation does not save production checkpoints. Builds use IDs
-from both partitions and also export the LoRA-merged backbone with its tokenizer;
-submission requires the matching adapter/head checkpoint and test files.
+from both partitions. Frozen SR2 saves only its independent head; LoRA builds
+also export the merged backbone with its tokenizer. Only LoRA supports submission,
+which requires the matching adapter/head checkpoint and test files.
 
 Paths and `.env` resolve from the process working directory. The batch scripts
 instead derive the project root from their own files and launch children there.
@@ -63,8 +65,9 @@ Console scripts are declared in [pyproject.toml](pyproject.toml).
 
 CLI modules translate expected `DataPreparationError` subclasses to exit status
 `1`; parser errors retain argparse behavior. `models/cli.py` owns `ALL` iteration
-and the build-only `warmup` selector outside the registry. Unsupported warmup
-flags are rejected before data/GPU setup. Business logic stays below this layer.
+and the build-only `warmup` selector outside the registry. Explicit unsupported
+submission and warmup flags are rejected before data/GPU setup. `ALL --submit`
+skips profiles whose `supports_submit` is false. Business logic stays below this layer.
 
 [scripts/validate.py](scripts/validate.py) runs batch holdout validation;
 [scripts/build.py](scripts/build.py) runs full-data builds and standalone warmup.
@@ -107,20 +110,27 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | --- | --- |
 | `models/__init__.py` | `ModelRegistration` and lazily loaded ordered active execution registry, keeping CPU data imports independent of PEFT |
 | `models/profile.py` | Immutable selector/config/artifact identity and effective A/B policy |
+| `models/SR2_Qwen3_4B/__init__.py`, `profile.py` | Frozen SR2 registration and lazy pipeline export, with submission disabled |
+| `models/SR2_Qwen3_4B/pipeline.py` | Independent frozen-head validation/build orchestration, explicit warmup-compatible settings and shared cache namespace, full-data CPU preparation and head write preflight before GPU setup |
+| `models/SR2_Qwen3_4B/checkpoint.py` | FP32 head-only checkpoint with immutable encoding/training identities, destination preflight, staged CPU metadata/tensor validation, and atomic replacement |
 | `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports, deferring pipeline/trainer imports until execution |
 | `models/SR2_Qwen3_4B_lora/profile.py` | SR2 identity usable below the registration surface without import cycles; default for LoRA Python APIs |
 | `models/warmup.py` | Standalone SR2 head warmup trained on the train partition, with current train/validation evaluation on builds and cache hits; shares SR2's cache namespace without adapters, joint plans, or production checkpoint |
 
-SR2 is the only registered model. `ALL` runs it when its YAML section is present;
-`warmup` stays outside the registry. Retired profiles remain unregistered and
+Frozen SR2 and LoRA SR2 are registered in that order. `ALL` runs each configured
+profile supporting the requested mode; `warmup` stays outside the registry.
+Frozen SR2 has an independent `SR2ModelConfig` converted to shared head-training
+settings, and reuses LoRA SR2's warmup state without changing cache identities.
+Retired profiles remain unregistered and
 their configuration sections are rejected; local ignored
 archives are outside active imports. See [migration](docs/migration.md#retired-profiles).
 
 ### Shared and frozen-model infrastructure
 
 Paths in this table are under `models/common/`.
-Frozen-model modules remain as retained infrastructure and shared dependencies;
-they do not expose an active frozen CLI profile.
+Legacy frozen-model modules remain as retained infrastructure and shared dependencies.
+The active frozen SR2 profile uses the adapter-free path in the SR2 LoRA package,
+with the current SR2 head and warmup feature identities, rather than legacy MLP training.
 
 | Module | Owns |
 | --- | --- |
@@ -139,7 +149,7 @@ they do not expose an active frozen CLI profile.
 | `model.py` | Frozen backbone, last-real-token pooling, and `3H` pairwise MLP |
 | `orientation.py` | A/B probability averaging and validation-row alignment |
 | `loss.py` | Label smoothing on logits or averaged log probabilities; training reductions |
-| `trainer.py` | Holdout/full-data frozen-head training, epoch metrics, and optional training/validation memory intervals |
+| `trainer.py` | Legacy holdout/full-data frozen-head training, shared epoch/final cached-head evaluation summaries, and optional training/validation memory intervals |
 | `predictor.py` | Saved-head submission inference |
 | `checkpoint.py` | Atomic frozen head persistence and compatibility validation |
 | `progress.py` | CPU work counters, independent stage timers/completion and configurable progress milestones, retaining legacy weighted counters |
@@ -155,13 +165,13 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | Module | Owns |
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
-| `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, and warmup identity context |
+| `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, warmup identity context, and explicit frozen-head config/full-data preparation |
 | `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
 | `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, descending compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
-| `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across standalone/inline warmup |
+| `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across frozen SR2 and standalone/inline warmup |
 | `checkpoint.py` | Destination write preflight, portable adapter/head persistence and shared CPU loading checks, revision/architecture compatibility, and merged-backbone/tokenizer export with metadata, local validation, and recoverable directory replacement |
 | `pipeline.py` | LoRA holdout/submission orchestration and independent full-data build flow with CPU preparation and both write preflights before GPU setup, adapter/head saving before merged export, cleanup preserving execution errors, and non-quantized dual-GPU submission |
 
@@ -189,7 +199,8 @@ defaults to `./results` and controls validation, submission, report, and log roo
 | `data/raw/` | Downloaded raw CSVs |
 | `data/processed/train_validation.parquet` | Logical saved split; single file or manifest plus volumes |
 | `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen/warmup-feature, and LoRA base-plan stores |
-| `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Skywork completed warmup, shared by SR2 and standalone warmup |
+| `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Completed Skywork head state, shared by frozen SR2, LoRA SR2, and standalone warmup |
+| `models/SR2_Qwen3_4B/head[_TAG].pt` | Independent frozen SR2 head and encoding/training metadata |
 | `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt` | SR2 production adapter/head |
 | `models/SR2_Qwen3_4B_lora/merged[_TAG]/` | Full LoRA-merged backbone, tokenizer, and export metadata |
 | `<RESULT_PATH>/MODEL-<timestamp>/` | Completed validation CSV, metrics, and YAML snapshot |
@@ -243,6 +254,8 @@ present in a fresh checkout.
    SR2 warmup additionally versions initialization as
    `scaled_uniform_zero_discrepancy_v1`, isolating earlier Xavier-initialized
    states without changing production-checkpoint compatibility.
+   Frozen SR2 uses this same head and initialization, freezing the backbone and
+   training only the head with fixed-rate warmup optimization, without adapters.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen/warmup features, plans,
    warmup state, and production checkpoints. Map cached entries to current rows/labels; never
@@ -256,7 +269,7 @@ present in a fresh checkout.
    the previous production artifact. Complete retained frozen-model embedding hits
    skip backbone
    weights while retaining applicable input and hardware checks. Complete inline warmup hits
-   skip warmup work; complete standalone hits evaluate the restored head on current
+   skip warmup work; complete standalone and frozen-SR2 hits evaluate the restored head on current
    train/validation data without training or rewriting cached state. Partial hits
    select the largest compatible lower epoch, reconstruct shuffle state with index-only
    replay, restore training RNG after feature preparation, and execute only remaining
@@ -315,7 +328,9 @@ present in a fresh checkout.
 12. **Metrics and history:** publish final-epoch holdout predictions and matching
     current-only YAML sections; never rewrite historical snapshots. Successful
     complete-run timing/global peaks and cross-epoch training/validation peaks are
-    appended atomically for holdout runs. Builds and standalone warmup report the
+    appended atomically for holdout runs. An exact frozen-SR2 head hit publishes
+    current predictions/loss/times with an empty epoch list and a separate final
+    evaluation summary; it does not invent executed epochs. Builds and standalone warmup report the
     same peak scopes in the terminal; monitoring starts after full-data build CPU
     preparation and write preflights. Progress remains CPU-only
     and covers executed weighted work, not extraction/publication. See

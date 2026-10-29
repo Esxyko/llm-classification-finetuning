@@ -30,7 +30,7 @@ This process-wide allocator setting requires a fresh process to take effect.
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
 | `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen/warmup features, LoRA batch plans, and head-warmup states |
 | `RESULT_PATH` | Environment or `.env`; missing/blank uses `./results` | Validation runs, submissions, comprehensive reports, and batch-run logs |
-| Production checkpoints | `./models/SR2_Qwen3_4B_lora/` | LoRA adapter/head files |
+| Production checkpoints | `./models/SR2_Qwen3_4B/`, `./models/SR2_Qwen3_4B_lora/` | Frozen head or LoRA adapter/head files |
 
 `RESULT_PATH` follows the same path rules as `CACHE_PATH`: surrounding
 whitespace is stripped, `~` expands, and relative values resolve from the process
@@ -54,12 +54,14 @@ See [cache layout](caching.md) and [Colab persistence](colab.md).
 | `data` | Always | Competition and data paths |
 | `validation` | Always | Saved holdout fraction, seed, and balance tokenizer |
 | `gpu` | Always | Training device, submission devices, precision, and attention |
+| `SR2_Qwen3_4B` | Selecting `SR2-Qwen3-4B` | Frozen Skywork and independent SR2 head training |
 | `SR2_Qwen3_4B_lora` | Selecting `SR2-Qwen3-4B-lora` | Skywork LoRA and swap-equivariant comparison head |
-| `warmup` | SR2 section is present, or selecting `warmup --build` | Shared warmup controls and standalone warmup model |
+| `warmup` | LoRA section is present, or selecting `warmup --build` | Shared warmup controls and standalone warmup model |
 
-The SR2 section may be absent for data/reporting or standalone warmup;
-`model ALL` requires it. `warmup` is not part of `ALL`.
-SR2 inherits only the five controls listed under
+Model sections may be absent for data/reporting or standalone warmup;
+`model ALL` requires at least one configured model supporting the selected mode.
+`warmup` is not part of `ALL`. Frozen SR2 is independent of both other sections.
+SR2 LoRA inherits only the five controls listed under
 [standalone warmup](#standalone-warmup) from `warmup`. Retired Qwen model
 sections are unknown keys; see [migration](migration.md#retired-profiles).
 
@@ -112,24 +114,33 @@ The following names apply independently inside each relevant section.
 | `random_state` | All model sections and `warmup` | Integer |
 | `dataloader_workers` | All model sections and `warmup` | Integer at least `0` |
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
-| `training_batch_size`, `epochs`, `learning_rate` | SR2 | Positive integers for batches/epochs; positive number for rate |
-| `head_inference_batch_size`, `gradient_accumulation_steps` | SR2 | Positive integers |
-| `min_lr_ratio` | SR2 | Number in `[0, 1]`; default `0.125`; minimum learning rate as a fraction of `learning_rate` |
-| `max_grad_norm` | SR2 | Positive number |
-| `lora_rank`, `lora_alpha` | SR2 | Positive integers |
-| `lora_dropout` | SR2 | Number in `[0, 1)` |
-| `lora_target_modules` | SR2 | Nonempty list of unique nonempty strings |
-| `gradient_checkpointing_threshold`, `gradient_checkpointing_budget` | SR2 | Integers at least `0`; each defaults to `0` |
+| `training_batch_size`, `epochs`, `learning_rate` | Frozen SR2 and LoRA | Positive integers for batches/epochs; positive number for rate |
+| `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
+| `min_lr_ratio` | LoRA | Number in `[0, 1]`; default `0.125`; minimum learning rate as a fraction of `learning_rate` |
+| `max_grad_norm` | Frozen SR2 and LoRA | Positive number |
+| `lora_rank`, `lora_alpha` | LoRA | Positive integers |
+| `lora_dropout` | LoRA | Number in `[0, 1)` |
+| `lora_target_modules` | LoRA | Nonempty list of unique nonempty strings |
+| `gradient_checkpointing_threshold`, `gradient_checkpointing_budget` | LoRA | Integers at least `0`; each defaults to `0` |
 
 `warmup` additionally requires `warmup_epochs` (integer at least `0`),
 `warmup_training_batch_size` (positive integer), `warmup_learning_rate` and
 `max_grad_norm` (positive numbers). It does not accept `training_batch_size`,
 `epochs`, `learning_rate`, `min_lr_ratio`, or `A/B_swap`.
 
-The SR2 section rejects `head_learning_rate`, `A/B_swap`, and the three
+Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the three
 `warmup_*` optimization keys.
 Internal `ab_swap`, `warmup_extraction_budget`, and `warmup_label_smoothing` are
 not YAML fields. See [migration](migration.md) for retired keys.
+
+`SR2_Qwen3_4B` trains only the SR2 head with fixed `learning_rate`, using
+`training_batch_size` for both optimization groups and head inference. It accepts
+the common model fields above, `epochs`, `training_batch_size`, `learning_rate`,
+and `max_grad_norm`; it rejects LoRA, joint-training, and `warmup_*` controls.
+Its independent section needs neither `warmup` nor `SR2_Qwen3_4B_lora`.
+Shipped values were copied once from each preset's warmup settings; changing
+either section later does not modify the other. Compatible training states and
+features still share the [warmup caches](caching.md#frozen-sr2-head-training).
 
 Joint training uses `learning_rate` for both adapters and the classifier head.
 One cosine curve spans all joint epochs and reaches
@@ -150,6 +161,7 @@ log loss.
 
 | Setting | Applies to |
 | --- | --- |
+| `SR2_Qwen3_4B.label_smoothing` | Frozen SR2 head training and epoch-end training-set evaluation |
 | `SR2_Qwen3_4B_lora.label_smoothing` | SR2 joint training only |
 | `warmup.label_smoothing` | All inline and standalone head warmup |
 
@@ -218,6 +230,8 @@ See [data preparation](data-preparation.md#one-shared-trainvalidation-split).
 | A LoRA section's `extraction_budget` | Its joint-validation and submission extraction |
 | A LoRA section's `head_inference_batch_size` | Head inference after extraction, including inline warmup train/validation evaluation; counts pairs, not tokens |
 | `warmup.warmup_training_batch_size` | Standalone warmup head training and train/validation inference batch size |
+| `SR2_Qwen3_4B.extraction_budget` | Frozen SR2 missing-branch feature extraction |
+| `SR2_Qwen3_4B.training_batch_size` | Frozen SR2 head training and train/validation inference batch size |
 
 Extraction sorts individual A/B branches by descending length, breaking ties by
 original branch index. Batch cost is `branch_count * longest_branch_length`;

@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
+	# "SR2-Qwen3-4B": ["1.yaml"],
 	"SR2-Qwen3-4B-lora": ["1.yaml"],
 }
 
@@ -66,7 +67,8 @@ def _validate() -> int:
 					encoding="utf-8",
 					errors="replace",
 					bufsize=1,
-					env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+					env=os.environ
+					| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
 				) as process:
 					assert process.stdout is not None
 					for line in process.stdout:

@@ -4,23 +4,64 @@
 
 Use the [saved processed split or prepare data](getting-started.md#choose-the-data-source),
 then choose a [configured model profile](../README.md#model-profiles).
-SR2 uses the saved holdout; validation/build uses one GPU and
-submission uses [two GPUs](configuration.md#gpu-configuration).
+Both SR2 profiles use the saved holdout; validation/build uses one GPU and
+LoRA submission uses [two GPUs](configuration.md#gpu-configuration).
 
 ## Validate, build, or submit
 
 | Mode | Training data | Main output | Does it save a production checkpoint? |
 | --- | --- | --- | --- |
 | `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Final-epoch `validation.csv`, `metrics.json`, `config.yaml` | No |
-| `model MODEL --build` | All original IDs from both partitions | `adapter[_TAG].pt` and `merged[_TAG]/` | Yes |
-| `model MODEL --submit` | No training; use test inputs and a compatible checkpoint | `submission.csv` | No |
+| `model SR2-Qwen3-4B --build` | All original IDs from both partitions | `head[_TAG].pt` | Yes |
+| `model SR2-Qwen3-4B-lora --build` | All original IDs from both partitions | `adapter[_TAG].pt` and `merged[_TAG]/` | Yes |
+| `model SR2-Qwen3-4B-lora --submit` | No training; use test inputs and a compatible checkpoint | `submission.csv` | No |
 | `model warmup --build` | Train partition only, original rows; evaluate train and validation | Completed SR2 warmup cache and both losses | No |
 
 Full-data model builds have no validation set. Standalone warmup evaluates the
 saved validation partition, including after restoring a cache hit.
-Validation publishes final-epoch predictions;
+Validation publishes final-epoch predictions, or current head evaluation after
+an exact frozen-SR2 cache hit;
 there is no best-epoch selection. Warmup caches and production checkpoints serve
 different purposes. See [LoRA stages](lora.md#optimization-and-head-warmup).
+
+## Frozen Skywork reward backbone
+
+```shell
+uv run model SR2-Qwen3-4B
+uv run model SR2-Qwen3-4B --build --checkpoint-tag experiment
+```
+
+`SR2-Qwen3-4B` freezes the same Skywork backbone and trains the same current
+SR2 swap-equivariant head without creating adapters. Its independent
+`SR2_Qwen3_4B` section uses ordinary `epochs`, `training_batch_size`, and
+`learning_rate` fields and does not require `warmup` or LoRA sections. The
+optimizer, fixed learning rate, clipping, precision, full-input serialization,
+and pooling follow head warmup. Training and inference use original rows only;
+the backbone stays in evaluation mode during feature extraction/head training.
+
+Validation trains on the saved train partition and publishes current holdout
+predictions, metrics, and the independent configuration snapshot. Each executed
+epoch evaluates the whole training set with final weights, dropout disabled,
+and configured label smoothing; validation log loss remains unsmoothed.
+Compatible tokens, frozen features, and completed head/optimizer/RNG states are
+[shared with warmup](caching.md#frozen-sr2-head-training). An exact head-cache hit
+evaluates current data without training and publishes `epochs: []`,
+`executed_training_epochs: 0`, and `cached_head_evaluation` losses/times. A
+lower-epoch hit executes only the remaining epochs, retaining their epoch numbers.
+
+Build uses every original ID from both partitions, without holdout evaluation.
+It prepares CPU inputs and checks the destination before configuring CUDA.
+It writes `models/SR2_Qwen3_4B/head[_TAG].pt`, containing FP32 head parameters,
+the head architecture, immutable backbone/tokenizer/serializer identities,
+training-source fingerprint, and effective settings. A staged file is reloaded
+on CPU and its metadata, exact tensor names/shapes, dtype, and finite values
+are checked before atomic replacement. It omits base weights and optimizer
+state; the frozen backbone needs no merged export. Build reports only executed
+epochs, including zero for an exact full-data head-cache hit.
+
+This profile does not support `--submit`. `ALL` runs it before LoRA for
+validation/build when configured; `ALL --submit` prints a skip message and
+executes only configured profiles supporting submission.
 
 ## Skywork reward backbone with LoRA
 

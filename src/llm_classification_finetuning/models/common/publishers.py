@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ...config import LORA_WARMUP_FIELDS, AppConfig, LoRAModelConfig
+from ...config import LORA_WARMUP_FIELDS, AppConfig, LoRAModelConfig, SR2ModelConfig
 from ...errors import ModelExecutionError
 from ...timing import format_duration
 from ..profile import ModelProfile
@@ -106,6 +106,16 @@ class ModelResultPublisher:
 		}
 		if prediction_aggregation is not None:
 			metrics["prediction_aggregation"] = prediction_aggregation
+		if isinstance(model_config, SR2ModelConfig):
+			metrics["executed_training_epochs"] = len(result.epochs)
+		if result.final_evaluation is not None:
+			evaluation = result.final_evaluation
+			metrics["cached_head_evaluation"] = {
+				"training_loss": evaluation.training_loss,
+				"validation_loss": evaluation.validation_loss,
+				"training_time": format_duration(evaluation.training_time_seconds),
+				"validation_time": format_duration(evaluation.validation_time_seconds),
+			}
 		try:
 			self._results_root.mkdir(parents=True, exist_ok=True)
 			with tempfile.TemporaryDirectory(
@@ -205,6 +215,8 @@ class ModelResultPublisher:
 			if model_config.ab_swap == "none":
 				model_section.pop("ab_swap")
 				sections["warmup"].pop("ab_swap")
+		elif isinstance(model_config, SR2ModelConfig):
+			model_section.pop("ab_swap")
 		sections[profile.config_key] = model_section
 		return {
 			section_name: {

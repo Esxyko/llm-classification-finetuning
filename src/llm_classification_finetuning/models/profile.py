@@ -19,6 +19,7 @@ class ModelProfile:
 	quantize_training: bool = False
 	head_architecture: str = "pairwise_mlp"
 	ab_swap_override: str | None = None
+	supports_submit: bool = True
 
 	def is_configured(self, config: AppConfig) -> bool:
 		"""Return whether the selected YAML includes this model's section."""

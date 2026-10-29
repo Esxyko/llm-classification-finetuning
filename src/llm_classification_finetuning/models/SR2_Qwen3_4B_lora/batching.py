@@ -523,11 +523,13 @@ class LoRATrainingBatchRepository:
 		backbone_hidden_size: int | None = None,
 		local_weights_sha256: str | None = None,
 		warmup_only: bool = False,
+		allow_full_data: bool = False,
 	) -> None:
 		if not warmup_only and not isinstance(config, LoRAModelConfig):
 			raise TypeError("Joint training batches require a LoRAModelConfig.")
 		self._config = config
 		self._warmup_only = warmup_only
+		self._allow_full_data = allow_full_data
 		self._model_label = model_label
 		self.data = data
 		self.serializer_version = serializer_version
@@ -560,17 +562,28 @@ class LoRATrainingBatchRepository:
 		*,
 		profile: ModelProfile | None = None,
 		warmup_only: bool = False,
+		head_only_config: WarmupModelConfig | None = None,
 	) -> LoRATrainingBatchRepository:
 		"""Load data and canonical tokens once, preparing split plans on demand."""
 		profile = profile or PROFILE
-		model_key = "warmup" if warmup_only else profile.config_key
+		if head_only_config is not None and not warmup_only:
+			raise ValueError(
+				"An explicit head-only configuration requires warmup_only=True."
+			)
+		model_key = (
+			"warmup" if warmup_only and head_only_config is None else profile.config_key
+		)
 		model_label = (
-			"Warmup"
+			profile.selector
+			if head_only_config is not None
+			else "Warmup"
 			if warmup_only
 			else ("QLoRA" if profile.quantize_training else "LoRA")
 		)
 		model = (
-			profile.resolve_config(config)
+			head_only_config
+			if head_only_config is not None
+			else profile.resolve_config(config)
 			if not warmup_only
 			else getattr(config, model_key, None)
 		)
@@ -619,6 +632,7 @@ class LoRATrainingBatchRepository:
 				model_key=model_key,
 				model_label=model_label,
 				warmup_only=warmup_only,
+				allow_full_data=head_only_config is not None,
 			)
 		except ModelExecutionError:
 			raise
@@ -733,7 +747,7 @@ class LoRATrainingBatchRepository:
 
 	def get_training(self, *, full_data: bool = False) -> PreparedTrainingSplit:
 		"""Select holdout-training or full-data orientations and their cached batches."""
-		if self._warmup_only and full_data:
+		if self._warmup_only and full_data and not self._allow_full_data:
 			raise ModelExecutionError(
 				"Standalone warmup only supports the train partition."
 			)

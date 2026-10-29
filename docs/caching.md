@@ -12,7 +12,7 @@ Production checkpoints under `models/` are separate artifacts.
 | Artifact under `CACHE_PATH` | Reuse depends on | Important exclusions |
 | --- | --- | --- |
 | `token_cache/` | Text, tokenizer content/implementation, encoding options, library/schema versions | IDs, labels, split, source path, model weights, training settings |
-| `embedding_cache/` (SR2 warmup and historical frozen model) | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, head/training settings, attention implementation, TF32, extraction budget |
+| `embedding_cache/` (frozen SR2, SR2 warmup, and historical frozen model) | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, head/training settings, attention implementation, TF32, extraction budget |
 | `adapter_batches/plans/` | Selected sample identities/orientations and A/B lengths, checkpointing threshold, update-group size, algorithm version | Labels, source order, token content beyond lengths, second-pass budget |
 | `SR2_Qwen3_4B_lora_warmup/` | Original training ID set and effective SR2 warmup identity | Text/labels, validation IDs, precision, joint-training settings |
 
@@ -146,7 +146,7 @@ embedding files and shards using retired identities are not read. See
 
 ## Warmup features
 
-Standalone warmup and inline non-quantized SR2 warmup share per-branch features
+Frozen SR2, standalone warmup, and inline non-quantized SR2 warmup share per-branch features
 under `embedding_cache/<key>.sqlite3`. `WarmupFeatureCache` uses the shared
 `EmbeddingCache` and `CacheStorage`, including locks, checksums, atomic publication,
 and multipart storage. A first run extracts each missing unique branch once;
@@ -218,10 +218,26 @@ reusing the base plan. Logged plan micro-batch counts describe the base plan;
 update counts follow finalized merged groups. See
 [joint batching](lora.md#optional-token-budget-training-batches).
 
+## Frozen SR2 head training
+
+`SR2_Qwen3_4B` uses the same token, adapter-free feature, and completed head
+state caches as standalone/inline LoRA warmup. Its independent `epochs`,
+`training_batch_size`, and `learning_rate` map to the existing cache fields
+`warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate`.
+No cache identity or schema changes are needed. Other compatibility rules below,
+including training ID sets and the treatment of changed text/labels, still apply.
+
+Exact head hits evaluate current train/validation data for validation runs, or
+all training data for builds, without optimizing or rewriting the cached state.
+Partial hits continue only the remaining epochs with the existing shuffle/RNG
+restoration. Validation publishes a new report even when no epochs run; build
+saves its independent `head[_TAG].pt` artifact even when the head is fully cached.
+`--refresh-cache` refreshes requested token, feature, and head entries.
+
 ## LoRA head warmup
 
-SR2 and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
-Skywork features in the shipped presets. Both use the
+Frozen SR2, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
+Skywork features in the shipped presets. All use the
 `swap_equivariant_harmonic_discrepancy_v3` head architecture and warmup schema v5.
 This head packs L/M into one projection for the wins and separately projects
 X/Y with the FP32 parameter difference L-M and a shared zero-initialized B3.

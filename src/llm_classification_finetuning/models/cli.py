@@ -1,4 +1,4 @@
-"""Command-line interface for the Skywork LoRA model and head warmup."""
+"""Command-line interface for frozen/LoRA Skywork models and head warmup."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
 	modes.add_argument(
 		"--build",
 		action="store_true",
-		help="Build a full-data checkpoint and merged backbone, or a train-partition head-warmup cache for warmup.",
+		help="Build a full-data head checkpoint (plus a merged backbone for LoRA), or a train-partition head-warmup cache for warmup.",
 	)
 	modes.add_argument(
 		"--submit",
@@ -74,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"--checkpoint-tag",
 		type=_checkpoint_tag,
 		metavar="TAG",
-		help="Select adapter_TAG.pt and, for builds, merged_TAG/ (build and submit only).",
+		help="Select head_TAG.pt or adapter_TAG.pt and LoRA merged_TAG/ (build and submit only).",
 	)
 	return parser
 
@@ -82,6 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
 def run(arguments: Sequence[str] | None = None) -> int:
 	"""Run the selected model mode and return a process exit code."""
 	parsed_arguments = build_parser().parse_args(arguments)
+	if (
+		parsed_arguments.submit
+		and parsed_arguments.model in MODEL_REGISTRY
+		and not MODEL_REGISTRY[parsed_arguments.model].profile.supports_submit
+	):
+		raise SystemExit(f"{parsed_arguments.model} does not support --submit")
 	if parsed_arguments.model == WARMUP_MODEL:
 		if not parsed_arguments.build:
 			raise SystemExit(
@@ -243,14 +249,22 @@ def _run_all_models(
 	checkpoint_tag: str | None,
 ) -> int:
 	"""Run configured models, preserving registry order after failures."""
+	if mode is ModelMode.SUBMIT:
+		for selector, registration in MODEL_REGISTRY.items():
+			if (
+				registration.profile.is_configured(config)
+				and not registration.profile.supports_submit
+			):
+				print(f"Skipping {selector}: --submit is unsupported.", flush=True)
 	registrations = {
 		selector: registration
 		for selector, registration in MODEL_REGISTRY.items()
 		if registration.profile.is_configured(config)
+		and (mode is not ModelMode.SUBMIT or registration.profile.supports_submit)
 	}
 	if not registrations:
 		raise ConfigurationError(
-			"The selected configuration contains no model sections."
+			f"The selected configuration contains no model sections supporting {mode.value}."
 		)
 	failed_models: list[str] = []
 	for selector, registration in registrations.items():

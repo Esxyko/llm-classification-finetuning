@@ -31,7 +31,7 @@ from .pipeline import ModelPipeline
 from .progress import TrainingProgress
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
 from .token_cache import PairwiseTokenStore, TokenizationCache, TokenizedTexts
-from .trainer import EpochMetrics, ValidationTrainingResult
+from .trainer import EpochMetrics, FinalEvaluationMetrics, ValidationTrainingResult
 
 __all__ = (
 	"ABSwapAverager",
@@ -45,6 +45,7 @@ __all__ = (
 	"EmbeddingCacheRows",
 	"EpochMetrics",
 	"ExtractionBatchSampler",
+	"FinalEvaluationMetrics",
 	"GPUEnvironment",
 	"GPUMemoryMonitor",
 	"GPUMemoryPeak",

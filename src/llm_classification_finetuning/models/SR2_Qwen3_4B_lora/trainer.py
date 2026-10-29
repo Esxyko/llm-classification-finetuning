@@ -26,6 +26,7 @@ from ..common import (
 	ClassificationLoss,
 	EpochMetrics,
 	ExtractionBatchSampler,
+	FinalEvaluationMetrics,
 	GPUMemoryMonitor,
 	PairwiseText,
 	PairwiseTokenStore,
@@ -66,6 +67,7 @@ class LoRATrainingHistory:
 	warmup_validation_loss: float | None = None
 	executed_warmup_epochs: int = 0
 	executed_joint_epochs: int = 0
+	final_evaluation: FinalEvaluationMetrics | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +114,7 @@ class _CosineLearningRateSchedule:
 
 
 class LoRATrainer:
-	"""Run adapter optimization on one configured CUDA device."""
+	"""Run adapter or frozen-head optimization on one configured CUDA device."""
 
 	def __init__(
 		self,
@@ -124,6 +126,8 @@ class LoRATrainer:
 		refresh_cache: bool = False,
 		profile: ModelProfile | None = None,
 		warmup_only: bool = False,
+		config_key: str | None = None,
+		warmup_cache_stem: str | None = None,
 		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> None:
 		profile = profile or PROFILE
@@ -146,20 +150,34 @@ class LoRATrainer:
 			reduction="sum",
 		)
 		self._warmup_only = warmup_only
+		self._standalone_warmup = warmup_only and config_key is None
 		self._gpu = gpu
 		self._device = device
 		self._gpu_memory_monitor = gpu_memory_monitor
 		self._token_cache_dir = token_cache_dir
 		self._refresh_cache = refresh_cache
-		self._config_key = "warmup" if warmup_only else profile.config_key
-		self._model_key = "warmup" if warmup_only else profile.artifact_stem
+		self._config_key = config_key or (
+			"warmup" if warmup_only else profile.config_key
+		)
+		self._model_key = "warmup" if self._standalone_warmup else profile.artifact_stem
 		self._quantize_training = profile.quantize_training
 		self._head_architecture = profile.head_architecture
-		self._model_label = "QLoRA" if self._quantize_training else "LoRA"
+		self._model_label = (
+			profile.selector
+			if warmup_only and not self._standalone_warmup
+			else "QLoRA"
+			if self._quantize_training
+			else "LoRA"
+		)
+		self._head_stage = (
+			"head training"
+			if warmup_only and not self._standalone_warmup
+			else "head warmup"
+		)
 		self._warmup_feature_cache = WarmupFeatureCache(
 			token_cache_dir.parent / "embedding_cache", model_label=self._model_label
 		)
-		artifact_stem = profile.artifact_stem
+		artifact_stem = warmup_cache_stem or profile.artifact_stem
 		self._warmup_cache = HeadWarmupCache(
 			token_cache_dir.parent / f"{artifact_stem}_warmup",
 			config,
@@ -192,7 +210,7 @@ class LoRATrainer:
 		device_map: dict[str, str] | None = None,
 		quantize_backbone: bool | None = None,
 	) -> LoRAQwenClassifier:
-		"""Initialize fresh adapter/head parameters and a matching tokenizer."""
+		"""Initialize an adapter-bearing or frozen backbone and a fresh SR2 head."""
 		set_seed(seed)
 		model = LoRAQwenClassifier(
 			self._config,
@@ -272,7 +290,7 @@ class LoRATrainer:
 		self, batches: LoRATrainingBatchRepository
 	) -> ValidationTrainingResult:
 		"""Train one fresh model against the saved holdout and align final predictions."""
-		if self._warmup_only:
+		if self._standalone_warmup:
 			raise ModelExecutionError(
 				"Standalone warmup must use build_warmup for head-only evaluation."
 			)
@@ -324,6 +342,7 @@ class LoRATrainer:
 			source_training_rows=int(
 				data.reference.loc[data.reference["split"].eq("train"), "id"].nunique()
 			),
+			final_evaluation=history.final_evaluation,
 		)
 
 	def fit(
@@ -338,7 +357,7 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
-		"""Warm up the head, then jointly optimize both groups with cosine decay."""
+		"""Train the head at a fixed rate, then optionally run joint cosine decay."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		reference = training.reference
@@ -372,7 +391,7 @@ class LoRATrainer:
 		remaining_warmup_epochs = self._config.warmup_epochs - completed_warmup_epochs
 		mode = (
 			"validation"
-			if validation is not None and not self._warmup_only
+			if validation is not None and not self._standalone_warmup
 			else "build"
 		)
 		if progress is None:
@@ -415,7 +434,7 @@ class LoRATrainer:
 		if reused_warmup:
 			status = "Resuming" if remaining_warmup_epochs else "Reused"
 			print(
-				f"{status} {self._model_label} head warmup ({description}): "
+				f"{status} {self._model_label} {self._head_stage} ({description}): "
 				f"completed_epochs={completed_warmup_epochs}, "
 				f"target_epochs={self._config.warmup_epochs}, "
 				f"remaining_epochs={remaining_warmup_epochs}; "
@@ -428,7 +447,7 @@ class LoRATrainer:
 			)
 		elif entry is not None:
 			print(
-				f"Rebuilding {self._model_label} head warmup ({description}): "
+				f"Rebuilding {self._model_label} {self._head_stage} ({description}): "
 				f"completed_epochs=0, target_epochs={self._config.warmup_epochs}, "
 				f"remaining_epochs={remaining_warmup_epochs}; "
 				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
@@ -441,6 +460,7 @@ class LoRATrainer:
 		probabilities: np.ndarray | None = None
 		warmup_training_loss: float | None = None
 		warmup_validation_loss: float | None = None
+		final_evaluation: FinalEvaluationMetrics | None = None
 		total_epochs = self._config.warmup_epochs + (
 			0 if self._warmup_only else self._config.epochs
 		)
@@ -473,7 +493,7 @@ class LoRATrainer:
 				else None
 			)
 		if self._warmup_only and reused_warmup and not remaining_warmup_epochs:
-			self._timestamp()
+			evaluation_started = self._timestamp()
 			progress.start_stage(
 				stage="Cached head evaluation",
 				total_steps=training_evaluation_steps + validation_steps,
@@ -490,6 +510,7 @@ class LoRATrainer:
 					progress=progress,
 					description=f"{description} cached head",
 				)
+			training_evaluated = self._timestamp()
 			if validation is not None:
 				with self._memory_stage("validation"):
 					warmup_validation_loss, probabilities = self.evaluate(
@@ -502,7 +523,13 @@ class LoRATrainer:
 						progress=progress,
 						description=f"{description} cached head",
 					)
-			self._timestamp()
+			validation_evaluated = self._timestamp()
+			final_evaluation = FinalEvaluationMetrics(
+				training_loss=warmup_training_loss,
+				validation_loss=warmup_validation_loss,
+				training_time_seconds=training_evaluated - evaluation_started,
+				validation_time_seconds=validation_evaluated - training_evaluated,
+			)
 			progress.finish_stage(f"{description} cached head")
 		elif remaining_warmup_epochs:
 			warmup_steps = OptimizerGroupLayout(
@@ -510,14 +537,14 @@ class LoRATrainer:
 			).update_count
 			self._timestamp()
 			progress.start_stage(
-				stage="Head warmup",
+				stage=self._head_stage.capitalize(),
 				total_steps=remaining_warmup_epochs
 				* (warmup_steps + training_evaluation_steps + validation_steps),
 			)
 		for epoch in range(first_epoch, total_epochs + 1):
 			epoch_started = self._timestamp()
 			head_only = epoch <= self._config.warmup_epochs
-			stage = "head warmup" if head_only else "joint training"
+			stage = self._head_stage if head_only else "joint training"
 			stage_epoch = epoch if head_only else epoch - self._config.warmup_epochs
 			stage_epochs = (
 				self._config.warmup_epochs if head_only else self._config.epochs
@@ -597,7 +624,7 @@ class LoRATrainer:
 						feature_loader=warmup_training,
 						head_only=True,
 						criterion=self._warmup_criterion,
-						stage="head warmup training evaluation",
+						stage=f"{self._head_stage} training evaluation",
 						progress=progress,
 						description=epoch_description,
 					)
@@ -649,7 +676,7 @@ class LoRATrainer:
 			if head_only and epoch == self._config.warmup_epochs and entry is not None:
 				self._warmup_cache.save(entry, model.classifier, optimizer, scaler)
 				print(
-					f"Saved {self._model_label} head warmup ({description}): "
+					f"Saved {self._model_label} {self._head_stage} ({description}): "
 					f"source_precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
 					flush=True,
 				)
@@ -662,6 +689,7 @@ class LoRATrainer:
 			warmup_validation_loss=warmup_validation_loss,
 			executed_warmup_epochs=executed_warmup_epochs,
 			executed_joint_epochs=executed_joint_epochs,
+			final_evaluation=final_evaluation,
 		)
 
 	def _prepare_warmup(
@@ -790,7 +818,7 @@ class LoRATrainer:
 					# A consumed group advances progress even if FP16 skips its update.
 					progress.advance(
 						description,
-						stage="head warmup" if head_only else "joint training",
+						stage=self._head_stage if head_only else "joint training",
 					)
 		if (
 			group_processed
@@ -882,7 +910,11 @@ class LoRATrainer:
 				)
 				self._timestamp()
 				progress.start_stage(
-					stage="Warmup feature extraction",
+					stage=(
+						"Frozen feature extraction"
+						if self._warmup_only and not self._standalone_warmup
+						else "Warmup feature extraction"
+					),
 					total_steps=len(extraction_loader),
 				)
 				embeddings = self._extract_features(
@@ -891,7 +923,11 @@ class LoRATrainer:
 					records,
 					extraction_budget=extraction_budget,
 					seed=seed,
-					stage="warmup",
+					stage=(
+						"frozen"
+						if self._warmup_only and not self._standalone_warmup
+						else "warmup"
+					),
 					extraction_loader=extraction_loader,
 					target=cache_entry.rows.features
 					if cache_entry is not None
@@ -994,7 +1030,7 @@ class LoRATrainer:
 			)
 		model.eval()
 		progress_stage = stage or (
-			"head warmup validation"
+			f"{self._head_stage} validation"
 			if head_only
 			else "joint validation"
 			if "label" in reference

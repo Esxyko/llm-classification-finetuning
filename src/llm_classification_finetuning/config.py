@@ -96,6 +96,20 @@ class WarmupModelConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SR2ModelConfig(ModelConfig):
+	"""Independent frozen-Skywork head settings with warmup-compatible optimization."""
+
+	max_grad_norm: float = field(kw_only=True)
+
+	def as_warmup_config(self) -> WarmupModelConfig:
+		"""Translate public model fields into the shared head-training configuration."""
+		values = asdict(self)
+		for name in LORA_WARMUP_FIELDS:
+			values[name] = values.pop(name.removeprefix("warmup_"))
+		return WarmupModelConfig(**values)
+
+
+@dataclass(frozen=True, slots=True)
 class LoRAModelConfig(WarmupModelConfig):
 	"""Effective adapter settings, with warmup optimization and extraction resolved."""
 
@@ -126,6 +140,7 @@ class AppConfig:
 	result_dir: Path
 	warmup: WarmupModelConfig | None = None
 	SR2_Qwen3_4B_lora: LoRAModelConfig | None = None
+	SR2_Qwen3_4B: SR2ModelConfig | None = None
 
 	@classmethod
 	def load(cls, config_path: Path) -> AppConfig:
@@ -165,6 +180,7 @@ class AppConfig:
 				"validation",
 				"gpu",
 				"SR2_Qwen3_4B_lora",
+				"SR2_Qwen3_4B",
 				"warmup",
 			},
 			"configuration root",
@@ -201,6 +217,7 @@ class AppConfig:
 			"gpu",
 		)
 		warmup = _load_warmup_model_config(root) if "warmup" in root else None
+		SR2_Qwen3_4B = _load_sr2_model_config(root) if "SR2_Qwen3_4B" in root else None
 		SR2_Qwen3_4B_lora = (
 			_load_lora_model_config(root, warmup, "SR2_Qwen3_4B_lora")
 			if "SR2_Qwen3_4B_lora" in root
@@ -311,6 +328,7 @@ class AppConfig:
 			),
 			warmup=warmup,
 			SR2_Qwen3_4B_lora=SR2_Qwen3_4B_lora,
+			SR2_Qwen3_4B=SR2_Qwen3_4B,
 		)
 
 
@@ -321,6 +339,24 @@ def resolve_result_dir(base_dir: Path) -> Path:
 	)
 
 
+def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
+	section_name = "SR2_Qwen3_4B"
+	section = _require_mapping(root.get(section_name), section_name)
+	keys = set(SR2ModelConfig.__dataclass_fields__) - {"ab_swap"}
+	_reject_unknown_keys(section, keys, section_name)
+	aliases = {name: name.removeprefix("warmup_") for name in LORA_WARMUP_FIELDS}
+	values = dict(section)
+	for internal, public in aliases.items():
+		values[internal] = values.pop(public, None)
+	shared = _load_warmup_fields(values, section_name, field_aliases=aliases)
+	if shared.warmup_epochs <= 0:
+		raise ConfigurationError(f"{section_name}.epochs must be greater than 0.")
+	values = asdict(shared)
+	for internal, public in aliases.items():
+		values[public] = values.pop(internal)
+	return SR2ModelConfig(**values)
+
+
 def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
 	section = _require_mapping(root.get("warmup"), "warmup")
 	keys = set(WarmupModelConfig.__dataclass_fields__) - {"ab_swap"}
@@ -329,12 +365,15 @@ def _load_warmup_model_config(root: Mapping[str, Any]) -> WarmupModelConfig:
 
 
 def _load_warmup_fields(
-	section: Mapping[str, Any], section_name: str
+	section: Mapping[str, Any],
+	section_name: str,
+	*,
+	field_aliases: Mapping[str, str] | None = None,
 ) -> WarmupModelConfig:
 	"""Validate the same head-warmup fields for standalone and adapter training."""
 
 	def field(name: str) -> str:
-		return f"{section_name}.{name}"
+		return f"{section_name}.{(field_aliases or {}).get(name, name)}"
 
 	def positive_integer(name: str) -> int:
 		return _require_positive_integer(section.get(name), field(name))

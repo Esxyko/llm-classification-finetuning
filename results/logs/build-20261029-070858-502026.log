@@ -1,0 +1,9 @@
+Saving build log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/build-20261029-070858-502026.log
+Running full-data build for 1.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Created LoRA batch plan (build): 57,477 rows, 56 updates, 4,114 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/c11bf29d4799b6d3c377abfc318274affabf0ffdf7d8a90c73863465a0749556.pt
+Error: CUDA is not available. Model execution requires a configured CUDA GPU.
+Failed full-data build for 1.yaml: SR2-Qwen3-4B-lora (exit code 1)
+Completed 0/1 tasks.
+Failed tasks: 1.yaml: SR2-Qwen3-4B-lora

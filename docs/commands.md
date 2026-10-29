@@ -17,12 +17,12 @@ run `model` directly instead of `uv run model`.
 | `uv run data` | Download missing Kaggle files only | `data/raw/*.csv` |
 | `uv run preprocess` | Rebuild the split from local `train.csv` | `data/processed/train_validation.parquet` |
 | `uv run model MODEL` | Validate on the saved holdout | `results/MODEL-<timestamp>/` |
-| `uv run model MODEL --build` | Train on IDs from both partitions; save adapter/head and merged backbone | `models/SR2_Qwen3_4B_lora/adapter.pt` and `merged/` |
-| `uv run model MODEL --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
+| `uv run model MODEL --build` | Train on IDs from both partitions; save a head, or LoRA adapter/head and merged backbone | `models/SR2_Qwen3_4B/head.pt`, or `models/SR2_Qwen3_4B_lora/adapter.pt` and `merged/` |
+| `uv run model SR2-Qwen3-4B-lora --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
 | `uv run model warmup --build` | Train/cache an SR2 head on the train partition only | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt` |
 | `uv run result [RUN]` | Report a selected or latest validation run | `results/comprehensive/` |
 | `uv run python scripts/validate.py` | Validate explicit model/config pairs sequentially | Validation directories and `results/logs/validate-*.log` |
-| `uv run python scripts/build.py` | Build explicit model/config pairs sequentially, including standalone warmup | Adapter/head and merged backbone, or warmup caches; `results/logs/build-*.log` |
+| `uv run python scripts/build.py` | Build explicit model/config pairs sequentially, including standalone warmup | Frozen head, LoRA adapter/head and merged backbone, or warmup caches; `results/logs/build-*.log` |
 
 The processed `.parquet` path is logical; large files use a manifest and volumes.
 See [multipart storage](caching.md#shared-storage-and-multipart-files).
@@ -33,29 +33,30 @@ batch logs; the table shows its default `./results`. See
 
 ## Model selection and execution modes
 
-`MODEL` is `SR2-Qwen3-4B-lora` or uppercase `ALL`; the separate `warmup`
+`MODEL` is `SR2-Qwen3-4B`, `SR2-Qwen3-4B-lora`, or uppercase `ALL`; the separate `warmup`
 selector is build-only. Selector spelling differs from the
 [YAML section names](configuration.md#configuration-sections).
 
 | Option | Behavior |
 | --- | --- |
-| No mode flag | Holdout validation; publishes the final epoch's predictions, without saving a production checkpoint |
-| `--build` | Train on all original IDs from both saved partitions and save adapter/head plus the merged backbone |
-| `--submit` | Load the selected checkpoint; requires test files and two configured GPUs |
+| No mode flag | Holdout validation; publishes final predictions (current evaluation after a frozen head-cache hit), without saving a production checkpoint |
+| `--build` | Train on all original IDs; save a frozen head, or LoRA adapter/head plus the merged backbone |
+| `--submit` | LoRA only: load the selected checkpoint; requires test files and two configured GPUs |
 | `--refresh-cache` | Rebuild requested token entries and the selected mode's model-specific caches |
-| `--checkpoint-tag TAG` | Choose `adapter_TAG.pt` and, for build, `merged_TAG/`; build/submit only |
+| `--checkpoint-tag TAG` | Choose frozen `head_TAG.pt`, or LoRA `adapter_TAG.pt` and build `merged_TAG/`; build/submit only |
 
 `--build` and `--submit` are mutually exclusive. A tag starts with an ASCII
 letter or digit and contains only ASCII letters, digits, `_`, or `-`.
-Without a tag, builds replace `adapter.pt` and `merged/`. Use the same tag and
+Without a tag, builds replace frozen `head.pt`, or LoRA `adapter.pt` and `merged/`. Use the same tag and
 compatible configuration when submitting. Submission continues to use the
 adapter/head checkpoint with the original base weights. See
 [build outputs](models.md#build-and-submit).
 
-`ALL` runs SR2 when its section is present in the YAML. It accepts the same
-mode, refresh, and tag options, continues
+`ALL` runs configured frozen SR2 before LoRA. `ALL --submit` skips frozen SR2
+with a message; explicitly requesting `SR2-Qwen3-4B --submit` fails before
+configuration/data/GPU setup. `ALL` accepts the same mode, refresh, and tag options, continues
 after model failures, and exits with status `1` if any fail. An empty selection
-is an error. The entire YAML is validated before any model runs.
+or no model supporting the selected mode is an error. The entire YAML is validated before any model runs.
 
 ## Standalone warmup
 
@@ -90,7 +91,8 @@ See [warmup configuration](configuration.md#standalone-warmup) and
 `--refresh-cache` affects only entries requested by the selected execution mode.
 For LoRA validation/build with warmup enabled, it forces a new warmup and
 refreshes requested tokens, warmup feature entries, and batch plans. Standalone
-warmup also refreshes its requested tokens, features, and head state. Submission
+warmup also refreshes its requested tokens, features, and head state. Frozen SR2
+validation/build refreshes requested tokens, features, and shared head state. LoRA submission
 uses neither warmup states nor joint-training plans. Refresh is not a checkpoint rebuild or a
 request to delete all existing caches; see [cache identities](caching.md).
 
@@ -108,7 +110,7 @@ Validation logs use `<RESULT_PATH>/logs/validate-*.log`.
 [scripts/build.py](../scripts/build.py) runs full-data builds and standalone
 warmup. Each task invokes `uv run model MODEL --config PATH --build` from the
 project root. A `warmup` task creates or reuses the train-partition head-warmup
-cache; a registered model builds its full-data adapter/head and merged backbone.
+cache; frozen SR2 builds its full-data head, and LoRA builds adapter/head and merged backbone.
 For example, this selection runs standalone warmup before a full-data build:
 
 ```python
@@ -123,14 +125,14 @@ Standalone warmup and full-data builds use different training ID sets; see
 `<RESULT_PATH>/logs/build-*.log`.
 
 The batch script does not add `--checkpoint-tag`. Multiple configs for the same
-model replace the default `adapter.pt` and `merged/` outputs in sequence. Use the
+model replace the default `head.pt`, or `adapter.pt` and `merged/` outputs in sequence. Use the
 model CLI directly with tags when separate checkpoints are needed.
 
 ### Shared batch behavior
 
 Each script selects work independently through its top-level `CONFIG_DIR` and
 `MODEL_CONFIGS` constants. Both currently select `SR2-Qwen3-4B-lora` with
-`3.yaml` from `configs/`. Edit these constants to choose other combinations;
+`1.yaml` from `configs/`, with an optional commented frozen-SR2 selection. Edit these constants to choose other combinations;
 there are no script CLI selection flags. Dictionary keys are registered model
 selectors, with `warmup` additionally supported by the build script. Each list
 contains filenames relative to `CONFIG_DIR`, resolved from the script's project
