@@ -169,8 +169,8 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, config-only head initialization with lazy frozen-backbone loading on feature misses and CPU/CUDA RNG preservation, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
-| `trainer.py` | CPU submission-token preparation, polynomial head/warmup and independent cosine joint learning-rate curves, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
-| `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, exact polynomial-curve or descending fixed-rate compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
+| `trainer.py` | CPU submission-token preparation, epoch-based exponential head/warmup and independent update-based cosine joint learning-rate curves, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
+| `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, exact exponential-training or descending fixed-rate compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
 | `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across frozen SR2 and standalone/inline warmup |
 | `checkpoint.py` | Destination write preflight, portable adapter/head persistence and shared CPU loading checks, revision/architecture compatibility, and merged-backbone/tokenizer export with metadata, local validation, and recoverable directory replacement |
 | `pipeline.py` | LoRA holdout/submission orchestration and independent full-data build flow with CPU preparation and both write preflights before GPU setup, adapter/head saving before merged export, cleanup preserving execution errors, and non-quantized dual-GPU submission |
@@ -255,8 +255,8 @@ present in a fresh checkout.
    `scaled_uniform_zero_discrepancy_v1`, isolating earlier Xavier-initialized
    states without changing production-checkpoint compatibility.
    Frozen SR2 uses this same head and initialization, freezing the backbone and
-   training only the head with the shared warmup polynomial-decay algorithm and
-   its independent rate/minimum ratio/exponent, without adapters.
+   training only the head with the shared warmup epoch-based exponential-decay
+   algorithm and its independent initial rate/decay base, without adapters.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen/warmup features, plans,
    warmup state, and production checkpoints. Map cached entries to current rows/labels; never
@@ -271,9 +271,9 @@ present in a fresh checkout.
    skip backbone
    weights while retaining applicable input and hardware checks. Complete inline warmup hits
    skip warmup work; complete standalone and frozen-SR2 hits evaluate the restored head on current
-   train/validation data without training or rewriting cached state. Polynomial decay
-   reuses only the exact target epoch and includes `polynomial_v1` schedule,
-   minimum ratio, and exponent identity fields, isolating earlier cosine caches.
+   train/validation data without training or rewriting cached state. Exponential decay
+   reuses only the exact target epoch and includes `exponential_epoch_v1` schedule
+   and original decay-base identity fields, isolating earlier polynomial/cosine caches.
    Fixed-rate partial hits select the largest compatible lower epoch, reconstruct
    shuffle state with index-only
    replay, restore training RNG after feature preparation, and execute only remaining
@@ -300,10 +300,12 @@ present in a fresh checkout.
    checkpointing removes input-gradient hooks. Joint groups share one learning
    rate and one cosine curve across all joint epochs; each consumed optimizer
    group advances decay once, including FP16-skipped updates. Head warmup has
-   its own polynomial curve across all warmup epochs; both head exponents default
-   to `2.0` and accept finite positive values or `e`, resolved to Euler's number
-   before training, snapshotting, and cache identity construction. A minimum
-   ratio of `1` keeps either stage's rate fixed. See
+   its own exponential curve, setting `initial_lr * exp(-ln(base) * epoch_index)`
+   at the start of each zero-based epoch and holding it fixed within that epoch.
+   Both head bases default to `1.5` and accept finite numbers at least `1`;
+   configurations, snapshots, checkpoint training metadata, and cache identities
+   retain the original base. A head base of `1` keeps its rate fixed; joint
+   training uses a minimum ratio of `1` for a fixed rate. See
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented

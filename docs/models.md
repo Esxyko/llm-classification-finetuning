@@ -34,11 +34,10 @@ uv run model SR2-Qwen3-4B --build --checkpoint-tag experiment
 `SR2-Qwen3-4B` freezes the same Skywork backbone and trains the same current
 SR2 swap-equivariant head without creating adapters. Its independent
 `SR2_Qwen3_4B` section uses ordinary `epochs`, `training_batch_size`, and
-`learning_rate` fields, plus `min_lr_ratio` (default `0.125`) and `lr_decay_power`
-(default `2.0`), and does not require `warmup` or LoRA sections. The optimizer,
-polynomial learning-rate decay, clipping, precision, full-input serialization,
-and pooling follow head warmup. Training
-and inference use original rows only;
+`learning_rate` fields, plus `lr_decay_base` (default `1.5`), and does not require
+`warmup` or LoRA sections. The optimizer, epoch-based exponential learning-rate
+decay, clipping, precision, full-input serialization, and pooling follow head
+warmup. Training and inference use original rows only;
 the backbone stays in evaluation mode during feature extraction/head training.
 
 Validation trains on the saved train partition and publishes current holdout
@@ -49,9 +48,9 @@ Compatible tokens, frozen features, and completed head/optimizer/RNG states are
 [shared with warmup](caching.md#frozen-sr2-head-training). An exact head-cache hit
 evaluates current data without training and publishes `epochs: []`,
 `executed_training_epochs: 0`, and `cached_head_evaluation` losses/times. A
-lower-epoch hit is supported only with `min_lr_ratio: 1`; it executes only the
+lower-epoch hit is supported only with `lr_decay_base: 1`; it executes only the
 remaining epochs, retaining their epoch numbers. With decay enabled, a changed
-target epoch count requires the complete new curve to be trained.
+target epoch count requires a complete new run on a cache miss.
 
 Build uses every original ID from both partitions, without holdout evaluation.
 It prepares CPU inputs and checks the destination before configuring CUDA.
@@ -95,9 +94,9 @@ or loading model weights. Every original ID from both partitions contributes
 one training row; there is no holdout evaluation during a build. Compatible token, batch,
 and frozen-feature caches are reused. The full-data head-warmup cache is keyed
 by all training IDs, so a train-partition-only head cache is not a complete hit.
-Exact warmup hits skip that stage. With `warmup_min_lr_ratio: 1`, compatible
+Exact warmup hits skip that stage. With `warmup_lr_decay_base: 1`, compatible
 lower-epoch hits execute only the remaining warmup epochs before joint training;
-polynomial decay requires an exact target-epoch hit or a complete new curve.
+exponential decay requires an exact target-epoch hit or a complete new run.
 
 The build summary reports actual executed epochs separately for head warmup
 and joint training, followed by the final training loss, checkpoint path, and

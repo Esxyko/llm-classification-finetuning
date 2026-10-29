@@ -214,19 +214,19 @@ offsets/metadata. Current train/test inputs are checked independently.
 
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
-| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head with polynomial decay from `warmup_learning_rate` to `warmup_learning_rate * warmup_min_lr_ratio`, with exponent `warmup_lr_decay_power` | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
+| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head at `warmup_learning_rate / warmup_lr_decay_base ** epoch_index`, starting at epoch index `0` and keeping the rate fixed within each epoch | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
 | Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup loads cached features, extracts missing branches, and recomputes both losses without training |
 | Head warmup, lower-epoch cache hit (fixed rate only) | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
 The shared warmup section supplies epochs, head batch size, learning rate,
-minimum ratio, polynomial decay exponent, extraction budget, and smoothing.
+exponential decay base, extraction budget, and smoothing.
 Inline warmup's remaining model/head settings come from the selected LoRA section.
 `warmup_epochs: 0` skips warmup extraction
 and cache I/O. See [standalone versus inline settings](configuration.md#standalone-warmup).
-Polynomial decay reuses only an exact target-epoch cache. Fixed-rate warmup
-(`warmup_min_lr_ratio: 1`) can also continue from the largest compatible lower
+Exponential decay reuses only an exact target-epoch cache. Fixed-rate warmup
+(`warmup_lr_decay_base: 1`) can also continue from the largest compatible lower
 epoch; all other cache identity fields must match.
 
 Adapter-free warmup features are persisted by branch token content and reused
@@ -270,43 +270,47 @@ For warmup identity and restoration details, see [warmup caches](caching.md#lora
 
 ### Learning-rate decay
 
-Frozen SR2 head training and standalone/inline warmup use polynomial decay.
-LoRA joint training uses an independent cosine curve. Each stage starts at its
-initial rate and ends at that rate times its minimum ratio. Both head and joint
-ratios default to `0.125`; `0` reaches zero and `1` keeps the rate fixed.
-For example, an initial rate of `0.00015` and a minimum ratio of `0.125` end at
-`0.00001875`.
+Frozen SR2 head training and standalone/inline warmup use exponential decay
+once per epoch. LoRA joint training uses an independent cosine curve once per
+planned optimizer update.
 
-Head warmup uses `N = warmup_epochs * max(1, rows // warmup_training_batch_size)`.
-For planned update index `i` from `0` through `N - 1`, when `N > 1`:
+For head-training epoch index `epoch_index` from `0` through `warmup_epochs - 1`:
 
 ```text
-p = i / (N - 1)
-lr = warmup_learning_rate * (warmup_min_lr_ratio
-     + (1 - warmup_min_lr_ratio) * (1 - p) ** warmup_lr_decay_power)
+decay_rate = ln(warmup_lr_decay_base)
+lr = warmup_learning_rate * exp(-decay_rate * epoch_index)
+   = warmup_learning_rate / warmup_lr_decay_base ** epoch_index
 ```
 
-The warmup exponent `warmup.warmup_lr_decay_power` defaults to `2.0` and accepts
-a finite positive number or `e` (Euler's number, `2.718281828459045`). Frozen SR2
-maps its independent `epochs`, `training_batch_size`, `learning_rate`,
-`min_lr_ratio`, and `lr_decay_power` to
-these warmup settings. Its exponent also defaults to `2.0` and accepts `e`.
-With the default exponent, the rate multiplier at `p = 0.5` is
-`min_lr_ratio + (1 - min_lr_ratio) * 0.25`.
-Only exact target-epoch caches are compatible with decay; changing the target
-or exponent starts a complete new head-training curve on a cache miss.
+The warmup base `warmup.warmup_lr_decay_base` defaults to `1.5` and accepts a
+finite number at least `1`. Frozen SR2 maps its independent `epochs`,
+`training_batch_size`, `learning_rate`, and `lr_decay_base` to these warmup
+settings. Its base also defaults to `1.5`. Both keep the original base in
+configuration snapshots, checkpoint training metadata, and cache identity;
+only the scheduler computes its natural logarithm.
+
+Each epoch starts by setting the learning rate, which remains fixed throughout
+that epoch, including FP16-skipped updates. The first epoch, or a run with just
+one epoch, uses the initial rate. With an initial rate of `0.001` and base `1.5`,
+the first four epochs use approximately `0.001`, `0.000666667`, `0.000444444`,
+and `0.000296296`. There is no minimum-rate floor; base `1` keeps the rate fixed.
+Exponential decay reuses only exact target-epoch caches. Changing the base or
+target starts training from epoch index `0` on a cache miss; lower-epoch
+continuation remains supported only for fixed-rate training.
 
 Joint training uses `N = epochs * max(1, rows // G)`, using the joint
-optimizer-group size `G` above. Its formula is unchanged:
+optimizer-group size `G` above. For planned update index `i` from `0` through
+`N - 1`, when `N > 1`, its formula is unchanged:
 
 ```text
 p = i / (N - 1)
 lr = learning_rate * (min_lr_ratio + (1 - min_lr_ratio) * (1 + cos(pi * p)) / 2)
 ```
 
-For both schedules, the first update uses the initial rate and the last uses
-the minimum. A run with only one update uses the initial rate. The schedule
-applies immediately before each complete optimizer group's update attempt and
+For joint training, the first update uses the initial rate and the last uses
+the minimum. Its `min_lr_ratio` defaults to `0.125`; `0` reaches zero and `1`
+keeps the rate fixed. A run with only one update uses the initial rate. The
+schedule applies immediately before each complete optimizer group's update attempt and
 advances once for that consumed group, including when FP16 gradient scaling
 skips the parameter update. Micro-batches and evaluation do not advance a
 schedule; warmup does not advance the joint schedule. Packing and short-tail

@@ -79,10 +79,10 @@ both losses without training or rewriting the head-warmup cache; it reports zero
 executed epochs. There are no adapters, joint
 training, production checkpoints, or result reports. It shares SR2's cache
 namespace; a validation run can reuse it when effective settings and training
-IDs match. Polynomial decay reuses only the exact target epoch because changing
-the target changes the entire curve. With `warmup_min_lr_ratio: 1`, if only a
-compatible lower-epoch cache exists, the command selects the largest completed
-epoch, trains the remaining epochs, and writes a separate target cache. The
+IDs match. Exponential decay reuses only the exact target epoch; a different
+target starts a complete new run on a cache miss. With `warmup_lr_decay_base: 1`,
+if only a compatible lower-epoch cache exists, the command selects the largest
+completed epoch, trains the remaining epochs, and writes a separate target cache. The
 summary displays `Resumed` and counts only newly executed epochs.
 Normal full-data model builds train on both partitions.
 See [warmup configuration](configuration.md#standalone-warmup) and

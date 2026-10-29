@@ -166,6 +166,8 @@ execute; persistent branch-cache details remain in
 | `extraction_batch_size` | `extraction_budget`, measured in padded tokens; old branch counts are not equivalent values |
 | LoRA `inference_batch_size` | `head_inference_batch_size`; keep the head batch count |
 | LoRA `head_learning_rate` | Remove; `learning_rate` now controls both adapters and the classifier head during joint training |
+| Frozen SR2 `min_lr_ratio` / `lr_decay_power` | Remove both; configure `lr_decay_base` (default `1.5`) for exponential decay once per epoch |
+| `warmup.warmup_min_lr_ratio` / `warmup.warmup_lr_decay_power` | Remove both; configure `warmup.warmup_lr_decay_base` (default `1.5`) |
 | LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section |
 | `warmup_ratio` | Choose explicit `warmup.warmup_epochs`, batch size, learning rate, and extraction budget |
 | LoRA/warmup `A/B_swap` | Remove; active LoRA and standalone warmup always use original rows |
@@ -175,22 +177,27 @@ Joint training now applies one cosine curve across all joint epochs, with
 `min_lr_ratio` defaulting to `0.125` even when omitted from an older configuration.
 Set `min_lr_ratio: 1` to keep the shared learning rate fixed. Configurations
 containing `head_learning_rate` fail strict unknown-key validation; remove it
-before using current commands. Frozen SR2 head training now uses polynomial
-decay with `SR2_Qwen3_4B.min_lr_ratio: 0.125` and
-`SR2_Qwen3_4B.lr_decay_power: 2.0` as parser defaults. Standalone and inline
-warmup use polynomial decay with `warmup.warmup_min_lr_ratio: 0.125` and
-`warmup.warmup_lr_decay_power: 2.0`, independently of joint decay. The exponents
-accept finite positive numbers or `e` (Euler's number). These defaults apply even
-when the fields are omitted from older YAML.
-Set either head ratio to `1` to restore its fixed learning rate and reuse legacy
+before using current commands. Frozen SR2 head training now uses exponential
+decay with `SR2_Qwen3_4B.lr_decay_base: 1.5` as the parser default. Standalone and
+inline warmup use `warmup.warmup_lr_decay_base: 1.5`, independently of joint
+decay. Each base must be a finite number at least `1`. The scheduler computes
+`decay_rate = ln(base)` and sets `lr = initial_lr * exp(-decay_rate * epoch_index)`
+at the beginning of each zero-based epoch; learning rates stay fixed within an
+epoch. There is no head minimum-rate floor. Remove the old head minimum-ratio
+and polynomial-power fields, including any `e` string values: they now fail
+strict unknown-key validation. The new defaults apply when the base is omitted.
+LoRA joint `min_lr_ratio` retains its existing cosine behavior.
+
+Set either head base to `1` to restore its fixed learning rate and reuse legacy
 fixed-rate head caches, including lower-epoch continuation. With decay enabled,
-`polynomial_v1` schedule metadata, the minimum ratio, and the exponent isolate
-head caches from earlier cosine caches. Only the exact target epoch is reusable:
-extending 4 epochs to 8 or changing the exponent trains a complete new curve.
+`exponential_epoch_v1` schedule metadata and the original base isolate head
+caches from earlier polynomial/cosine caches. Only the exact target epoch is
+reusable: extending 4 epochs to 8 or changing the base trains a complete new run
+on a cache miss. Exponential lower-epoch continuation is not enabled.
 Cache schema v5, token/feature/plan identities, and production checkpoint
 compatibility remain unchanged. New configuration snapshots and frozen-head
-checkpoint training metadata record the ratios and exponents. Existing caches
-and historical configuration snapshots are preserved. See
+checkpoint training metadata record the original bases, not their logarithms.
+Existing caches and historical configuration snapshots are preserved. See
 [learning-rate decay](lora.md#learning-rate-decay).
 
 The historical `gradient_checkpointing_budget` used to name what is now

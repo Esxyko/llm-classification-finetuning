@@ -113,43 +113,27 @@ class _CosineLearningRateSchedule:
 		self._step_index += 1
 
 
-class _PolynomialLearningRateSchedule:
-	"""Set the head's polynomial rate per planned update, including FP16 skips."""
+class _ExponentialLearningRateSchedule:
+	"""Set a fixed head learning rate for each zero-based epoch."""
 
 	def __init__(
 		self,
 		optimizer: AdamW,
 		*,
 		learning_rate: float,
-		min_lr_ratio: float,
-		power: float,
-		total_steps: int,
+		decay_base: float,
 	) -> None:
-		if total_steps <= 0:
-			raise ValueError("Polynomial decay requires at least one optimizer update.")
 		self._optimizer = optimizer
 		self._learning_rate = learning_rate
-		self._min_lr_ratio = min_lr_ratio
-		self._power = power
-		self._total_steps = total_steps
-		self._step_index = 0
+		self._decay_rate = math.log(decay_base)
 
-	def step(self) -> None:
-		"""Apply the current update's rate before the optimizer attempts its step."""
-		if self._step_index >= self._total_steps:
-			raise RuntimeError(
-				"Polynomial decay exceeded the planned optimizer updates."
-			)
-		progress = (
-			self._step_index / (self._total_steps - 1) if self._total_steps > 1 else 0.0
-		)
-		multiplier = (
-			self._min_lr_ratio
-			+ (1.0 - self._min_lr_ratio) * (1.0 - progress) ** self._power
-		)
+	def set_epoch(self, epoch_index: int) -> None:
+		"""Apply the epoch's rate before training, independently of update counts."""
+		if epoch_index < 0:
+			raise ValueError("Exponential decay requires a nonnegative epoch index.")
+		learning_rate = self._learning_rate * math.exp(-self._decay_rate * epoch_index)
 		for group in self._optimizer.param_groups:
-			group["lr"] = self._learning_rate * multiplier
-		self._step_index += 1
+			group["lr"] = learning_rate
 
 
 class LoRATrainer:
@@ -396,7 +380,7 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
-		"""Train the head with polynomial decay, then adapters with cosine decay."""
+		"""Train the head with exponential decay, then adapters with cosine decay."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		reference = training.reference
@@ -447,9 +431,7 @@ class LoRATrainer:
 		warmup_training: DataLoader[list[torch.Tensor]] | None = None
 		warmup_validation: DataLoader[list[torch.Tensor]] | None = None
 		joint_validation_loader: DataLoader[BranchBatch] | None = None
-		lr_schedule: (
-			_CosineLearningRateSchedule | _PolynomialLearningRateSchedule | None
-		) = None
+		lr_schedule: _CosineLearningRateSchedule | None = None
 		parameter_groups = [
 			{
 				"params": list(model.classifier.parameters()),
@@ -471,6 +453,11 @@ class LoRATrainer:
 				},
 			)
 		optimizer = AdamW(parameter_groups, weight_decay=self._config.weight_decay)
+		head_lr_schedule = _ExponentialLearningRateSchedule(
+			optimizer,
+			learning_rate=self._config.warmup_learning_rate,
+			decay_base=self._config.warmup_lr_decay_base,
+		)
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
 		if reused_warmup:
 			status = "Resuming" if remaining_warmup_epochs else "Reused"
@@ -576,16 +563,6 @@ class LoRATrainer:
 			warmup_steps = OptimizerGroupLayout(
 				len(reference), self._config.warmup_training_batch_size
 			).update_count
-			# Fixed-rate continuation keeps its legacy cache and shuffle behavior.
-			# Polynomial hits require the exact target, so a miss starts at step 0.
-			if self._config.warmup_min_lr_ratio != 1.0:
-				lr_schedule = _PolynomialLearningRateSchedule(
-					optimizer,
-					learning_rate=self._config.warmup_learning_rate,
-					min_lr_ratio=self._config.warmup_min_lr_ratio,
-					power=self._config.warmup_lr_decay_power,
-					total_steps=warmup_steps * self._config.warmup_epochs,
-				)
 			self._timestamp()
 			progress.start_stage(
 				stage=self._head_stage.capitalize(),
@@ -604,7 +581,9 @@ class LoRATrainer:
 				f"{description} epoch {stage_epoch}/{stage_epochs} "
 				f"(total {epoch}/{total_epochs})"
 			)
-			if epoch == self._config.warmup_epochs + 1:
+			if head_only:
+				head_lr_schedule.set_epoch(stage_epoch - 1)
+			elif epoch == self._config.warmup_epochs + 1:
 				# Drop all views of the shared CPU feature store before joint training.
 				loader = None
 				warmup_training = None
@@ -780,9 +759,7 @@ class LoRATrainer:
 		*,
 		head_only: bool = False,
 		optimizer_group_rows: tuple[int, ...] | None = None,
-		lr_schedule: (
-			_CosineLearningRateSchedule | _PolynomialLearningRateSchedule | None
-		) = None,
+		lr_schedule: _CosineLearningRateSchedule | None = None,
 		progress: TrainingProgress | None = None,
 		description: str = "Build",
 	) -> _EpochTrainingLosses:

@@ -22,8 +22,7 @@ LORA_WARMUP_FIELDS = (
 	"warmup_epochs",
 	"warmup_training_batch_size",
 	"warmup_learning_rate",
-	"warmup_min_lr_ratio",
-	"warmup_lr_decay_power",
+	"warmup_lr_decay_base",
 )
 
 
@@ -95,8 +94,7 @@ class WarmupModelConfig:
 	dataloader_workers: int
 	ab_swap: str
 	label_smoothing: float = field(default=0.0, kw_only=True)
-	warmup_min_lr_ratio: float = field(default=0.125, kw_only=True)
-	warmup_lr_decay_power: float = field(default=2.0, kw_only=True)
+	warmup_lr_decay_base: float = field(default=1.5, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +102,7 @@ class SR2ModelConfig(ModelConfig):
 	"""Independent frozen-Skywork head settings with warmup-compatible optimization."""
 
 	max_grad_norm: float = field(kw_only=True)
-	min_lr_ratio: float = field(default=0.125, kw_only=True)
-	lr_decay_power: float = field(default=2.0, kw_only=True)
+	lr_decay_base: float = field(default=1.5, kw_only=True)
 
 	def as_warmup_config(self) -> WarmupModelConfig:
 		"""Translate public model fields into the shared head-training configuration."""
@@ -402,21 +399,11 @@ def _load_warmup_fields(
 	)
 	if warmup_epochs < 0:
 		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
-	warmup_min_lr_ratio = _require_float(
-		section.get("warmup_min_lr_ratio", 0.125), field("warmup_min_lr_ratio")
+	warmup_lr_decay_base = _require_float(
+		section.get("warmup_lr_decay_base", 1.5), field("warmup_lr_decay_base")
 	)
-	if not 0.0 <= warmup_min_lr_ratio <= 1.0:
-		raise ConfigurationError(f"{field('warmup_min_lr_ratio')} must be in [0, 1].")
-	raw_decay_power = section.get("warmup_lr_decay_power", 2.0)
-	if isinstance(raw_decay_power, str) and raw_decay_power.strip().lower() == "e":
-		raw_decay_power = math.e
-	warmup_lr_decay_power = _require_float(
-		raw_decay_power, field("warmup_lr_decay_power")
-	)
-	if warmup_lr_decay_power <= 0.0:
-		raise ConfigurationError(
-			f"{field('warmup_lr_decay_power')} must be greater than 0."
-		)
+	if warmup_lr_decay_base < 1.0:
+		raise ConfigurationError(f"{field('warmup_lr_decay_base')} must be at least 1.")
 	workers = _require_integer(
 		section.get("dataloader_workers"), field("dataloader_workers")
 	)
@@ -434,8 +421,7 @@ def _load_warmup_fields(
 		extraction_budget=positive_integer("extraction_budget"),
 		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
 		warmup_learning_rate=positive_float("warmup_learning_rate"),
-		warmup_min_lr_ratio=warmup_min_lr_ratio,
-		warmup_lr_decay_power=warmup_lr_decay_power,
+		warmup_lr_decay_base=warmup_lr_decay_base,
 		max_grad_norm=positive_float("max_grad_norm"),
 		random_state=_require_integer(
 			section.get("random_state"), field("random_state")
