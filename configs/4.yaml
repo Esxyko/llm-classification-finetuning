@@ -26,9 +26,9 @@ SR2_Qwen3_4B:
   epochs: 20
   extraction_budget: 1081344
   training_batch_size: 4096
-  learning_rate: 0.0005
+  learning_rate: 0.0004
   min_lr_ratio: 0.0
-  lr_decay_power: 2
+  lr_decay_power: 1.5
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42

@@ -1,0 +1,119 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_harmonic_abs_diff",
+  "epochs": [
+    {
+      "epoch": 1,
+      "total_time": "00:00:02",
+      "training_loss": 1.2030104266768111,
+      "training_time": "00:00:02",
+      "validation_loss": 1.1988633390196826,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 2,
+      "total_time": "00:00:01",
+      "training_loss": 0.9913025950966546,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9867620135452915,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 3,
+      "total_time": "00:00:01",
+      "training_loss": 0.9899367652313338,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9851195917382558,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 4,
+      "total_time": "00:00:01",
+      "training_loss": 0.9714966510545227,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9671135675497499,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 5,
+      "total_time": "00:00:01",
+      "training_loss": 0.9629331061696017,
+      "training_time": "00:00:01",
+      "validation_loss": 0.958157121642562,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 6,
+      "total_time": "00:00:01",
+      "training_loss": 0.9557082610217211,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9515780680798717,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 7,
+      "total_time": "00:00:01",
+      "training_loss": 0.9528309090908704,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9488899725424097,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 8,
+      "total_time": "00:00:01",
+      "training_loss": 0.9505184834448636,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9467723738581992,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 9,
+      "total_time": "00:00:01",
+      "training_loss": 0.9494107276140324,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9458926817706068,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 10,
+      "total_time": "00:00:01",
+      "training_loss": 0.9493452205461342,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9458450005437147,
+      "validation_time": "00:00:00"
+    }
+  ],
+  "executed_training_epochs": 10,
+  "generated_at": "2026-10-29T15:50:37+00:00",
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-20261029-155037",
+  "source_training_rows": 45982,
+  "total_time": "00:01:16",
+  "training_rows": 45982,
+  "training_time": "00:00:11",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.9458450005437147,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:00:01",
+  "config_total_time": "00:01:16",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 142669312,
+    "peak_reserved_bytes": 157286400,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 142669312,
+        "peak_reserved_bytes": 157286400
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 130757120,
+        "peak_reserved_bytes": 157286400
+      }
+    }
+  }
+}
