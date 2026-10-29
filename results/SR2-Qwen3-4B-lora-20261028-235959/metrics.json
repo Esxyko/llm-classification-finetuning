@@ -1,0 +1,62 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_harmonic_abs_diff",
+  "epochs": [
+    {
+      "epoch": 5,
+      "last_step_training_loss": 0.9107689562085638,
+      "total_time": "01:15:12",
+      "training_loss": 0.9355209581145614,
+      "training_time": "01:07:19",
+      "validation_loss": 0.9121774455265876,
+      "validation_time": "00:07:50"
+    },
+    {
+      "epoch": 6,
+      "last_step_training_loss": 0.7616629531634478,
+      "total_time": "01:15:08",
+      "training_loss": 0.8628906551708007,
+      "training_time": "01:07:18",
+      "validation_loss": 0.9142962123477599,
+      "validation_time": "00:07:50"
+    },
+    {
+      "epoch": 7,
+      "last_step_training_loss": 0.7238844783063525,
+      "total_time": "01:15:08",
+      "training_loss": 0.787332296416181,
+      "training_time": "01:07:18",
+      "validation_loss": 0.9290429432633753,
+      "validation_time": "00:07:50"
+    },
+    {
+      "epoch": 8,
+      "last_step_training_loss": 0.6669929455584661,
+      "total_time": "01:15:08",
+      "training_loss": 0.6724277507150667,
+      "training_time": "01:07:18",
+      "validation_loss": 0.9622945140890061,
+      "validation_time": "00:07:50"
+    }
+  ],
+  "generated_at": "2026-10-28T23:59:59+00:00",
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-lora-20261028-235959",
+  "source_training_rows": 45982,
+  "total_time": "05:03:16",
+  "training_rows": 45982,
+  "training_time": "04:29:14",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.9622945140890061,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:31:19",
+  "config_total_time": "05:03:16",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 100121394688,
+    "peak_reserved_bytes": 101269372928
+  }
+}
