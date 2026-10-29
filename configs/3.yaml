@@ -23,7 +23,7 @@ SR2_Qwen3_4B:
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  epochs: 6
+  epochs: 9
   extraction_budget: 1081344
   training_batch_size: 512
   learning_rate: 0.0001
