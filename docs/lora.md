@@ -483,11 +483,12 @@ rather than silently changing precision or shortening inputs.
 
 `--build` atomically writes `models/SECTION/adapter.pt`, or `adapter_TAG.pt` for
 a checkpoint tag. It contains adapters, the FP32 head, and compatibility metadata;
-**base weights and optimizer state are not stored**. It is an inference artifact,
-not a checkpoint for resuming interrupted joint training.
+base weights are exported separately as described below. Optimizer state is
+not stored. These are inference artifacts, not checkpoints for resuming
+interrupted joint training.
 
 Before initializing CUDA, full-data builds prepare their data/tokens/batch plan
-and probe the destination directory and any existing checkpoint's writability.
+and probe both the adapter/head and merged-backbone destinations for writability.
 Saving reloads the staged file on CPU with the same validation used by
 submission, then atomically replaces the destination. Failed writes or staged
 validation preserve the previous checkpoint and clean up the temporary file.
@@ -505,3 +506,41 @@ production checkpoint.
 precision, attention, TF32, batches, and accumulation may change; inputs must
 still fit the current length limit. Historical quantized or retired-head
 checkpoints are incompatible. See [migration](migration.md).
+
+### Merged backbone export
+
+Every SR2 `--build` also writes `models/SECTION/merged/`, or `merged_TAG/` with
+the same checkpoint tag. The adapter/head checkpoint is saved and validated
+first, before the PEFT model is consumed by export. Build switches the model to
+evaluation mode, moves the existing backbone to CPU, and calls
+`merge_and_unload(safe_merge=True)`. The returned plain `AutoModel` is saved in
+Safetensors format with `max_shard_size="5GB"`, preserving the backbone's build
+precision and using its own parameter names rather than the source reward
+model's prefixes. The training tokenizer is saved alongside the model config.
+The classification head remains in `adapter[_TAG].pt`.
+
+`export_metadata.json` records `model_name`, `base_revision`,
+`training_source_sha256`, the corresponding `checkpoint_file` and its
+`checkpoint_sha256`, `dtype`, and a UTC `created_at` timestamp. The checkpoint
+digest identifies the exact adapter/head artifact paired with the export.
+
+All files are written in a sibling staging directory. Validation reloads the
+configuration and tokenizer using local files only, checks the tokenizer
+vocabulary/special tokens/chat template, and opens each Safetensors file to
+check its structure and tensor names, shapes, and dtypes against the merged
+backbone. Shard-index coverage must be complete, and adapter layers/tensor names
+must be absent. Validation does not load another copy of the backbone.
+
+Replacement moves the previous export to `.merged-backup` (or
+`.merged_TAG-backup`), promotes the staged directory, and removes the backup
+after success. A failed promotion restores the previous directory when possible;
+an unsuccessful restore reports the backup location. An interrupted promotion
+that left only a backup is recovered during the next write preflight. When both
+the destination and a leftover backup exist, preflight reports both paths for
+review instead of discarding either. Temporary files are cleaned up after
+failure, and cleanup errors do not replace the export error.
+
+An export failure returns a command failure while retaining the already saved
+adapter/head checkpoint. Submission continues to use the original base weights
+plus that checkpoint; it does not load the merged directory or apply adapters
+to the merged weights. Both outputs must be saved before build reports success.

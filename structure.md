@@ -33,6 +33,7 @@ flowchart TD
     Validate --> Run["Predictions, metrics, config"]
     Run --> Report["PNG and XLSX report"]
     Build --> Checkpoint["SR2 adapter/head checkpoint"]
+    Build --> Merged["Merged backbone and tokenizer"]
     Checkpoint --> Submit["Submission inference"]
     Test["Test CSV and template"] --> Submit
     Submit --> CSV["submission.csv"]
@@ -41,7 +42,8 @@ flowchart TD
 The saved split included in Git can enter this flow without downloading raw data.
 Standalone warmup is optional; inline LoRA runs create/reuse their compatible
 warmup state. Validation does not save production checkpoints. Builds use IDs
-from both partitions; submission requires the matching checkpoint and test files.
+from both partitions and also export the LoRA-merged backbone with its tokenizer;
+submission requires the matching adapter/head checkpoint and test files.
 
 Paths and `.env` resolve from the process working directory. The batch script
 instead derives the project root from its own file and launches children there.
@@ -113,7 +115,7 @@ they do not expose an active frozen CLI profile.
 
 | Module | Owns |
 | --- | --- |
-| `contracts.py` | Execution modes, pipeline interface, and validation/build/submit/warmup result summaries, including optional executed warmup/joint epoch counts for builds |
+| `contracts.py` | Execution modes, pipeline interface, and validation/build/submit/warmup result summaries, including optional executed warmup/joint epoch counts and merged-backbone path for builds |
 | `inputs.py` | Processed/test table loading, strict split/orientation/ID validation, multipart reads, and reconstructed source fingerprints |
 | `data.py` | Tokenizer-injected official chat-template serialization and pairwise training/test repositories |
 | `hardware.py` | CUDA/precision validation, direct loading maps, dual-GPU layer placement, and per-run allocator peaks |
@@ -151,8 +153,8 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, and standalone cached-head evaluation |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, descending compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
 | `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across standalone/inline warmup |
-| `checkpoint.py` | Destination write preflight, portable adapter/head persistence, shared CPU validation of staged/published files before atomic replacement, revision retention, and architecture/input compatibility |
-| `pipeline.py` | LoRA holdout/submission orchestration and independent full-data build flow with CPU preparation/write preflight before GPU setup, cleanup preserving execution errors, and non-quantized dual-GPU submission |
+| `checkpoint.py` | Destination write preflight, portable adapter/head persistence and shared CPU loading checks, revision/architecture compatibility, and merged-backbone/tokenizer export with metadata, local validation, and recoverable directory replacement |
+| `pipeline.py` | LoRA holdout/submission orchestration and independent full-data build flow with CPU preparation and both write preflights before GPU setup, adapter/head saving before merged export, cleanup preserving execution errors, and non-quantized dual-GPU submission |
 
 ### Reporting
 
@@ -180,6 +182,7 @@ defaults to `./results` and controls validation, submission, report, and log roo
 | `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen/warmup-feature, and LoRA base-plan stores |
 | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Skywork completed warmup, shared by SR2 and standalone warmup |
 | `models/SR2_Qwen3_4B_lora/adapter[_TAG].pt` | SR2 production adapter/head |
+| `models/SR2_Qwen3_4B_lora/merged[_TAG]/` | Full LoRA-merged backbone, tokenizer, and export metadata |
 | `<RESULT_PATH>/MODEL-<timestamp>/` | Completed validation CSV, metrics, and YAML snapshot |
 | `<RESULT_PATH>/submit/MODEL-<timestamp>/` | Submission CSV |
 | `<RESULT_PATH>/comprehensive/` | Latest synthesized report pair |
@@ -236,7 +239,8 @@ present in a fresh checkout.
    representation/algorithm changes. See [caching](docs/caching.md).
 5. **CPU preparation:** token/loader/plan preparation must not load model weights
    or initialize CUDA. Full-data LoRA builds complete data/token/plan preparation
-   and checkpoint write preflight before configuring CUDA or loading weights;
+   and adapter/head plus merged-export write preflights before configuring CUDA
+   or loading weights;
    staged checkpoints must pass submission's CPU loading checks before replacing
    the previous production artifact. Complete retained frozen-model embedding hits
    skip backbone
@@ -288,7 +292,11 @@ present in a fresh checkout.
    No persisted live LoRA features or losses. See [warmup](docs/caching.md#lora-head-warmup).
 10. **Placement and production state:** load backbones directly with device maps;
     submission uses exactly two GPUs without replicas/offload/fallback. Production
-    builds omit base weights and optimizer state; LoRA retains its Hub revision.
+    builds save adapter/head first, then export the LoRA-merged backbone and
+    tokenizer on CPU at the build precision. Adapter/head files retain their
+    schema and Hub revision; optimizer state is omitted. Submission loads the
+    original base plus adapters/head. Merged exports use staged directory
+    publication with backup/restore handling.
     See [GPU layout](docs/configuration.md#gpu-configuration) and [checkpoints](docs/lora.md#checkpoints).
 11. **Publication:** stage generated artifacts before exposure. `CacheStorage`
     owns locks/checksums/multipart policy; report promotion restores previous

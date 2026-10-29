@@ -12,7 +12,7 @@ submission uses [two GPUs](configuration.md#gpu-configuration).
 | Mode | Training data | Main output | Does it save a production checkpoint? |
 | --- | --- | --- | --- |
 | `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Final-epoch `validation.csv`, `metrics.json`, `config.yaml` | No |
-| `model MODEL --build` | All original IDs from both partitions | `adapter[_TAG].pt` | Yes |
+| `model MODEL --build` | All original IDs from both partitions | `adapter[_TAG].pt` and `merged[_TAG]/` | Yes |
 | `model MODEL --submit` | No training; use test inputs and a compatible checkpoint | `submission.csv` | No |
 | `model warmup --build` | Train partition only, original rows; evaluate train and validation | Completed SR2 warmup cache and both losses | No |
 
@@ -38,14 +38,14 @@ warmup-cache, and result namespace is SR2. See [LoRA training](lora.md).
 
 ## Build and submit
 
-Build a tagged adapter/head checkpoint on all IDs:
+Build a tagged adapter/head checkpoint and merged backbone on all IDs:
 
 ```shell
 uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag experiment
 ```
 
 Build prepares the saved data, full conversation tokens, and full-data batch
-plan on CPU, then probes the checkpoint destination before configuring CUDA
+plan on CPU, then probes both output destinations before configuring CUDA
 or loading model weights. Every original ID from both partitions contributes
 one training row; there is no holdout evaluation during a build. Compatible token, batch,
 and frozen-feature caches are reused. The full-data head-warmup cache is keyed
@@ -54,7 +54,8 @@ Exact warmup hits skip that stage, while compatible lower-epoch hits execute
 only the remaining warmup epochs before joint training.
 
 The build summary reports actual executed epochs separately for head warmup
-and joint training, followed by the final training loss and checkpoint path.
+and joint training, followed by the final training loss, checkpoint path, and
+merged backbone directory.
 The total epoch count excludes cached warmup epochs. For example, an exact
 warmup hit with two configured joint epochs reports zero executed warmup epochs
 and two executed joint epochs.
@@ -65,6 +66,33 @@ Only a validated temporary file replaces the selected checkpoint. A failed
 write or validation leaves the previous checkpoint intact and cleans up the
 temporary file; this check does not reload base weights or run GPU inference.
 
+After saving the adapter/head checkpoint, build moves the trained backbone to
+CPU, merges its LoRA weights, and exports a full Hugging Face model directory.
+The export contains the model configuration, Safetensors weights split at 5 GB,
+and the training tokenizer. It preserves the build's backbone precision. A
+tagged build writes `models/SR2_Qwen3_4B_lora/merged_TAG/`; an untagged build
+writes `models/SR2_Qwen3_4B_lora/merged/`.
+
+The export is staged and checked locally before replacing an existing directory,
+with backup/restore handling during replacement. If export fails, the command
+reports failure and the saved adapter/head checkpoint remains available; the
+previous export is preserved at its original location or the backup path named
+in the error. Build reports success only after both outputs have been saved.
+See [export checks and metadata](lora.md#merged-backbone-export).
+
+Load an exported backbone independently of the original Hub cache:
+
+```python
+from transformers import AutoModel, AutoTokenizer
+
+path = "models/SR2_Qwen3_4B_lora/merged_experiment"
+backbone = AutoModel.from_pretrained(path, dtype="auto", local_files_only=True)
+tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
+```
+
+This is the `AutoModel` backbone used for training. The trained classification
+head remains in the corresponding adapter/head checkpoint.
+
 Then, in the [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
 load the corresponding checkpoint with a compatible submission configuration:
 
@@ -72,10 +100,12 @@ load the corresponding checkpoint with a compatible submission configuration:
 model SR2-Qwen3-4B-lora --submit --checkpoint-tag experiment --config path/to/submit.yaml
 ```
 
-The checkpoint contains adapters and the head, omitting base weights and
-optimizer state. Transfer the checkpoint when moving to
-another runtime. [Model downloads](caching.md#hugging-face-model-downloads) are
-not the trained checkpoint.
+Submission continues to load the original base revision plus the adapters and
+head from the checkpoint; it does not select the merged export. The checkpoint
+omits base weights and optimizer state. Transfer it when moving submission to
+another runtime, and preserve the merged directory separately when retaining
+the complete trained backbone. [Model downloads](caching.md#hugging-face-model-downloads)
+contain the original base weights.
 
 Submission requires these raw files under `data.raw_dir`, with exact column order:
 
@@ -88,7 +118,8 @@ IDs must be unique finite integers and match in the same order across both
 files. The loader does not reorder them; output preserves that order.
 Submissions are written under `results/submit/MODEL-<timestamp>/`.
 
-Without a tag, a build replaces `models/SR2_Qwen3_4B_lora/adapter.pt`.
+Without a tag, a build replaces `models/SR2_Qwen3_4B_lora/adapter.pt` and
+`models/SR2_Qwen3_4B_lora/merged/`. Different tags retain separate outputs.
 See [checkpoint flags](commands.md#model-selection-and-execution-modes),
 [batch validation](commands.md#batch-validation), and [reports](reports.md).
 

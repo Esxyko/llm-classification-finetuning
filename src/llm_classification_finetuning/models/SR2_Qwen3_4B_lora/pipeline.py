@@ -29,7 +29,11 @@ from ..common import (
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository
-from .checkpoint import LoRACheckpointCompatibility, LoRACheckpointStore
+from .checkpoint import (
+	LoRACheckpointCompatibility,
+	LoRACheckpointStore,
+	MergedBackboneStore,
+)
 from .trainer import LoRATrainer
 
 
@@ -63,6 +67,10 @@ class LoRAModelPipeline:
 			project_root / "models" / profile.artifact_stem / checkpoint_name,
 			build_command,
 			model_label=self._model_label,
+		)
+		self._merged_backbone_store = MergedBackboneStore(
+			self._checkpoint_store.path.parent
+			/ (f"merged_{checkpoint_tag}" if checkpoint_tag else "merged")
 		)
 		self._result_publisher = ModelResultPublisher(
 			config.result_dir, profile.result_prefix
@@ -153,12 +161,13 @@ class LoRAModelPipeline:
 		)
 
 	def _run_build(self, *, refresh_cache: bool) -> ModelBuildResult:
-		"""Prepare full-data inputs and the output path before configuring CUDA."""
+		"""Prepare full-data inputs and both output paths before configuring CUDA."""
 		batches = LoRATrainingBatchRepository.from_config(
 			self._config, refresh_cache=refresh_cache, profile=self._profile
 		)
 		training = batches.get_training(full_data=True)
 		self._checkpoint_store.check_writable()
+		self._merged_backbone_store.check_writable()
 		device = GPUEnvironment(self._config.gpu).configure()
 		trainer = self._create_trainer(device, refresh_cache=refresh_cache)
 		model = trainer.create_model(
@@ -177,6 +186,13 @@ class LoRAModelPipeline:
 				training_source_sha256=batches.data.fingerprint,
 				gpu=self._config.gpu,
 			)
+			merged_backbone_path = self._merged_backbone_store.save(
+				model,
+				batches.token_cache.tokenizer,
+				model_name=self._model_config.model_name,
+				training_source_sha256=batches.data.fingerprint,
+				checkpoint_path=self._checkpoint_store.path,
+			)
 			return ModelBuildResult(
 				checkpoint_path=self._checkpoint_store.path,
 				training_rows=history.training_rows,
@@ -184,6 +200,7 @@ class LoRAModelPipeline:
 				final_training_loss=history.training_losses[-1],
 				executed_warmup_epochs=history.executed_warmup_epochs,
 				executed_joint_epochs=history.executed_joint_epochs,
+				merged_backbone_path=merged_backbone_path,
 			)
 		finally:
 			del model

@@ -63,7 +63,7 @@ environment changes; configure that terminal's process or the runtime `.env`.
 | `MODEL_PATH` on mounted Drive | HF config/tokenizer/weight loaders write missing downloads when requested | Directly to Drive; reused by later runs |
 | `CACHE_PATH` on mounted Drive | Token, embedding, batch-plan, and warmup caches publish when those stages complete | Directly to Drive; unchanged hits do not republish |
 | `RESULT_PATH` on mounted Drive | Batch logs stream during execution; completed model runs publish predictions, metrics, and YAML; submissions and comprehensive reports use their subdirectories | Directly to Drive |
-| `PROJECT_DIR/models/` | `--build` publishes a production checkpoint | Runtime-local until copied separately |
+| `PROJECT_DIR/models/` | `--build` publishes adapter/head and the merged backbone directory | Runtime-local until copied separately |
 
 Setting a path does not copy existing files. Point `CACHE_PATH` and `RESULT_PATH`
 to Drive to publish their artifacts there during the run. When `RESULT_PATH` is
@@ -80,8 +80,9 @@ account's shortcut target.
 If manual runs use a runtime-local `RESULT_PATH`, copy the completed result
 directory to Drive before releasing the runtime. With `RESULT_PATH` on Drive,
 results are already written there. Also preserve the matching processed split
-and any production checkpoint you need later. `MODEL_PATH` contains downloaded
-base weights, not the project's trained `adapter.pt` or `head.pt`.
+and any production checkpoint you need later. Preserve the `merged[_TAG]/`
+directory too when retaining the full trained backbone. `MODEL_PATH` contains
+downloaded original base weights; build outputs are under `PROJECT_DIR/models/`.
 
 ## Local notebook behavior
 

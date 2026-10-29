@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
 	modes.add_argument(
 		"--build",
 		action="store_true",
-		help="Build a full-data model checkpoint, or a train-partition head-warmup cache for warmup.",
+		help="Build a full-data checkpoint and merged backbone, or a train-partition head-warmup cache for warmup.",
 	)
 	modes.add_argument(
 		"--submit",
@@ -74,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"--checkpoint-tag",
 		type=_checkpoint_tag,
 		metavar="TAG",
-		help="Select adapter_TAG.pt (build and submit only).",
+		help="Select adapter_TAG.pt and, for builds, merged_TAG/ (build and submit only).",
 	)
 	return parser
 
@@ -275,6 +275,8 @@ def _print_result(selector: str, result: ModelExecutionResult) -> None:
 			print(f"Executed joint training epochs: {result.executed_joint_epochs}")
 		print(f"Final training loss: {result.final_training_loss:.6f}")
 		print(f"Wrote model checkpoint: {result.checkpoint_path}")
+		if result.merged_backbone_path is not None:
+			print(f"Wrote merged backbone: {result.merged_backbone_path}")
 	elif isinstance(result, ModelSubmitResult):
 		print(f"Generated {result.predictions:,} competition test predictions.")
 		print(f"Wrote model submission: {result.submission_path}")

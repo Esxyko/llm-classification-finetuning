@@ -42,6 +42,7 @@ class ModelBuildResult:
 	cache_reused: bool = False
 	executed_warmup_epochs: int | None = None
 	executed_joint_epochs: int | None = None
+	merged_backbone_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,9 +1,15 @@
-"""Atomically store portable adapter/head checkpoints without base weights."""
+"""Persist portable adapter/head checkpoints and merged backbone exports."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import shutil
+import sys
 import tempfile
+import time
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,7 +17,15 @@ from typing import Any
 
 import torch
 from peft import get_peft_model_state_dict, set_peft_model_state_dict
+from peft.tuners.tuners_utils import BaseTunerLayer
+from safetensors import safe_open
 from torch import Tensor
+from transformers import (
+	AutoConfig,
+	AutoTokenizer,
+	PreTrainedModel,
+	PreTrainedTokenizerBase,
+)
 
 from ...config import GPUConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
@@ -281,3 +295,236 @@ class LoRACheckpointStore:
 		if not all(torch.isfinite(tensor).all() for tensor in value.values()):
 			raise ValueError(f"{name} contains non-finite weights")
 		return value
+
+
+class MergedBackboneStore:
+	"""Export a trained backbone after saving its independent adapter/head checkpoint."""
+
+	WINDOWS_RENAME_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8)
+
+	def __init__(self, path: Path) -> None:
+		# Resolve the parent only so destination links remain visible to preflight.
+		self.path = path.parent.resolve() / path.name
+		self._backup_path = self.path.with_name(f".{self.path.name}-backup")
+
+	def check_writable(self) -> None:
+		"""Check the export destination and recover an interrupted directory promotion."""
+		try:
+			self._prepare_destination()
+			if self.path.exists() and not os.access(self.path, os.W_OK):
+				raise PermissionError(
+					"existing merged backbone directory is not writable"
+				)
+			with tempfile.TemporaryDirectory(
+				dir=self.path.parent, prefix=f".{self.path.name}-write-check-"
+			) as directory:
+				(Path(directory) / "probe").write_bytes(b"\0")
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Cannot write merged backbone {self.path}: {error}"
+			) from error
+
+	def save(
+		self,
+		model: LoRAQwenClassifier,
+		tokenizer: PreTrainedTokenizerBase,
+		*,
+		model_name: str,
+		training_source_sha256: str,
+		checkpoint_path: Path,
+	) -> Path:
+		"""Consume the trained PEFT backbone, staging all files before replacement."""
+		staging_path: Path | None = None
+		try:
+			self._prepare_destination()
+			with checkpoint_path.open("rb") as checkpoint_file:
+				checkpoint_sha256 = hashlib.file_digest(
+					checkpoint_file, "sha256"
+				).hexdigest()
+			staging_path = Path(
+				tempfile.mkdtemp(
+					dir=self.path.parent, prefix=f".{self.path.name}-stage-"
+				)
+			)
+			print(f"Exporting merged backbone: {self.path}.", flush=True)
+			model.eval()
+			with torch.no_grad():
+				backbone = model.backbone.to(device="cpu").merge_and_unload(
+					safe_merge=True
+				)
+				if any(
+					isinstance(module, BaseTunerLayer) for module in backbone.modules()
+				):
+					raise ValueError("merged backbone still contains adapter layers")
+				# Store AutoModel keys, without restoring the source reward-head prefixes.
+				backbone.save_pretrained(
+					staging_path, max_shard_size="5GB", save_original_format=False
+				)
+			tokenizer.save_pretrained(staging_path)
+			metadata = {
+				"model_name": model_name,
+				"base_revision": model.base_revision,
+				"training_source_sha256": training_source_sha256,
+				"checkpoint_file": checkpoint_path.name,
+				"checkpoint_sha256": checkpoint_sha256,
+				"dtype": str(backbone.dtype).removeprefix("torch."),
+				"created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+			}
+			(staging_path / "export_metadata.json").write_text(
+				json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+				encoding="utf-8",
+			)
+			self._validate_export(staging_path, backbone, tokenizer)
+			self._publish(staging_path)
+			staging_path = None
+			return self.path
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not export merged backbone to {self.path}: {error}. "
+				f"The saved adapter/head checkpoint remains available at {checkpoint_path}."
+			) from error
+		finally:
+			if staging_path is not None:
+				try:
+					shutil.rmtree(staging_path)
+				except FileNotFoundError:
+					pass
+				except OSError as error:
+					with suppress(Exception):
+						print(
+							f"Could not remove merged backbone staging directory "
+							f"{staging_path}: {error}",
+							file=sys.stderr,
+							flush=True,
+						)
+
+	def _prepare_destination(self) -> None:
+		self.path.parent.mkdir(parents=True, exist_ok=True)
+		for directory in (self.path, self._backup_path):
+			if directory.is_symlink() or directory.is_junction():
+				raise ValueError(
+					f"merged backbone directory cannot be a link: {directory}"
+				)
+			if directory.exists() and not directory.is_dir():
+				raise ValueError(
+					f"merged backbone path is not a directory: {directory}"
+				)
+		if self._backup_path.exists():
+			if self.path.exists():
+				raise ValueError(
+					f"previous merged backbone backup needs review: {self._backup_path}; "
+					f"current export: {self.path}"
+				)
+			self._replace_directory(self._backup_path, self.path)
+
+	@staticmethod
+	def _validate_export(
+		path: Path, backbone: PreTrainedModel, tokenizer: PreTrainedTokenizerBase
+	) -> None:
+		"""Validate local config/tokenizer and every shard without reloading weights."""
+		config = AutoConfig.from_pretrained(path, local_files_only=True)
+		if (
+			config.model_type != backbone.config.model_type
+			or config.hidden_size != backbone.config.hidden_size
+		):
+			raise ValueError("exported model configuration does not match the backbone")
+		restored_tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
+		if (
+			restored_tokenizer.get_vocab() != tokenizer.get_vocab()
+			or restored_tokenizer.special_tokens_map != tokenizer.special_tokens_map
+			or restored_tokenizer.chat_template != tokenizer.chat_template
+		):
+			raise ValueError("exported tokenizer does not match the training tokenizer")
+
+		expected = backbone.state_dict()
+		if not expected or any(
+			part.startswith("lora_") for name in expected for part in name.split(".")
+		):
+			raise ValueError(
+				"export must contain complete backbone weights without LoRA"
+			)
+		index_path = path / "model.safetensors.index.json"
+		weight_map: dict[str, str] | None = None
+		if index_path.is_file():
+			index = json.loads(index_path.read_text(encoding="utf-8"))
+			weight_map = index.get("weight_map")
+			if (
+				not isinstance(weight_map, dict)
+				or weight_map.keys() != expected.keys()
+				or not all(isinstance(name, str) for name in weight_map.values())
+			):
+				raise ValueError(
+					"exported shard index does not match the backbone weights"
+				)
+			filenames = set(weight_map.values())
+		else:
+			filenames = {"model.safetensors"}
+		if any(Path(name).name != name for name in filenames) or filenames != {
+			file.name for file in path.glob("*.safetensors")
+		}:
+			raise ValueError("exported weight files do not match the shard index")
+		seen: set[str] = set()
+		for filename in sorted(filenames):
+			with safe_open(path / filename, framework="pt", device="cpu") as weights:
+				for name in sorted(weights.keys()):
+					if name not in expected or name in seen:
+						raise ValueError(
+							f"unexpected or duplicated backbone tensor: {name}"
+						)
+					if weight_map is not None and weight_map[name] != filename:
+						raise ValueError(
+							f"backbone tensor is in the wrong shard: {name}"
+						)
+					if (
+						tuple(weights.get_slice(name).get_shape())
+						!= expected[name].shape
+					):
+						raise ValueError(
+							f"exported backbone tensor shape does not match: {name}"
+						)
+					if weights.get_tensor(name).dtype != expected[name].dtype:
+						raise ValueError(
+							f"exported backbone tensor dtype does not match: {name}"
+						)
+					seen.add(name)
+		if seen != expected.keys():
+			raise ValueError("export is missing backbone tensors")
+
+	def _publish(self, staging_path: Path) -> None:
+		previous_moved = False
+		if self.path.exists():
+			self._replace_directory(self.path, self._backup_path)
+			previous_moved = True
+		try:
+			self._replace_directory(staging_path, self.path)
+		except OSError as error:
+			if previous_moved:
+				try:
+					self._replace_directory(self._backup_path, self.path)
+				except OSError as restore_error:
+					raise ModelExecutionError(
+						f"Could not publish to {self.path} or restore the previous merged "
+						f"backbone. Previous export remains at {self._backup_path}. "
+						f"Publish error: {error}; restore error: {restore_error}"
+					) from restore_error
+			raise
+		if previous_moved:
+			try:
+				shutil.rmtree(self._backup_path)
+			except OSError as error:
+				raise ModelExecutionError(
+					f"New merged backbone is available at {self.path}, but the previous "
+					f"export backup could not be removed from {self._backup_path}: {error}"
+				) from error
+
+	@classmethod
+	def _replace_directory(cls, source: Path, destination: Path) -> None:
+		"""Retry transient Windows sharing errors without changing rename semantics."""
+		for delay in (*cls.WINDOWS_RENAME_RETRY_DELAYS, None):
+			try:
+				os.replace(source, destination)
+				return
+			except OSError as error:
+				if os.name != "nt" or error.winerror not in (5, 32) or delay is None:
+					raise
+				time.sleep(delay)
