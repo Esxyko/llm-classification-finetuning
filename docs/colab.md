@@ -48,8 +48,10 @@ Windows terminal or local `.env` does not configure its project process.
    uv run model SR2-Qwen3-4B-lora --config configs/1.yaml
    ```
 
-   Or use `uv run python scripts/validate.py` for its explicit selection. Editing
-   `config.yaml` does not change a run that selects `configs/1.yaml`.
+   Or use `uv run python scripts/validate.py` for batch validation, or
+   `uv run python scripts/build.py` for batch builds and standalone warmup.
+   Both scripts currently select `configs/3.yaml` through their own constants.
+   Editing `config.yaml` does not change a run that selects another YAML.
 
 A notebook's `os.environ` is inherited by subprocesses it launches and overrides
 `.env` values. A separately opened terminal does not receive later notebook
@@ -64,6 +66,7 @@ environment changes; configure that terminal's process or the runtime `.env`.
 | `CACHE_PATH` on mounted Drive | Token, embedding, batch-plan, and warmup caches publish when those stages complete | Directly to Drive; unchanged hits do not republish |
 | `RESULT_PATH` on mounted Drive | Batch logs stream during execution; completed model runs publish predictions, metrics, and YAML; submissions and comprehensive reports use their subdirectories | Directly to Drive |
 | `PROJECT_DIR/models/` | `--build` publishes adapter/head and the merged backbone directory | Runtime-local until copied separately |
+| `BUILD_OUTPUT_PATH` in `!build.ipynb` | Copy the current SR2 build directory after the batch finishes, including after a failed batch | Timestamped backup on Drive before runtime release |
 
 Setting a path does not copy existing files. Point `CACHE_PATH` and `RESULT_PATH`
 to Drive to publish their artifacts there during the run. When `RESULT_PATH` is
@@ -86,16 +89,16 @@ downloaded original base weights; build outputs are under `PROJECT_DIR/models/`.
 
 ## Local notebook behavior
 
-The working copy may include `!colab.ipynb`. It is ignored by Git and is not part
-of a fresh clone; the manual workflow above does not depend on it. Its current
-four-cell workflow is:
+The working copy may include `!validate.ipynb` and `!build.ipynb`. Both are
+ignored by Git and are not part of a fresh clone; the manual workflow above
+does not depend on them. Both use four cells:
 
 | Cell | Action |
 | --- | --- |
-| Settings | Define repository/branch, runtime project path, model/cache/result paths, and endpoint; export model/cache/result/endpoint settings |
+| Settings | Define repository/branch, runtime project path, model/cache/result paths, and endpoint; export model/cache/result/endpoint settings; the build notebook also defines `BUILD_OUTPUT_PATH` |
 | Drive | Mount `/content/drive` and create the model-cache directory |
 | Setup | Clone, or fetch and hard-reset the runtime checkout to the selected remote branch; write model/cache/result paths and endpoint to runtime `.env`; install `uv`; synchronize dependencies |
-| Validation and cleanup | Run `scripts/validate.py` with results and logs written directly to `RESULT_PATH`; flush/unmount Drive in `finally`; request runtime release |
+| Run and cleanup | The validation notebook runs `scripts/validate.py`, then flushes/unmounts Drive and requests runtime release in `finally`; the build notebook runs `scripts/build.py`, saves SR2 build outputs, then performs cleanup |
 
 The setup cell's `git reset --hard` discards tracked edits in the **runtime
 checkout**. Preserve those edits before rerunning that cell. It does not upload
@@ -112,24 +115,52 @@ report generation also use this root. There is no end-of-run results copy step.
 Previously published results remain at the configured destination when a later
 task fails. An interrupted training run may have no completed result directory;
 direct output is not a live checkpoint or a guarantee against interrupted Drive
-writes. Production checkpoints under `models/` still need separate preservation.
+writes. Manual builds and the validation notebook require separate preservation
+of production checkpoints under `models/`; the build notebook copies them as
+described below.
 
-The `finally` cleanup calls `drive.flush_and_unmount()`, then
+The validation notebook's `finally` cleanup calls `drive.flush_and_unmount()`, then
 `runtime.unassign()`, even after validation fails. An error inside cleanup can
 prevent its remaining calls. To continue interactive work,
 change the cleanup behavior before running that cell; after an unmount, later
 Drive operations require mounting again.
 
+### When build outputs are saved
+
+The build notebook sets `BUILD_OUTPUT_PATH` to
+`/content/drive/MyDrive/llm-classification-finetuning/models` by default. This
+notebook-only setting is separate from `MODEL_PATH`, which holds the downloaded
+base weights; it does not change the model CLI's output paths.
+
+After the build batch finishes, its final cell copies the runtime's current
+`models/SR2_Qwen3_4B_lora/` directory to
+`<BUILD_OUTPUT_PATH>/build-<timestamp>/SR2_Qwen3_4B_lora/`. This includes the
+adapter/head checkpoint, merged backbone, tokenizer, and export metadata that
+exist there. Historical model directories are not copied. Backups use separate
+timestamped directories; within a batch, multiple untagged builds still replace
+the same runtime outputs, so the backup retains their final on-disk state.
+
+The copy is also attempted after a failed batch to preserve any outputs already
+produced, while retaining the original build error. If no SR2 directory exists,
+as with a warmup-only run, copying is skipped; warmup caches are already written
+to `CACHE_PATH`. A reused runtime can contain outputs from an earlier run, and
+the backup includes the directory's current contents.
+
+After copying succeeds or is skipped, the cell flushes/unmounts Drive and requests
+runtime release. If copying fails, it reports the error and keeps Drive mounted
+and the runtime available for recovery. A failed copy can leave an incomplete
+backup directory. An error during Drive flushing prevents runtime release.
+
 ## Diagnose a failed run
 
 - Read the **first model error** in the streamed output or
-  `<RESULT_PATH>/logs/validate-*.log` (default `results/logs/`). The trailing
+  `<RESULT_PATH>/logs/validate-*.log` or `build-*.log` (default `results/logs/`). The trailing
   `CalledProcessError` only reports that the child command failed.
 - Check the selected YAML, runtime working directory, and exported environment
   rather than the local Windows settings.
 - If writing failed, inspect the configured `RESULT_PATH`, Drive mount, and
-  destination permissions. The notebook's cleanup can still release the runtime
-  afterward.
+  destination permissions. Cleanup can still release the runtime after a model
+  failure; a build-output copy failure leaves it available for recovery.
 - Use the dedicated [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128)
   for submission pins; normal `uv run` uses the training lock.
 

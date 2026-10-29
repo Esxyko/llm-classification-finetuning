@@ -45,8 +45,8 @@ warmup state. Validation does not save production checkpoints. Builds use IDs
 from both partitions and also export the LoRA-merged backbone with its tokenizer;
 submission requires the matching adapter/head checkpoint and test files.
 
-Paths and `.env` resolve from the process working directory. The batch script
-instead derives the project root from its own file and launches children there.
+Paths and `.env` resolve from the process working directory. The batch scripts
+instead derive the project root from their own files and launch children there.
 See [path resolution](docs/configuration.md#configuration-files-and-paths).
 
 ## Entry points
@@ -66,9 +66,18 @@ CLI modules translate expected `DataPreparationError` subclasses to exit status
 and the build-only `warmup` selector outside the registry. Unsupported warmup
 flags are rejected before data/GPU setup. Business logic stays below this layer.
 
-[scripts/validate.py](scripts/validate.py) is the batch runner: explicit model/config
-selection, sequential subprocesses, terminal/log streaming, and failure summary.
-Its usage belongs in [commands](docs/commands.md#batch-validation).
+[scripts/validate.py](scripts/validate.py) runs batch holdout validation;
+[scripts/build.py](scripts/build.py) runs full-data builds and standalone warmup.
+Both own independent explicit model/config selection, sequential subprocesses,
+terminal/log streaming, and failure summaries. Usage belongs in
+[batch validation](docs/commands.md#batch-validation) and
+[batch builds](docs/commands.md#batch-builds).
+
+The ignored local `!validate.ipynb` and `!build.ipynb` provide Colab setup and
+their corresponding batch workflows. The build notebook additionally copies
+current SR2 outputs to timestamped Drive backups before runtime release,
+retaining the runtime if copying fails. Their behavior belongs in
+[Colab](docs/colab.md#local-notebook-behavior).
 
 ## Package map
 
@@ -187,6 +196,8 @@ defaults to `./results` and controls validation, submission, report, and log roo
 | `<RESULT_PATH>/submit/MODEL-<timestamp>/` | Submission CSV |
 | `<RESULT_PATH>/comprehensive/` | Latest synthesized report pair |
 | `<RESULT_PATH>/logs/validate-*.log` | Immediately flushed batch-run logs, including failures |
+| `<RESULT_PATH>/logs/build-*.log` | Immediately flushed full-data build and standalone warmup batch logs, including failures |
+| `<BUILD_OUTPUT_PATH>/build-<timestamp>/SR2_Qwen3_4B_lora/` | Build notebook's Drive backup of current SR2 outputs; notebook-only destination |
 
 Runtime artifact directories are not source modules. The saved default split
 and selected shared caches are tracked with regular Git storage; raw data,

@@ -1,4 +1,4 @@
-"""Run selected YAML configs for holdout validation or standalone head warmup."""
+"""Run selected YAML configs for holdout validation."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
-	# "warmup": ["1.yaml"],
 	"SR2-Qwen3-4B-lora": ["3.yaml"],
 }
 
@@ -48,8 +47,6 @@ def _validate() -> int:
 	config_dir = PROJECT_ROOT / CONFIG_DIR
 	failed_tasks: list[str] = []
 	for model, configs in MODEL_CONFIGS.items():
-		is_warmup = model == "warmup"
-		action = "head warmup" if is_warmup else "holdout validation"
 		for filename in configs:
 			config = config_dir / filename
 			task = f"{filename}: {model}"
@@ -58,9 +55,7 @@ def _validate() -> int:
 				print(f"Config file not found for {task}: {config}", flush=True)
 				continue
 			command = ["uv", "run", "model", model, "--config", str(config)]
-			if is_warmup:
-				command.append("--build")
-			print(f"Running {action} for {task}", flush=True)
+			print(f"Running holdout validation for {task}", flush=True)
 			try:
 				with subprocess.Popen(
 					command,
@@ -71,7 +66,8 @@ def _validate() -> int:
 					encoding="utf-8",
 					errors="replace",
 					bufsize=1,
-					env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+					env=os.environ
+					| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
 				) as process:
 					assert process.stdout is not None
 					for line in process.stdout:
@@ -79,12 +75,12 @@ def _validate() -> int:
 					returncode = process.wait()
 			except OSError as error:
 				failed_tasks.append(task)
-				print(f"Failed {action} for {task}: {error}", flush=True)
+				print(f"Failed holdout validation for {task}: {error}", flush=True)
 				continue
 			if returncode:
 				failed_tasks.append(task)
 				print(
-					f"Failed {action} for {task} (exit code {returncode})",
+					f"Failed holdout validation for {task} (exit code {returncode})",
 					flush=True,
 				)
 

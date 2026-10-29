@@ -3,7 +3,8 @@
 [Documentation index](../README.md)
 
 Run from the project root after [setup](getting-started.md). All entry points
-accept `--config PATH`, defaulting to `config.yaml` in the working directory.
+accept `--config PATH`, defaulting to `config.yaml` in the working directory,
+except the batch scripts, which select configs through their constants.
 Use `uv run COMMAND --help` to inspect the installed parser. In the separate
 [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
 run `model` directly instead of `uv run model`.
@@ -20,7 +21,8 @@ run `model` directly instead of `uv run model`.
 | `uv run model MODEL --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
 | `uv run model warmup --build` | Train/cache an SR2 head on the train partition only | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt` |
 | `uv run result [RUN]` | Report a selected or latest validation run | `results/comprehensive/` |
-| `uv run python scripts/validate.py` | Execute explicit model/config pairs sequentially, including standalone warmup | Validation directories, warmup caches, and `results/logs/validate-*.log` |
+| `uv run python scripts/validate.py` | Validate explicit model/config pairs sequentially | Validation directories and `results/logs/validate-*.log` |
+| `uv run python scripts/build.py` | Build explicit model/config pairs sequentially, including standalone warmup | Adapter/head and merged backbone, or warmup caches; `results/logs/build-*.log` |
 
 The processed `.parquet` path is logical; large files use a manifest and volumes.
 See [multipart storage](caching.md#shared-storage-and-multipart-files).
@@ -94,36 +96,55 @@ request to delete all existing caches; see [cache identities](caching.md).
 
 ## Batch validation
 
-[scripts/validate.py](../scripts/validate.py) selects work through its top-level
-`CONFIG_DIR` and `MODEL_CONFIGS` constants. The current selection is
-`SR2-Qwen3-4B-lora` with `1.yaml` from `configs/`. Edit these constants to
-choose other combinations; there are no script CLI selection flags.
+[scripts/validate.py](../scripts/validate.py) runs holdout validation only. Each
+task invokes `uv run model MODEL --config PATH` from the project root. It does
+not support the standalone `warmup` selector; model-internal head warmup still
+follows the selected YAML.
 
-Each dictionary key is a registered model selector or `warmup`. Its list
-contains filenames relative to `CONFIG_DIR`, which is resolved from the script's
-project root.
-Only listed files run; newly added YAML files are not selected automatically.
-Models run in dictionary order and filenames in list order. Empty lists skip
-a model; no selected filenames is an error.
+Validation logs use `<RESULT_PATH>/logs/validate-*.log`.
 
-The script always invokes children from the project root, using
-`uv run model MODEL --config PATH`, adding `--build` for `warmup` to create or
-reuse the train-partition head-warmup cache. For example, this selection runs
-warmup before holdout validation:
+## Batch builds
+
+[scripts/build.py](../scripts/build.py) runs full-data builds and standalone
+warmup. Each task invokes `uv run model MODEL --config PATH --build` from the
+project root. A `warmup` task creates or reuses the train-partition head-warmup
+cache; a registered model builds its full-data adapter/head and merged backbone.
+For example, this selection runs standalone warmup before a full-data build:
 
 ```python
 MODEL_CONFIGS: dict[str, list[str]] = {
     "warmup": ["1.yaml"],
-    "SR2-Qwen3-4B-lora": ["1.yaml"],
+    "SR2-Qwen3-4B-lora": ["3.yaml"],
 }
 ```
 
-It continues after missing configs or failed runs, prints a task summary, and
-exits with status `1` if any task fails.
+Standalone warmup and full-data builds use different training ID sets; see
+[cache reuse](caching.md#standalone-warmup-build). Build logs use
+`<RESULT_PATH>/logs/build-*.log`.
+
+The batch script does not add `--checkpoint-tag`. Multiple configs for the same
+model replace the default `adapter.pt` and `merged/` outputs in sequence. Use the
+model CLI directly with tags when separate checkpoints are needed.
+
+### Shared batch behavior
+
+Each script selects work independently through its top-level `CONFIG_DIR` and
+`MODEL_CONFIGS` constants. Both currently select `SR2-Qwen3-4B-lora` with
+`3.yaml` from `configs/`. Edit these constants to choose other combinations;
+there are no script CLI selection flags. Dictionary keys are registered model
+selectors, with `warmup` additionally supported by the build script. Each list
+contains filenames relative to `CONFIG_DIR`, resolved from the script's project
+root.
+
+Only listed files run; newly added YAML files are not selected automatically.
+Models run in dictionary order and filenames in list order. Empty lists skip
+a model; no selected filenames is an error. Both scripts continue after missing
+configs or failed runs, print a task summary, and exit with status `1` if any
+task fails.
 
 Each invocation streams script messages and combined child stdout/stderr to
 the terminal and one immediately flushed UTF-8 log under `<RESULT_PATH>/logs/`
-(default `./results/logs/`). The script loads `.env` from its project root and
+(default `./results/logs/`). Each script loads `.env` from its project root and
 resolves relative result paths there, matching its child commands.
 Unexpected exceptions and keyboard interruptions also write their traceback
 before propagating. A final `CalledProcessError` in a notebook is a wrapper;
