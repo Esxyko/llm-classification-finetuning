@@ -91,7 +91,7 @@ class HeadWarmupCache:
 	def prepare(
 		self, context: WarmupCacheContext, *, seed: int, refresh: bool = False
 	) -> WarmupCacheEntry:
-		"""Select the largest valid epoch up to the target without changing RNG."""
+		"""Match a full cosine curve or continue fixed-rate state without drawing RNG."""
 		config = self._config
 		metadata = {
 			**asdict(context),
@@ -112,6 +112,10 @@ class HeadWarmupCache:
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
+		# Keep legacy fixed-rate keys; cosine curves depend on the target epochs.
+		if config.warmup_min_lr_ratio != 1.0:
+			metadata["warmup_lr_schedule"] = "cosine_v1"
+			metadata["warmup_min_lr_ratio"] = config.warmup_min_lr_ratio
 		# Preserve existing unsmoothed cache identities while isolating smoothed warmup.
 		label_smoothing = (
 			config.warmup_label_smoothing
@@ -127,7 +131,12 @@ class HeadWarmupCache:
 		entry = WarmupCacheEntry(metadata, None, self._path_for_metadata(metadata))
 		if refresh:
 			return entry
-		for epochs in range(config.warmup_epochs, 0, -1):
+		candidate_epochs = (
+			range(config.warmup_epochs, 0, -1)
+			if config.warmup_min_lr_ratio == 1.0
+			else (config.warmup_epochs,)
+		)
+		for epochs in candidate_epochs:
 			source_metadata = {**metadata, "warmup_epochs": epochs}
 			source_path = self._path_for_metadata(source_metadata)
 			try:

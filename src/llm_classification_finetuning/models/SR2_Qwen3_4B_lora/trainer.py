@@ -79,7 +79,7 @@ class _EpochTrainingLosses:
 
 
 class _CosineLearningRateSchedule:
-	"""Set one shared rate per planned joint update, including FP16 skips."""
+	"""Set one shared rate per planned stage update, including FP16 skips."""
 
 	def __init__(
 		self,
@@ -357,7 +357,7 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 	) -> LoRATrainingHistory:
-		"""Train the head at a fixed rate, then optionally run joint cosine decay."""
+		"""Train the head, then optionally adapters, with independent cosine curves."""
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		reference = training.reference
@@ -535,6 +535,15 @@ class LoRATrainer:
 			warmup_steps = OptimizerGroupLayout(
 				len(reference), self._config.warmup_training_batch_size
 			).update_count
+			# Fixed-rate continuation keeps its legacy cache and shuffle behavior.
+			# Cosine cache hits require the exact target, so a miss starts at step 0.
+			if self._config.warmup_min_lr_ratio != 1.0:
+				lr_schedule = _CosineLearningRateSchedule(
+					optimizer,
+					learning_rate=self._config.warmup_learning_rate,
+					min_lr_ratio=self._config.warmup_min_lr_ratio,
+					total_steps=warmup_steps * self._config.warmup_epochs,
+				)
 			self._timestamp()
 			progress.start_stage(
 				stage=self._head_stage.capitalize(),

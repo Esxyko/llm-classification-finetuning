@@ -222,15 +222,17 @@ update counts follow finalized merged groups. See
 
 `SR2_Qwen3_4B` uses the same token, adapter-free feature, and completed head
 state caches as standalone/inline LoRA warmup. Its independent `epochs`,
-`training_batch_size`, and `learning_rate` map to the existing cache fields
-`warmup_epochs`, `warmup_training_batch_size`, and `warmup_learning_rate`.
-No cache identity or schema changes are needed. Other compatibility rules below,
+`training_batch_size`, `learning_rate`, and `min_lr_ratio` map to the shared
+`warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate`, and
+`warmup_min_lr_ratio` settings. Matching curves share head state without changing
+the cache namespace or schema. Other compatibility rules below,
 including training ID sets and the treatment of changed text/labels, still apply.
 
 Exact head hits evaluate current train/validation data for validation runs, or
 all training data for builds, without optimizing or rewriting the cached state.
-Partial hits continue only the remaining epochs with the existing shuffle/RNG
-restoration. Validation publishes a new report even when no epochs run; build
+Fixed-rate partial hits (`min_lr_ratio: 1`) continue only the remaining epochs
+with the existing shuffle/RNG restoration. Cosine decay requires an exact target
+epoch count. Validation publishes a new report even when no epochs run; build
 saves its independent `head[_TAG].pt` artifact even when the head is fully cached.
 `--refresh-cache` refreshes requested token, feature, and head entries.
 
@@ -263,12 +265,21 @@ new head. Compatible v3 entries remain shared by standalone and inline SR2 warmu
 when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 
-For a target of `N` warmup epochs, lookup first checks the exact `N`-epoch key,
+With cosine decay (`warmup_min_lr_ratio < 1`), lookup checks only the exact
+target `N`-epoch key. Metadata additionally includes
+`warmup_lr_schedule: cosine_v1` and `warmup_min_lr_ratio`. The existing
+`warmup_epochs` field fixes the curve's training horizon. A different ratio or
+target selects a different key and trains the complete new curve on a miss;
+lower-epoch cosine entries and old fixed-rate entries are not continuation sources.
+
+With `warmup_min_lr_ratio: 1`, those extra fields are omitted, preserving old
+fixed-rate identities. Lookup first checks the exact `N`-epoch key,
 then checks `N-1` down to `1`, changing only `warmup_epochs` in the metadata.
 The first fully validated state is selected. Missing, corrupt, or incompatible
 candidates are skipped; higher-epoch states are never used for a smaller target.
 Lookup computes existing keys directly and supports both single-file and multipart
-caches. Existing schema-v5 entries need no migration.
+caches. Schema v5 and the saved-state layout remain unchanged; existing
+fixed-rate entries need no migration and remain on disk.
 
 ### Identity
 
@@ -276,11 +287,12 @@ caches. Existing schema-v5 entries need no migration.
 | --- | --- |
 | Sorted original training ID set | Validation IDs, holdout/build label, source path/Parquet bytes, row order, training text and labels |
 | Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, SR2 initialization version, quantization, schema | Local path spelling when contents match |
-| Head dropout, A/B objective, warmup epochs/batch size/rate, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
+| Head dropout, A/B objective, warmup epochs/batch size/rate, cosine schedule version and minimum ratio when decay is enabled, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
 | Non-quantized training identity for active profiles | LoRA rank/alpha/dropout/targets; joint learning rates, epochs, batch size, accumulation, and token controls |
 
 Warmup epochs remain part of each stored key. A lower-epoch entry is compatible
-as a continuation source only when every other identity field matches.
+as a continuation source only for fixed-rate training and when every other
+identity field matches.
 
 **Editing training text or labels while keeping the same IDs can reuse stale
 warmup state. Use `--refresh-cache` when that state must be retrained.** Tokens
@@ -312,10 +324,10 @@ A complete hit in inline LoRA restores the head/optimizer/RNG state, skips all w
 feature extraction, training, and evaluation, and starts joint training with fresh
 adapters and the configured joint schedule.
 
-A partial hit at epoch `K < N` loads compatible frozen features and extracts any
-missing branches, restores the head/optimizer/RNG state after feature and loader
-preparation, and trains only
-epochs `K+1` through `N` at the configured fixed warmup rate. The independent
+A fixed-rate partial hit at epoch `K < N` loads compatible frozen features and
+extracts any missing branches, restores the head/optimizer/RNG state after
+feature and loader preparation, and trains only epochs `K+1` through `N` at the
+configured fixed warmup rate. The independent
 training-loader generator is reconstructed by replaying `K` epochs through a
 lightweight index-only DataLoader with the same length, batch size, shuffle, and
 seed. Replay reads no features and executes no model work. This preserves the

@@ -22,6 +22,7 @@ LORA_WARMUP_FIELDS = (
 	"warmup_epochs",
 	"warmup_training_batch_size",
 	"warmup_learning_rate",
+	"warmup_min_lr_ratio",
 )
 
 
@@ -93,6 +94,7 @@ class WarmupModelConfig:
 	dataloader_workers: int
 	ab_swap: str
 	label_smoothing: float = field(default=0.0, kw_only=True)
+	warmup_min_lr_ratio: float = field(default=0.125, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +102,7 @@ class SR2ModelConfig(ModelConfig):
 	"""Independent frozen-Skywork head settings with warmup-compatible optimization."""
 
 	max_grad_norm: float = field(kw_only=True)
+	min_lr_ratio: float = field(default=0.125, kw_only=True)
 
 	def as_warmup_config(self) -> WarmupModelConfig:
 		"""Translate public model fields into the shared head-training configuration."""
@@ -347,7 +350,8 @@ def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 	aliases = {name: name.removeprefix("warmup_") for name in LORA_WARMUP_FIELDS}
 	values = dict(section)
 	for internal, public in aliases.items():
-		values[internal] = values.pop(public, None)
+		if public in values:
+			values[internal] = values.pop(public)
 	shared = _load_warmup_fields(values, section_name, field_aliases=aliases)
 	if shared.warmup_epochs <= 0:
 		raise ConfigurationError(f"{section_name}.epochs must be greater than 0.")
@@ -395,6 +399,11 @@ def _load_warmup_fields(
 	)
 	if warmup_epochs < 0:
 		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
+	warmup_min_lr_ratio = _require_float(
+		section.get("warmup_min_lr_ratio", 0.125), field("warmup_min_lr_ratio")
+	)
+	if not 0.0 <= warmup_min_lr_ratio <= 1.0:
+		raise ConfigurationError(f"{field('warmup_min_lr_ratio')} must be in [0, 1].")
 	workers = _require_integer(
 		section.get("dataloader_workers"), field("dataloader_workers")
 	)
@@ -412,6 +421,7 @@ def _load_warmup_fields(
 		extraction_budget=positive_integer("extraction_budget"),
 		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
 		warmup_learning_rate=positive_float("warmup_learning_rate"),
+		warmup_min_lr_ratio=warmup_min_lr_ratio,
 		max_grad_norm=positive_float("max_grad_norm"),
 		random_state=_require_integer(
 			section.get("random_state"), field("random_state")

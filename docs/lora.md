@@ -214,18 +214,19 @@ offsets/metadata. Current train/test inputs are checked independently.
 
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
-| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head at fixed `warmup_learning_rate` | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
+| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head with cosine decay from `warmup_learning_rate` to `warmup_learning_rate * warmup_min_lr_ratio` | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
 | Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup loads cached features, extracts missing branches, and recomputes both losses without training |
-| Head warmup, lower-epoch cache hit | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
+| Head warmup, lower-epoch cache hit (fixed rate only) | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
 The shared warmup section supplies epochs, head batch size, learning rate,
-extraction budget, and smoothing. Inline warmup's remaining model/head settings
+minimum ratio, extraction budget, and smoothing. Inline warmup's remaining model/head settings
 come from the selected LoRA section. `warmup_epochs: 0` skips warmup extraction
 and cache I/O. See [standalone versus inline settings](configuration.md#standalone-warmup).
-Lookup prefers the exact target epoch, then the largest compatible lower epoch;
-all other cache identity fields must match.
+Cosine decay reuses only an exact target-epoch cache. Fixed-rate warmup
+(`warmup_min_lr_ratio: 1`) can also continue from the largest compatible lower
+epoch; all other cache identity fields must match.
 
 Adapter-free warmup features are persisted by branch token content and reused
 across standalone/inline runs and head configurations. Only missing unique
@@ -268,8 +269,10 @@ For warmup identity and restoration details, see [warmup caches](caching.md#lora
 
 ### Cosine learning-rate decay
 
-Adapters and the classifier head retain separate optimizer parameter groups,
-with the same learning rate throughout joint training. The rate starts at
+Frozen SR2 head training, standalone/inline warmup, and joint training use the
+same cosine formula with independent stage curves. Adapters and the classifier
+head retain separate optimizer parameter groups, with the same learning rate
+throughout joint training. The rate starts at
 `learning_rate` and decays continuously across all joint epochs to
 `learning_rate * min_lr_ratio`. The ratio defaults to `0.125`; `0` reaches zero
 and `1` keeps the rate fixed. For example, `learning_rate: 0.00015` and
@@ -287,12 +290,21 @@ The first update uses the initial rate and the last uses the minimum. A run
 with only one update uses the initial rate. The schedule applies immediately
 before each complete optimizer group's update attempt and advances once for
 that consumed group, including when FP16 gradient scaling skips the parameter
-update. Micro-batches, validation, and warmup do not advance it. Packing and
-short-tail merging retain the update counts above; epochs do not restart decay.
+update. Micro-batches and evaluation do not advance a schedule; warmup does not
+advance the joint schedule. Packing and short-tail merging retain the update
+counts above; epochs do not restart decay.
 
-Head warmup keeps its fixed `warmup_learning_rate`. At the start of joint
-training, both groups switch to `learning_rate` and begin a fresh cosine curve,
-whether warmup was executed, restored from cache, or disabled. The classifier's
+Head warmup uses `N = warmup_epochs * max(1, rows // warmup_training_batch_size)`
+with `warmup_learning_rate` and `warmup_min_lr_ratio` in the same formula. Its
+ratio defaults to `0.125`, and `1` keeps the rate fixed. Frozen SR2 maps its
+independent `epochs`, `training_batch_size`, `learning_rate`, and `min_lr_ratio`
+to these warmup settings. Each curve spans all epochs in its stage without
+restarting at epoch boundaries. Only exact target-epoch caches are compatible
+with decay; changing the target restarts head training for the new curve.
+
+At the start of joint training, both groups switch to `learning_rate` and begin
+a fresh cosine curve, whether warmup was executed, restored from cache, or
+disabled. The classifier's
 AdamW state is retained. These joint-only settings do not change warmup cache
 identity or production checkpoint compatibility.
 
