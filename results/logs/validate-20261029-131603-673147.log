@@ -1,0 +1,56 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261029-131603-673147.log
+Running holdout validation for 1.yaml: SR2-Qwen3-4B
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 672,513 trainable parameters.
+Rebuilding SR2-Qwen3-4B head training (Validation run): completed_epochs=0, target_epochs=30, remaining_epochs=30; precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/5da3953e7008320009683eb5c8d204e0d105ca18b80220fe950dfa3e277f5c93.pt
+SR2-Qwen3-4B warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+Validation run head training epoch 1/30 (total 1/30): train_loss=1.012442 validation_loss=1.002321
+Validation run head training epoch 2/30 (total 2/30): train_loss=1.328022 validation_loss=1.318798
+Validation run head training epoch 3/30 (total 3/30): train_loss=0.992435 validation_loss=0.987032
+Validation run head training epoch 4/30 (total 4/30): train_loss=0.961042 validation_loss=0.956478
+Validation run head training epoch 5/30 (total 5/30): train_loss=0.951353 validation_loss=0.947686
+SR2_Qwen3_4B validation Head training (head training validation) Validation run epoch 6/30 (total 6/30):
+progress: 20.0% work: 156.0/780.0 time: 00:00:08/00:00:38
+Validation run head training epoch 6/30 (total 6/30): train_loss=0.944946 validation_loss=0.942266
+Validation run head training epoch 7/30 (total 7/30): train_loss=0.939529 validation_loss=0.937751
+Validation run head training epoch 8/30 (total 8/30): train_loss=0.935942 validation_loss=0.934850
+Validation run head training epoch 9/30 (total 9/30): train_loss=0.935177 validation_loss=0.934113
+Validation run head training epoch 10/30 (total 10/30): train_loss=0.933015 validation_loss=0.932629
+Validation run head training epoch 11/30 (total 11/30): train_loss=0.931374 validation_loss=0.931346
+SR2_Qwen3_4B validation Head training (head training validation) Validation run epoch 12/30 (total 12/30):
+progress: 40.0% work: 312.0/780.0 time: 00:00:15/00:00:37
+Validation run head training epoch 12/30 (total 12/30): train_loss=0.930192 validation_loss=0.930448
+Validation run head training epoch 13/30 (total 13/30): train_loss=0.929679 validation_loss=0.930006
+Validation run head training epoch 14/30 (total 14/30): train_loss=0.929432 validation_loss=0.929748
+Validation run head training epoch 15/30 (total 15/30): train_loss=0.929024 validation_loss=0.929638
+Validation run head training epoch 16/30 (total 16/30): train_loss=0.928912 validation_loss=0.929489
+Validation run head training epoch 17/30 (total 17/30): train_loss=0.928869 validation_loss=0.929535
+SR2_Qwen3_4B validation Head training (head training validation) Validation run epoch 18/30 (total 18/30):
+progress: 60.0% work: 468.0/780.0 time: 00:00:22/00:00:37
+Validation run head training epoch 18/30 (total 18/30): train_loss=0.928804 validation_loss=0.929456
+Validation run head training epoch 19/30 (total 19/30): train_loss=0.928783 validation_loss=0.929433
+Validation run head training epoch 20/30 (total 20/30): train_loss=0.928797 validation_loss=0.929442
+Validation run head training epoch 21/30 (total 21/30): train_loss=0.928785 validation_loss=0.929426
+Validation run head training epoch 22/30 (total 22/30): train_loss=0.928785 validation_loss=0.929432
+Validation run head training epoch 23/30 (total 23/30): train_loss=0.928787 validation_loss=0.929436
+SR2_Qwen3_4B validation Head training (head training validation) Validation run epoch 24/30 (total 24/30):
+progress: 80.0% work: 624.0/780.0 time: 00:00:29/00:00:36
+Validation run head training epoch 24/30 (total 24/30): train_loss=0.928782 validation_loss=0.929441
+Validation run head training epoch 25/30 (total 25/30): train_loss=0.928782 validation_loss=0.929438
+Validation run head training epoch 26/30 (total 26/30): train_loss=0.928782 validation_loss=0.929438
+Validation run head training epoch 27/30 (total 27/30): train_loss=0.928782 validation_loss=0.929438
+Validation run head training epoch 28/30 (total 28/30): train_loss=0.928782 validation_loss=0.929438
+Validation run head training epoch 29/30 (total 29/30): train_loss=0.928782 validation_loss=0.929438
+SR2_Qwen3_4B validation Head training Validation run epoch 30/30 (total 30/30):
+progress: 100.0% work: 780.0/780.0 time: 00:00:36/00:00:36
+Validation run head training epoch 30/30 (total 30/30): train_loss=0.928782 validation_loss=0.929438
+Saved SR2-Qwen3-4B head training (Validation run): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/5da3953e7008320009683eb5c8d204e0d105ca18b80220fe950dfa3e277f5c93.pt
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261029-131847
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.13 GiB reserved=0.15 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, validation): allocated=0.12 GiB reserved=0.15 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.13 GiB reserved=0.15 GiB
+Model total time (SR2-Qwen3-4B): 00:02:21
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.929438
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261029-131847
+Running holdout validation for 2.yaml: SR2-Qwen3-4B
