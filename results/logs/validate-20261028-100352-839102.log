@@ -1,9 +1,0 @@
-Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261028-100352-839102.log
-Running holdout validation for 1.yaml: SR2_Qwen3_4B_lora
-usage: model [-h] [--config PATH] [--build | --submit] [--refresh-cache]
-             [--checkpoint-tag TAG]
-             {SR2-Qwen3-4B-lora,warmup,ALL}
-model: error: argument model: invalid choice: 'SR2_Qwen3_4B_lora' (choose from 'SR2-Qwen3-4B-lora', 'warmup', 'ALL')
-Failed holdout validation for 1.yaml: SR2_Qwen3_4B_lora (exit code 2)
-Completed 0/1 tasks.
-Failed tasks: 1.yaml: SR2_Qwen3_4B_lora
