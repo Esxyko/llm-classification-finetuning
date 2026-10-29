@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 import torch
 
@@ -98,7 +100,7 @@ class GPUEnvironment:
 
 @dataclass(frozen=True, slots=True)
 class GPUMemoryPeak:
-	"""Absolute allocator peaks in bytes for one device and model run."""
+	"""Absolute allocator peaks in bytes for one device and reporting interval."""
 
 	device: str
 	peak_allocated_bytes: int
@@ -106,14 +108,22 @@ class GPUMemoryPeak:
 
 
 class GPUMemoryMonitor:
-	"""Track one model run's allocator peaks without clearing cached memory."""
+	"""Accumulate stage and whole-run peaks without clearing cached memory."""
 
 	def __init__(self, config: GPUConfig) -> None:
 		self._config = config
 		self._device: torch.device | None = None
+		self._peak: GPUMemoryPeak | None = None
+		self._stage_peaks: dict[str, GPUMemoryPeak] = {}
+		self._active_stage: str | None = None
+
+	@property
+	def started(self) -> bool:
+		"""Return whether GPU monitoring started, without initializing CUDA."""
+		return self._device is not None
 
 	def start(self) -> None:
-		"""Validate the configured GPU, finish prior work, and reset peaks once."""
+		"""Validate the configured GPU and start a fresh model-run interval."""
 		if self._device is not None:
 			raise ModelExecutionError("GPU memory monitoring has already started.")
 		device = GPUEnvironment(self._config).configure()
@@ -126,19 +136,78 @@ class GPUMemoryMonitor:
 			) from error
 		self._device = device
 
+	@contextmanager
+	def stage(self, name: Literal["training", "validation"]) -> Iterator[None]:
+		"""Isolate one phase and merge it into that phase's cross-epoch peaks."""
+		if self._active_stage is not None:
+			raise ModelExecutionError("GPU memory stages cannot be nested.")
+		# Preserve loading, extraction, and other work before resetting counters.
+		self.snapshot()
+		self._reset_peaks()
+		self._active_stage = name
+		try:
+			yield
+			self.snapshot()
+			# The next interval contains only work outside this phase.
+			self._reset_peaks()
+		except BaseException:
+			# A failed CUDA operation must not be synchronized or masked by monitoring.
+			with suppress(Exception):
+				self.snapshot(synchronize=False)
+			raise
+		finally:
+			self._active_stage = None
+
+	def stage_peaks(self) -> dict[str, GPUMemoryPeak]:
+		"""Return recorded phase maxima without GPU reads or synchronization."""
+		return self._stage_peaks.copy()
+
 	def snapshot(self, *, synchronize: bool = True) -> GPUMemoryPeak:
-		"""Read peaks, optionally skipping synchronization after execution fails."""
+		"""Merge whole-run maxima; failed unsynchronized reads retain saved peaks."""
 		if self._device is None:
 			raise ModelExecutionError("GPU memory monitoring has not started.")
 		try:
 			if synchronize:
 				torch.cuda.synchronize(self._device)
-			return GPUMemoryPeak(
+			peak = GPUMemoryPeak(
 				device=str(self._device),
 				peak_allocated_bytes=torch.cuda.max_memory_allocated(self._device),
 				peak_reserved_bytes=torch.cuda.max_memory_reserved(self._device),
 			)
 		except Exception as error:
+			if not synchronize and self._peak is not None:
+				return self._peak
 			raise ModelExecutionError(
 				f"Could not read GPU memory peaks on {self._device}: {error}"
 			) from error
+		self._peak = self._merge_peaks(self._peak, peak)
+		if self._active_stage is not None:
+			self._stage_peaks[self._active_stage] = self._merge_peaks(
+				self._stage_peaks.get(self._active_stage), peak
+			)
+		return self._peak
+
+	def _reset_peaks(self) -> None:
+		"""Reset only after a synchronized snapshot has preserved the old peaks."""
+		try:
+			torch.cuda.reset_peak_memory_stats(self._device)
+		except Exception as error:
+			raise ModelExecutionError(
+				f"Could not reset GPU memory peaks on {self._device}: {error}"
+			) from error
+
+	@staticmethod
+	def _merge_peaks(
+		previous: GPUMemoryPeak | None, current: GPUMemoryPeak
+	) -> GPUMemoryPeak:
+		if previous is None:
+			return current
+		return GPUMemoryPeak(
+			device=current.device,
+			peak_allocated_bytes=max(
+				previous.peak_allocated_bytes, current.peak_allocated_bytes
+			),
+			peak_reserved_bytes=max(
+				previous.peak_reserved_bytes, current.peak_reserved_bytes
+			),
+		)

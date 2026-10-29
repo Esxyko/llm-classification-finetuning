@@ -161,32 +161,78 @@ publication, so its time estimate has a different scope.
 
 ## GPU memory peaks
 
-Holdout validation resets PyTorch allocator peaks once per model on `gpu.device`
-before pipeline initialization. The interval covers loading, preparation,
-warmup, training, validation, cleanup, and result publication. Epochs share that
-interval. `ALL` and batch validation use this same path; builds/submissions do
-not enable it.
+Holdout validation, full-data builds, and standalone warmup monitor PyTorch
+allocator peaks on `gpu.device`. Monitoring starts before GPU work and model
+loading and continues through saving, export, cleanup, and result publication.
+Full-data builds first complete CPU input/batch preparation and both output-path
+write preflights, then start monitoring. Each model invocation has its own
+statistics, including under `ALL` and batch scripts. Submission does not enable
+monitoring.
 
-The terminal prints allocated/reserved peaks in GiB. Successful runs atomically
-append integer byte counts with complete-run timing, for example:
+Training and validation have independent, cross-epoch maxima for the work
+executed in the current invocation:
+
+| Scope | Includes |
+| --- | --- |
+| `training` | Warmup and joint optimization, plus warmup training-set evaluation |
+| `validation` | Holdout feature extraction and head inference |
+| `global` | All monitored work, including model loading, preliminary warmup feature extraction, cache saves, build export, cleanup, and publication |
+
+Before each phase, the monitor saves the preceding interval's global maxima and
+resets allocator peak counters. At phase completion it merges the observed
+allocated/reserved maxima into that phase and the global statistics, then resets
+the counters for work outside the phase. Global maxima therefore survive every
+reset, even when loading or export exceeds all training and validation peaks.
+These resets do not change allocator caches or live tensors.
+
+At the end of the run, the terminal prints `training`, `validation`, and finally
+`global` peaks once each in GiB, identifying the model and device. Unexecuted
+phases are omitted; full-data builds have no validation entry. A complete
+standalone warmup cache hit still records current training-set evaluation as
+`training` and current holdout evaluation as `validation`, despite executing zero
+optimization epochs. Partial hits count only work executed during this run.
+
+Successful holdout runs atomically append integer byte counts with complete-run
+timing. Existing top-level `gpu_memory` fields retain their global meaning;
+`stages` adds the independent phase peaks, for example:
 
 ```json
 {
   "gpu_memory": {
     "device": "cuda:0",
     "peak_allocated_bytes": 123456789,
-    "peak_reserved_bytes": 234567890
+    "peak_reserved_bytes": 234567890,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 120000000,
+        "peak_reserved_bytes": 234567890
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 100000000,
+        "peak_reserved_bytes": 234567890
+      }
+    }
   }
 }
 ```
+
+Unexecuted phases are also omitted from `stages`. Builds and standalone warmup
+report only in the terminal and do not create a `metrics.json` file.
 
 Allocated bytes measure PyTorch tensor memory; reserved bytes measure its caching
 allocator, including unused blocks. They are separate maxima and need not occur
 together. They exclude other processes and allocations outside that allocator.
 Monitoring neither clears caches nor subtracts initial occupancy; resident memory
-at the beginning contributes to the peak, including across sequential runs.
+at the beginning contributes to each interval's peak, including across sequential
+runs. In particular, validation's reserved peak can include blocks cached during
+training even though the historical training peak counter has been reset.
 
-On failure, the command attempts an unsynchronized terminal peak summary without
-masking the execution error. It does not append final GPU/runtime metrics for
-the failed execution. Inspect batch [logs](commands.md#batch-validation) for the
-underlying error.
+On failure after monitoring starts, the command attempts an unsynchronized
+terminal summary of the observed phase and global peaks, labeled `before failure`,
+without masking the execution error. If allocator reads fail, previously recorded
+peaks remain available. Failures before GPU monitoring starts do not trigger CUDA
+initialization for reporting. The command does not append final GPU/runtime
+metrics for the failed execution. Inspect batch [validation logs](commands.md#batch-validation)
+or [build logs](commands.md#batch-builds) for the underlying error.

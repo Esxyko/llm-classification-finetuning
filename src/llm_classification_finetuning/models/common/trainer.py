@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import random
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -17,6 +19,7 @@ from torch.utils.data import DataLoader, Dataset
 from ...config import ModelConfig
 from ...errors import ModelExecutionError
 from .cache import CachedEmbeddings
+from .hardware import GPUMemoryMonitor
 from .loss import ClassificationLoss
 from .model import PairwiseClassificationHead
 from .orientation import ABSwapAverager
@@ -123,10 +126,13 @@ class ModelTrainer:
 		config: ModelConfig,
 		device: torch.device,
 		config_key: str,
+		*,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> None:
 		self._config = config
 		self._device = device
 		self._config_key = config_key
+		self._gpu_memory_monitor = gpu_memory_monitor
 		self._criterion = ClassificationLoss(label_smoothing=config.label_smoothing)
 
 	def train(
@@ -185,13 +191,14 @@ class ModelTrainer:
 
 		try:
 			for epoch in range(1, self._config.epochs + 1):
-				training_loss = self._train_epoch(
-					head,
-					optimizer,
-					training_loader,
-					progress=progress,
-					description=f"Build epoch {epoch}/{self._config.epochs}",
-				)
+				with self._memory_stage("training"):
+					training_loss = self._train_epoch(
+						head,
+						optimizer,
+						training_loader,
+						progress=progress,
+						description=f"Build epoch {epoch}/{self._config.epochs}",
+					)
 				training_losses.append(training_loss)
 				print(
 					f"Build epoch {epoch}/{self._config.epochs}: "
@@ -244,20 +251,22 @@ class ModelTrainer:
 		try:
 			for epoch in range(1, self._config.epochs + 1):
 				epoch_started = self._timestamp()
-				training_loss = self._train_epoch(
-					head,
-					optimizer,
-					training_loader,
-					progress=progress,
-					description=f"Validation run epoch {epoch}/{self._config.epochs}",
-				)
+				with self._memory_stage("training"):
+					training_loss = self._train_epoch(
+						head,
+						optimizer,
+						training_loader,
+						progress=progress,
+						description=f"Validation run epoch {epoch}/{self._config.epochs}",
+					)
 				training_finished = self._timestamp()
-				validation_loss, probabilities = self._evaluate(
-					head,
-					validation_loader,
-					progress=progress,
-					description=f"Validation run epoch {epoch}/{self._config.epochs}",
-				)
+				with self._memory_stage("validation"):
+					validation_loss, probabilities = self._evaluate(
+						head,
+						validation_loader,
+						progress=progress,
+						description=f"Validation run epoch {epoch}/{self._config.epochs}",
+					)
 				validation_finished = self._timestamp()
 				final_probabilities = probabilities
 				metrics = EpochMetrics(
@@ -297,6 +306,14 @@ class ModelTrainer:
 			training_rows=len(self._training_reference(training_reference)),
 			source_training_rows=int((~training_reference["is_swapped"]).sum()),
 		)
+
+	def _memory_stage(
+		self, name: Literal["training", "validation"]
+	) -> AbstractContextManager[None]:
+		"""Keep the retained trainer compatible with optional phase monitoring."""
+		if self._gpu_memory_monitor is None:
+			return nullcontext()
+		return self._gpu_memory_monitor.stage(name)
 
 	def _timestamp(self) -> float:
 		"""Wait for this device's GPU work before reading the monotonic clock."""

@@ -5,10 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ...config import AppConfig
 from ..profile import ModelProfile
+
+if TYPE_CHECKING:
+	from .hardware import GPUMemoryMonitor
 
 
 class ModelMode(Enum):
@@ -89,4 +92,5 @@ class ModelPipelineInterface(Protocol):
 		*,
 		mode: ModelMode = ModelMode.VALIDATION,
 		refresh_cache: bool = False,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> ModelExecutionResult: ...

@@ -6,8 +6,8 @@ import argparse
 import re
 import sys
 import traceback
-from collections.abc import Sequence
-from contextlib import suppress
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from time import perf_counter
 from typing import NoReturn
@@ -99,12 +99,18 @@ def run(arguments: Sequence[str] | None = None) -> int:
 		mode = _selected_mode(parsed_arguments)
 		if parsed_arguments.model == WARMUP_MODEL:
 			started = perf_counter()
-			result = WarmupModelPipeline(config).run(
-				refresh_cache=parsed_arguments.refresh_cache
+			gpu_monitor = GPUMemoryMonitor(config.gpu)
+			with _report_gpu_memory_failure(WARMUP_MODEL, gpu_monitor):
+				result = WarmupModelPipeline(config).run(
+					refresh_cache=parsed_arguments.refresh_cache,
+					gpu_memory_monitor=gpu_monitor,
+				)
+				gpu_memory = gpu_monitor.snapshot()
+			elapsed_seconds = perf_counter() - started
+			_print_gpu_memory_report(
+				WARMUP_MODEL, gpu_memory, gpu_monitor.stage_peaks()
 			)
-			print(
-				f"Model total time (warmup): {format_duration(perf_counter() - started)}"
-			)
+			print(f"Model total time (warmup): {format_duration(elapsed_seconds)}")
 			_print_result(WARMUP_MODEL, result)
 			return 0
 		if parsed_arguments.model == ALL_MODELS:
@@ -142,34 +148,31 @@ def _run_registered_model(
 	checkpoint_tag: str | None,
 ) -> ModelExecutionResult:
 	model_started = perf_counter()
-	gpu_monitor = None
-	if mode is ModelMode.VALIDATION:
-		gpu_monitor = GPUMemoryMonitor(config.gpu)
-		gpu_monitor.start()
-	try:
+	gpu_monitor = GPUMemoryMonitor(config.gpu) if mode is not ModelMode.SUBMIT else None
+	with _report_gpu_memory_failure(registration.profile.selector, gpu_monitor):
 		result = registration.pipeline_type(
 			config=config,
 			project_root=project_root,
 			profile=registration.profile,
 			checkpoint_tag=checkpoint_tag,
-		).run(mode=mode, refresh_cache=refresh_cache)
+		).run(
+			mode=mode,
+			refresh_cache=refresh_cache,
+			gpu_memory_monitor=gpu_monitor,
+		)
 		gpu_memory = gpu_monitor.snapshot() if gpu_monitor is not None else None
-	except BaseException:
-		if gpu_monitor is not None:
-			# Peak collection and terminal output must preserve the original error.
-			with suppress(Exception):
-				_print_gpu_memory(
-					registration.profile.selector,
-					gpu_monitor.snapshot(synchronize=False),
-					failed=True,
-				)
-		raise
-	elapsed_seconds = perf_counter() - model_started
+		gpu_memory_stages = gpu_monitor.stage_peaks() if gpu_monitor is not None else {}
+		elapsed_seconds = perf_counter() - model_started
+		if isinstance(result, ModelRunResult):
+			ModelResultPublisher.record_model_time(
+				result.output_dir,
+				elapsed_seconds,
+				gpu_memory=gpu_memory,
+				gpu_memory_stages=gpu_memory_stages,
+			)
 	if gpu_memory is not None:
-		_print_gpu_memory(registration.profile.selector, gpu_memory)
-	if isinstance(result, ModelRunResult):
-		ModelResultPublisher.record_model_time(
-			result.output_dir, elapsed_seconds, gpu_memory=gpu_memory
+		_print_gpu_memory_report(
+			registration.profile.selector, gpu_memory, gpu_memory_stages
 		)
 	print(
 		f"Model total time ({registration.profile.selector}): "
@@ -178,14 +181,52 @@ def _run_registered_model(
 	return result
 
 
+@contextmanager
+def _report_gpu_memory_failure(
+	selector: str, monitor: GPUMemoryMonitor | None
+) -> Iterator[None]:
+	"""Best-effort terminal reporting shared by all monitored CLI entry points."""
+	try:
+		yield
+	except BaseException:
+		if monitor is not None and monitor.started:
+			peak = None
+			with suppress(Exception):
+				peak = monitor.snapshot(synchronize=False)
+			with suppress(Exception):
+				_print_gpu_memory_report(
+					selector, peak, monitor.stage_peaks(), failed=True
+				)
+		raise
+
+
+def _print_gpu_memory_report(
+	selector: str,
+	peak: GPUMemoryPeak | None,
+	stages: Mapping[str, GPUMemoryPeak],
+	*,
+	failed: bool = False,
+) -> None:
+	"""Print each executed phase once, followed by the whole-run peak."""
+	for stage in ("training", "validation"):
+		if stage in stages:
+			_print_gpu_memory(selector, stages[stage], stage=stage, failed=failed)
+	if peak is not None:
+		_print_gpu_memory(selector, peak, stage="global", failed=failed)
+
+
 def _print_gpu_memory(
-	selector: str, peak: GPUMemoryPeak, *, failed: bool = False
+	selector: str,
+	peak: GPUMemoryPeak,
+	*,
+	stage: str = "global",
+	failed: bool = False,
 ) -> None:
 	"""Print absolute peaks in GiB, labeling observations from failed runs."""
 	gib = 1024**3
 	status = " before failure" if failed else ""
 	print(
-		f"GPU memory peak{status} ({selector}, {peak.device}): "
+		f"GPU memory peak{status} ({selector}, {peak.device}, {stage}): "
 		f"allocated={peak.peak_allocated_bytes / gib:.2f} GiB "
 		f"reserved={peak.peak_reserved_bytes / gib:.2f} GiB",
 		file=sys.stderr if failed else sys.stdout,

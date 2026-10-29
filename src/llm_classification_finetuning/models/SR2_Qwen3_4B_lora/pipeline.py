@@ -16,6 +16,7 @@ from ...model_storage import load_pretrained
 from ..common import (
 	ConversationSerializer,
 	GPUEnvironment,
+	GPUMemoryMonitor,
 	ModelBuildResult,
 	ModelExecutionResult,
 	ModelMode,
@@ -84,19 +85,30 @@ class LoRAModelPipeline:
 		*,
 		mode: ModelMode = ModelMode.VALIDATION,
 		refresh_cache: bool = False,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> ModelExecutionResult:
 		"""Reuse training tokens, batch plans and head warmup before live joint training."""
 		try:
 			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD, ModelMode.SUBMIT):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			if mode is ModelMode.BUILD:
-				return self._run_build(refresh_cache=refresh_cache)
+				return self._run_build(
+					refresh_cache=refresh_cache, gpu_memory_monitor=gpu_memory_monitor
+				)
+			if mode is ModelMode.VALIDATION and gpu_memory_monitor is not None:
+				gpu_memory_monitor.start()
 			environment = GPUEnvironment(self._config.gpu)
 			submit_devices = (
 				environment.configure_submit() if mode is ModelMode.SUBMIT else None
 			)
 			device = submit_devices[0] if submit_devices else environment.configure()
-			trainer = self._create_trainer(device, refresh_cache=refresh_cache)
+			trainer = self._create_trainer(
+				device,
+				refresh_cache=refresh_cache,
+				gpu_memory_monitor=gpu_memory_monitor
+				if mode is ModelMode.VALIDATION
+				else None,
+			)
 			if submit_devices is not None:
 				with SubmissionAttention(self._config.gpu).activate():
 					return self._run_submit(trainer, submit_devices)
@@ -149,7 +161,11 @@ class LoRAModelPipeline:
 					torch.cuda.empty_cache()
 
 	def _create_trainer(
-		self, device: torch.device, *, refresh_cache: bool
+		self,
+		device: torch.device,
+		*,
+		refresh_cache: bool,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> LoRATrainer:
 		return LoRATrainer(
 			self._model_config,
@@ -158,9 +174,15 @@ class LoRAModelPipeline:
 			token_cache_dir=self._config.cache_dir / "token_cache",
 			refresh_cache=refresh_cache,
 			profile=self._profile,
+			gpu_memory_monitor=gpu_memory_monitor,
 		)
 
-	def _run_build(self, *, refresh_cache: bool) -> ModelBuildResult:
+	def _run_build(
+		self,
+		*,
+		refresh_cache: bool,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
+	) -> ModelBuildResult:
 		"""Prepare full-data inputs and both output paths before configuring CUDA."""
 		batches = LoRATrainingBatchRepository.from_config(
 			self._config, refresh_cache=refresh_cache, profile=self._profile
@@ -168,8 +190,14 @@ class LoRAModelPipeline:
 		training = batches.get_training(full_data=True)
 		self._checkpoint_store.check_writable()
 		self._merged_backbone_store.check_writable()
+		if gpu_memory_monitor is not None:
+			gpu_memory_monitor.start()
 		device = GPUEnvironment(self._config.gpu).configure()
-		trainer = self._create_trainer(device, refresh_cache=refresh_cache)
+		trainer = self._create_trainer(
+			device,
+			refresh_cache=refresh_cache,
+			gpu_memory_monitor=gpu_memory_monitor,
+		)
 		model = trainer.create_model(
 			seed=self._model_config.random_state, revision=batches.base_revision
 		)

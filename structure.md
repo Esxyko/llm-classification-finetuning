@@ -58,7 +58,7 @@ Console scripts are declared in [pyproject.toml](pyproject.toml).
 | `init` | `cli.py` | Download missing raw files, then preprocess |
 | `data` | `data/cli.py` | Download only |
 | `preprocess` | `preprocess/cli.py` | Rebuild the processed holdout |
-| `model` | `models/cli.py` | Parse selection/mode, run profiles, monitor validation peaks, and print summaries |
+| `model` | `models/cli.py` | Parse selection/mode, run profiles, report independent training/validation and global GPU peaks for validation/build/warmup, and print summaries |
 | `result` | `result/cli.py` | Select a validation run and synthesize reports |
 
 CLI modules translate expected `DataPreparationError` subclasses to exit status
@@ -127,7 +127,7 @@ they do not expose an active frozen CLI profile.
 | `contracts.py` | Execution modes, pipeline interface, and validation/build/submit/warmup result summaries, including optional executed warmup/joint epoch counts and merged-backbone path for builds |
 | `inputs.py` | Processed/test table loading, strict split/orientation/ID validation, multipart reads, and reconstructed source fingerprints |
 | `data.py` | Tokenizer-injected official chat-template serialization and pairwise training/test repositories |
-| `hardware.py` | CUDA/precision validation, direct loading maps, dual-GPU layer placement, and per-run allocator peaks |
+| `hardware.py` | CUDA/precision validation, direct loading maps, dual-GPU layer placement, isolated phase intervals with cross-epoch allocator maxima, and reset-safe global peaks |
 | `attention.py` | Scoped submission K/V-head expansion and fused-SDPA compatibility; restore predicates/backend flags |
 | `backbone.py` | Local weight/configuration content fingerprints for caches |
 | `compatibility.py` | Frozen embedding and head-checkpoint compatibility construction |
@@ -139,7 +139,7 @@ they do not expose an active frozen CLI profile.
 | `model.py` | Frozen backbone, last-real-token pooling, and `3H` pairwise MLP |
 | `orientation.py` | A/B probability averaging and validation-row alignment |
 | `loss.py` | Label smoothing on logits or averaged log probabilities; training reductions |
-| `trainer.py` | Holdout/full-data frozen-head training and epoch metrics |
+| `trainer.py` | Holdout/full-data frozen-head training, epoch metrics, and optional training/validation memory intervals |
 | `predictor.py` | Saved-head submission inference |
 | `checkpoint.py` | Atomic frozen head persistence and compatibility validation |
 | `progress.py` | CPU work counters, independent stage timers/completion and configurable progress milestones, retaining legacy weighted counters |
@@ -159,7 +159,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup, joint validation, or submission, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
-| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, and standalone cached-head evaluation |
+| `trainer.py` | CPU submission-token preparation, fixed-rate warmup and shared cosine-decayed joint learning rate, both branch graphs and one backward pass, optimizer/scaler state, lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, descending compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
 | `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across standalone/inline warmup |
 | `checkpoint.py` | Destination write preflight, portable adapter/head persistence and shared CPU loading checks, revision/architecture compatibility, and merged-backbone/tokenizer export with metadata, local validation, and recoverable directory replacement |
@@ -314,7 +314,10 @@ present in a fresh checkout.
     output where recoverable. Preserve explicit failures and backup paths.
 12. **Metrics and history:** publish final-epoch holdout predictions and matching
     current-only YAML sections; never rewrite historical snapshots. Successful
-    complete-run timing/peaks are appended atomically. Progress remains CPU-only
+    complete-run timing/global peaks and cross-epoch training/validation peaks are
+    appended atomically for holdout runs. Builds and standalone warmup report the
+    same peak scopes in the terminal; monitoring starts after full-data build CPU
+    preparation and write preflights. Progress remains CPU-only
     and covers executed weighted work, not extraction/publication. See
     [reports](docs/reports.md) and [progress](docs/models.md#training-progress).
 

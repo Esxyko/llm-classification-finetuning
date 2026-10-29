@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -150,6 +151,7 @@ class ModelResultPublisher:
 		elapsed_seconds: float,
 		*,
 		gpu_memory: GPUMemoryPeak | None = None,
+		gpu_memory_stages: Mapping[str, GPUMemoryPeak] | None = None,
 	) -> None:
 		"""Atomically record complete duration and optional GPU peaks for this model."""
 		metrics_path = output_dir / "metrics.json"
@@ -161,6 +163,10 @@ class ModelResultPublisher:
 			metrics["config_total_time"] = format_duration(elapsed_seconds)
 			if gpu_memory is not None:
 				metrics["gpu_memory"] = asdict(gpu_memory)
+				if gpu_memory_stages is not None:
+					metrics["gpu_memory"]["stages"] = {
+						stage: asdict(peak) for stage, peak in gpu_memory_stages.items()
+					}
 			with tempfile.TemporaryDirectory(
 				dir=output_dir, prefix=".metrics-"
 			) as temporary_dir:

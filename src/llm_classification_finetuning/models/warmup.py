@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import gc
+from contextlib import suppress
 from dataclasses import replace
 
 import torch
 
 from ..config import AppConfig
 from ..errors import ConfigurationError, ModelExecutionError
-from .common import GPUEnvironment, WarmupBuildResult
+from .common import GPUEnvironment, GPUMemoryMonitor, WarmupBuildResult
 from .SR2_Qwen3_4B_lora import PROFILE, LoRATrainer, LoRATrainingBatchRepository
 
 
@@ -29,7 +30,12 @@ class WarmupModelPipeline:
 		self._model_config = replace(config.warmup, ab_swap=PROFILE.ab_swap_override)
 		self._config = replace(config, warmup=self._model_config)
 
-	def run(self, *, refresh_cache: bool = False) -> WarmupBuildResult:
+	def run(
+		self,
+		*,
+		refresh_cache: bool = False,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
+	) -> WarmupBuildResult:
 		"""Build or reuse train-partition warmup and evaluate both saved partitions."""
 		try:
 			batches = LoRATrainingBatchRepository.from_config(
@@ -38,6 +44,8 @@ class WarmupModelPipeline:
 				profile=PROFILE,
 				warmup_only=True,
 			)
+			if gpu_memory_monitor is not None:
+				gpu_memory_monitor.start()
 			device = GPUEnvironment(self._config.gpu).configure()
 			trainer = LoRATrainer(
 				self._model_config,
@@ -47,6 +55,7 @@ class WarmupModelPipeline:
 				refresh_cache=refresh_cache,
 				profile=PROFILE,
 				warmup_only=True,
+				gpu_memory_monitor=gpu_memory_monitor,
 			)
 			return trainer.build_warmup(batches)
 		except torch.cuda.OutOfMemoryError as error:
@@ -60,6 +69,8 @@ class WarmupModelPipeline:
 		except Exception as error:
 			raise ModelExecutionError(f"Could not execute warmup: {error}") from error
 		finally:
-			gc.collect()
-			if torch.cuda.is_initialized():
-				torch.cuda.empty_cache()
+			with suppress(Exception):
+				gc.collect()
+			with suppress(Exception):
+				if torch.cuda.is_initialized():
+					torch.cuda.empty_cache()

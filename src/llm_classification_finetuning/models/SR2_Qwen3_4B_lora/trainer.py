@@ -5,10 +5,11 @@ from __future__ import annotations
 import gc
 import math
 from collections.abc import Sequence
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,7 @@ from ..common import (
 	ClassificationLoss,
 	EpochMetrics,
 	ExtractionBatchSampler,
+	GPUMemoryMonitor,
 	PairwiseText,
 	PairwiseTokenStore,
 	TokenizationCache,
@@ -122,6 +124,7 @@ class LoRATrainer:
 		refresh_cache: bool = False,
 		profile: ModelProfile | None = None,
 		warmup_only: bool = False,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> None:
 		profile = profile or PROFILE
 		if profile.ab_swap_override is not None:
@@ -145,6 +148,7 @@ class LoRATrainer:
 		self._warmup_only = warmup_only
 		self._gpu = gpu
 		self._device = device
+		self._gpu_memory_monitor = gpu_memory_monitor
 		self._token_cache_dir = token_cache_dir
 		self._refresh_cache = refresh_cache
 		self._config_key = "warmup" if warmup_only else profile.config_key
@@ -307,8 +311,10 @@ class LoRATrainer:
 				)
 		finally:
 			del model
-			gc.collect()
-			torch.cuda.empty_cache()
+			with suppress(Exception):
+				gc.collect()
+			with suppress(Exception):
+				torch.cuda.empty_cache()
 		return ValidationTrainingResult(
 			ids=ids,
 			probabilities=probabilities,
@@ -472,28 +478,30 @@ class LoRATrainer:
 				stage="Cached head evaluation",
 				total_steps=training_evaluation_steps + validation_steps,
 			)
-			warmup_training_loss, _ = self.evaluate(
-				model,
-				reference,
-				records,
-				feature_loader=warmup_training,
-				head_only=True,
-				criterion=self._warmup_criterion,
-				stage="training evaluation",
-				progress=progress,
-				description=f"{description} cached head",
-			)
-			if validation is not None:
-				warmup_validation_loss, probabilities = self.evaluate(
+			with self._memory_stage("training"):
+				warmup_training_loss, _ = self.evaluate(
 					model,
-					validation,
+					reference,
 					records,
-					feature_loader=warmup_validation,
+					feature_loader=warmup_training,
 					head_only=True,
-					stage="validation",
+					criterion=self._warmup_criterion,
+					stage="training evaluation",
 					progress=progress,
 					description=f"{description} cached head",
 				)
+			if validation is not None:
+				with self._memory_stage("validation"):
+					warmup_validation_loss, probabilities = self.evaluate(
+						model,
+						validation,
+						records,
+						feature_loader=warmup_validation,
+						head_only=True,
+						stage="validation",
+						progress=progress,
+						description=f"{description} cached head",
+					)
 			self._timestamp()
 			progress.finish_stage(f"{description} cached head")
 		elif remaining_warmup_epochs:
@@ -561,50 +569,52 @@ class LoRATrainer:
 					milestone_percent=10,
 				)
 			training_started = self._timestamp()
-			if not head_only:
-				training.set_epoch(epoch - self._config.warmup_epochs - 1)
-			epoch_losses = self._train_epoch(
-				model,
-				loader,
-				optimizer,
-				scaler,
-				head_only=head_only,
-				optimizer_group_rows=None
-				if head_only
-				else training.optimizer_group_rows,
-				lr_schedule=lr_schedule,
-				progress=progress,
-				description=epoch_description,
-			)
-			loss = epoch_losses.training_loss
-			last_step_training_loss = (
-				None if head_only else epoch_losses.last_step_training_loss
-			)
-			if head_only:
-				loss, _ = self.evaluate(
+			with self._memory_stage("training"):
+				if not head_only:
+					training.set_epoch(epoch - self._config.warmup_epochs - 1)
+				epoch_losses = self._train_epoch(
 					model,
-					reference,
-					records,
-					feature_loader=warmup_training,
-					head_only=True,
-					criterion=self._warmup_criterion,
-					stage="head warmup training evaluation",
+					loader,
+					optimizer,
+					scaler,
+					head_only=head_only,
+					optimizer_group_rows=None
+					if head_only
+					else training.optimizer_group_rows,
+					lr_schedule=lr_schedule,
 					progress=progress,
 					description=epoch_description,
 				)
-				warmup_training_loss = loss
+				loss = epoch_losses.training_loss
+				last_step_training_loss = (
+					None if head_only else epoch_losses.last_step_training_loss
+				)
+				if head_only:
+					loss, _ = self.evaluate(
+						model,
+						reference,
+						records,
+						feature_loader=warmup_training,
+						head_only=True,
+						criterion=self._warmup_criterion,
+						stage="head warmup training evaluation",
+						progress=progress,
+						description=epoch_description,
+					)
+					warmup_training_loss = loss
 			training_finished = self._timestamp()
 			if validation is not None:
-				validation_loss, probabilities = self.evaluate(
-					model,
-					validation,
-					records,
-					feature_loader=warmup_validation,
-					extraction_loader=joint_validation_loader,
-					head_only=head_only,
-					progress=progress,
-					description=epoch_description,
-				)
+				with self._memory_stage("validation"):
+					validation_loss, probabilities = self.evaluate(
+						model,
+						validation,
+						records,
+						feature_loader=warmup_validation,
+						extraction_loader=joint_validation_loader,
+						head_only=head_only,
+						progress=progress,
+						description=epoch_description,
+					)
 				if head_only:
 					warmup_validation_loss = validation_loss
 				validation_finished = self._timestamp()
@@ -667,6 +677,14 @@ class LoRATrainer:
 		return self._warmup_cache.prepare(
 			context, seed=seed, refresh=self._refresh_cache
 		)
+
+	def _memory_stage(
+		self, name: Literal["training", "validation"]
+	) -> AbstractContextManager[None]:
+		"""Keep memory monitoring independent of progress and optional for callers."""
+		if self._gpu_memory_monitor is None:
+			return nullcontext()
+		return self._gpu_memory_monitor.stage(name)
 
 	def _timestamp(self) -> float:
 		"""Wait for this device's GPU work before reading the monotonic clock."""

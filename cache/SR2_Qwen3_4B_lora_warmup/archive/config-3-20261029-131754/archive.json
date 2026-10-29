@@ -1,0 +1,17 @@
+{
+  "archived_at": "2026-10-29T13:17:54.6304153+08:00",
+  "source_config": "configs/3.yaml",
+  "original_cache_path": "cache/SR2_Qwen3_4B_lora_warmup/230e0cd1280225576df5fbaf3c66333143b1a8d0be5e9ca0d2d4c757859b27d5.pt",
+  "cache_file": "230e0cd1280225576df5fbaf3c66333143b1a8d0be5e9ca0d2d4c757859b27d5.pt",
+  "size_bytes": 8094513,
+  "sha256": "58d580770f6532c165b329abe4484ad974febd198a53b28a2cea7a9ded671856",
+  "warmup_epochs": 3,
+  "warmup_training_batch_size": 1024,
+  "warmup_learning_rate": 0.001,
+  "classifier_hidden_size": 128,
+  "classifier_dropout": 0.1,
+  "label_smoothing": 0.0,
+  "seed": 42,
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "training_ids_sha256": "cc076daadaf1e67d258dc975c77c4d34cbe9d5f1e3f2bceb1499f0d273852f86"
+}

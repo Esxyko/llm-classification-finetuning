@@ -41,9 +41,9 @@ SR2_Qwen3_4B_lora:
   training_batch_size: 1
   head_inference_batch_size: 1024
   gradient_accumulation_steps: 1024
-  epochs: 2
+  epochs: 1
   extraction_budget: 737280
-  learning_rate: 0.00008
+  learning_rate: 0.0001
   min_lr_ratio: 1.0
   hidden_size: 128
   weight_decay: 0.01

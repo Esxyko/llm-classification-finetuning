@@ -31,7 +31,7 @@ from .data import (
 	PairwiseText,
 )
 from .extractor import QwenEmbeddingExtractor
-from .hardware import GPUEnvironment
+from .hardware import GPUEnvironment, GPUMemoryMonitor
 from .predictor import ModelPredictor
 from .publishers import ModelResultPublisher, ModelSubmissionPublisher
 from .token_cache import TokenizationCache
@@ -102,12 +102,15 @@ class ModelPipeline:
 		*,
 		mode: ModelMode = ModelMode.VALIDATION,
 		refresh_cache: bool = False,
+		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> ModelExecutionResult:
 		"""Execute the selected model mode and return its summary."""
 		if mode is ModelMode.SUBMIT:
 			with SubmissionAttention(self._config.gpu).activate():
 				return self._run_submit(refresh_cache=refresh_cache)
 
+		if gpu_memory_monitor is not None:
+			gpu_memory_monitor.start()
 		device = GPUEnvironment(self._config.gpu).configure()
 		data = self._training_repository.load()
 		embeddings, cache_reused = self._load_or_extract_embeddings(
@@ -119,6 +122,7 @@ class ModelPipeline:
 			config=self._model_config,
 			device=device,
 			config_key=self._profile.config_key,
+			gpu_memory_monitor=gpu_memory_monitor,
 		)
 		if mode is ModelMode.BUILD:
 			return self._build(data, embeddings, trainer, cache_reused)

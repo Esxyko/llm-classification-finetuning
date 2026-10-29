@@ -1,0 +1,68 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_harmonic_abs_diff",
+  "epochs": [
+    {
+      "epoch": 1,
+      "total_time": "00:00:01",
+      "training_loss": 0.9607028912234848,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9558435281601716,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 2,
+      "total_time": "00:00:00",
+      "training_loss": 1.000518634234167,
+      "training_time": "00:00:00",
+      "validation_loss": 1.0007200635169162,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 3,
+      "total_time": "00:00:00",
+      "training_loss": 0.9705364855638994,
+      "training_time": "00:00:00",
+      "validation_loss": 0.9741086570736428,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 4,
+      "last_step_training_loss": 0.9488482610250895,
+      "total_time": "01:11:29",
+      "training_loss": 0.9187722972997135,
+      "training_time": "01:03:43",
+      "validation_loss": 0.9015377660272639,
+      "validation_time": "00:07:43"
+    },
+    {
+      "epoch": 5,
+      "last_step_training_loss": 0.844233925694552,
+      "total_time": "01:11:24",
+      "training_loss": 0.8077107102732587,
+      "training_time": "01:03:42",
+      "validation_loss": 0.9613854845071057,
+      "validation_time": "00:07:42"
+    }
+  ],
+  "generated_at": "2026-10-29T06:42:06+00:00",
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-lora-20261029-064206",
+  "source_training_rows": 45982,
+  "total_time": "02:25:37",
+  "training_rows": 45982,
+  "training_time": "02:07:26",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.9613854845071057,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:15:25",
+  "config_total_time": "02:25:37",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 100375676928,
+    "peak_reserved_bytes": 101179195392
+  }
+}
