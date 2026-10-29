@@ -17,6 +17,21 @@ gpu:
   attention_implementation: sdpa
   allow_tf32: false
 
+SR2_Qwen3_4B:
+  label_smoothing: 0.0
+  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  max_length: 13866
+  hidden_size: 128
+  dropout: 0.1
+  epochs: 3
+  extraction_budget: 1081344
+  training_batch_size: 1024
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+
 warmup:
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
@@ -27,21 +42,6 @@ warmup:
   extraction_budget: 1081344
   warmup_training_batch_size: 1024
   warmup_learning_rate: 0.001
-  weight_decay: 0.01
-  max_grad_norm: 1.0
-  random_state: 42
-  dataloader_workers: 0
-
-SR2_Qwen3_4B:
-  label_smoothing: 0.0
-  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
-  max_length: 13866
-  hidden_size: 128
-  dropout: 0.1
-  epochs: 4
-  extraction_budget: 1081344
-  training_batch_size: 1024
-  learning_rate: 0.001
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
