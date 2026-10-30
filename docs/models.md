@@ -4,17 +4,16 @@
 
 Use the [saved processed split or prepare data](getting-started.md#choose-the-data-source),
 then choose a [configured model profile](../README.md#model-profiles).
-Both SR2 profiles use the saved holdout; validation/build uses one GPU and
-LoRA submission uses [two GPUs](configuration.md#gpu-configuration).
+Both SR2 profiles use the saved holdout; validation/build uses
+[one GPU](configuration.md#gpu-configuration).
 
-## Validate, build, or submit
+## Validate or build
 
 | Mode | Training data | Main output | Does it save a production checkpoint? |
 | --- | --- | --- | --- |
 | `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Final-epoch `validation.csv`, `metrics.json`, `config.yaml` | No |
 | `model SR2-Qwen3-4B --build` | All original IDs from both partitions | `head[_TAG].pt` | Yes |
 | `model SR2-Qwen3-4B-lora --build` | All original IDs from both partitions | `adapter[_TAG].pt` and `merged[_TAG]/` | Yes |
-| `model SR2-Qwen3-4B-lora --submit` | No training; use test inputs and a compatible checkpoint | `submission.csv` | No |
 | `model warmup --build` | Train partition only, original rows; evaluate train and validation | Completed SR2 warmup cache and both losses | No |
 
 Full-data model builds have no validation set. Standalone warmup evaluates the
@@ -62,9 +61,7 @@ are checked before atomic replacement. It omits base weights and optimizer
 state; the frozen backbone needs no merged export. Build reports only executed
 epochs, including zero for an exact full-data head-cache hit.
 
-This profile does not support `--submit`. `ALL` runs it before LoRA for
-validation/build when configured; `ALL --submit` prints a skip message and
-executes only configured profiles supporting submission.
+`ALL` runs configured frozen SR2 before LoRA for validation/build.
 
 ## Skywork reward backbone with LoRA
 
@@ -80,7 +77,7 @@ template or regenerating the split. Training uses original rows and produces
 one prediction per ID; `A/B_swap` is rejected. Its model, checkpoint,
 warmup-cache, and result namespace is SR2. See [LoRA training](lora.md).
 
-## Build and submit
+## Full-data builds
 
 Build a tagged adapter/head checkpoint and merged backbone on all IDs:
 
@@ -105,8 +102,8 @@ The total epoch count excludes cached warmup epochs. For example, an exact
 warmup hit with two configured joint epochs reports zero executed warmup epochs
 and two executed joint epochs.
 
-Saving writes a temporary checkpoint and reloads it on CPU using the same
-metadata, finite-tensor, and head-architecture checks used by submission.
+Saving writes a temporary checkpoint and reloads it on CPU to validate
+metadata, finite tensor values, and the head architecture.
 Only a validated temporary file replaces the selected checkpoint. A failed
 write or validation leaves the previous checkpoint intact and cleans up the
 temporary file; this check does not reload base weights or run GPU inference.
@@ -138,30 +135,10 @@ tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
 This is the `AutoModel` backbone used for training. The trained classification
 head remains in the corresponding adapter/head checkpoint.
 
-Then, in the [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
-load the corresponding checkpoint with a compatible submission configuration:
-
-```shell
-model SR2-Qwen3-4B-lora --submit --checkpoint-tag experiment --config path/to/submit.yaml
-```
-
-Submission continues to load the original base revision plus the adapters and
-head from the checkpoint; it does not select the merged export. The checkpoint
-omits base weights and optimizer state. Transfer it when moving submission to
-another runtime, and preserve the merged directory separately when retaining
-the complete trained backbone. [Model downloads](caching.md#hugging-face-model-downloads)
-contain the original base weights.
-
-Submission requires these raw files under `data.raw_dir`, with exact column order:
-
-| File | Columns |
-| --- | --- |
-| `test.csv` | `id,prompt,response_a,response_b` |
-| `sample_submission.csv` | `id,winner_model_a,winner_model_b,winner_tie` |
-
-IDs must be unique finite integers and match in the same order across both
-files. The loader does not reorder them; output preserves that order.
-Submissions are written under `results/submit/MODEL-<timestamp>/`.
+The adapter/head checkpoint omits base weights and optimizer state. Preserve the
+merged directory separately when retaining the complete trained backbone.
+[Model downloads](caching.md#hugging-face-model-downloads) contain the original
+base weights.
 
 Without a tag, a build replaces `models/SR2_Qwen3_4B_lora/adapter.pt` and
 `models/SR2_Qwen3_4B_lora/merged/`. Different tags retain separate outputs.

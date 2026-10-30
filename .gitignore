@@ -44,3 +44,4 @@ models--*.zip
 \!validate.ipynb
 \!build.ipynb
 download.ipynb
+models

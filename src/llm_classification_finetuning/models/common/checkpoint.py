@@ -1,4 +1,4 @@
-"""Persist and validate trained model classifier-head parameters."""
+"""Persist trained model classifier-head parameters."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
-from torch import Tensor, nn
+from torch import nn
 
 from ...errors import ModelExecutionError
 
@@ -30,27 +30,11 @@ class HeadCheckpointCompatibility:
 	ab_swap: str = "aug"
 
 
-@dataclass(frozen=True, slots=True)
-class LoadedHeadCheckpoint:
-	"""Validated classifier parameters and their backbone input dimension."""
-
-	state_dict: dict[str, Tensor]
-	backbone_hidden_size: int
-
-
 class ModelCheckpointStore:
-	"""Atomically replace and strictly load one model head checkpoint."""
+	"""Atomically replace one model head checkpoint."""
 
-	def __init__(
-		self,
-		checkpoint_path: Path,
-		selector: str,
-		checkpoint_tag: str | None = None,
-	) -> None:
+	def __init__(self, checkpoint_path: Path) -> None:
 		self._checkpoint_path = checkpoint_path.resolve()
-		self._build_command = f"uv run model {selector} --build"
-		if checkpoint_tag:
-			self._build_command += f" --checkpoint-tag {checkpoint_tag}"
 
 	@property
 	def path(self) -> Path:
@@ -103,72 +87,3 @@ class ModelCheckpointStore:
 					temporary_path.unlink(missing_ok=True)
 				except OSError:
 					pass
-
-	def load(
-		self,
-		expected: HeadCheckpointCompatibility,
-	) -> LoadedHeadCheckpoint:
-		"""Load a checkpoint and reject incompatible or invalid contents."""
-		if not self._checkpoint_path.is_file():
-			raise ModelExecutionError(
-				f"Model checkpoint not found: {self._checkpoint_path}. "
-				f"Run '{self._build_command}' first."
-			)
-		try:
-			checkpoint = torch.load(
-				self._checkpoint_path,
-				map_location="cpu",
-				weights_only=True,
-			)
-			if not isinstance(checkpoint, dict):
-				raise TypeError("checkpoint root must be a mapping")
-			metadata = checkpoint.get("metadata")
-			state_dict = checkpoint.get("state_dict")
-			if not isinstance(metadata, dict) or not isinstance(state_dict, dict):
-				raise TypeError("metadata and state_dict mappings are required")
-
-			mismatches = [
-				key
-				for key, value in asdict(expected).items()
-				if key
-				not in {
-					"precision",
-					"max_length",
-					"attention_implementation",
-					"allow_tf32",
-					"ab_swap",
-				}
-				and metadata.get(key) != value
-			]
-			if mismatches:
-				fields = ", ".join(mismatches)
-				raise ModelExecutionError(
-					"Model checkpoint is incompatible with the current "
-					f"configuration ({fields}). Run "
-					f"'{self._build_command}'."
-				)
-
-			backbone_hidden_size = metadata.get("backbone_hidden_size")
-			if (
-				isinstance(backbone_hidden_size, bool)
-				or not isinstance(backbone_hidden_size, int)
-				or backbone_hidden_size < 1
-			):
-				raise ValueError("backbone_hidden_size must be a positive integer")
-			if not state_dict or not all(
-				isinstance(name, str) and isinstance(value, Tensor)
-				for name, value in state_dict.items()
-			):
-				raise ValueError("state_dict must contain tensor parameters")
-			if not all(torch.isfinite(value).all() for value in state_dict.values()):
-				raise ValueError("state_dict contains non-finite parameters")
-			return LoadedHeadCheckpoint(
-				state_dict=state_dict,
-				backbone_hidden_size=backbone_hidden_size,
-			)
-		except ModelExecutionError:
-			raise
-		except Exception as error:
-			raise ModelExecutionError(
-				f"Could not load model checkpoint {self._checkpoint_path}: {error}"
-			) from error

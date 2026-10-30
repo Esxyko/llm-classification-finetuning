@@ -25,7 +25,6 @@ from .common import (
 	ModelMode,
 	ModelResultPublisher,
 	ModelRunResult,
-	ModelSubmitResult,
 	WarmupBuildResult,
 )
 from .warmup import WarmupModelPipeline
@@ -46,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
 	"""Create the shared model command-line parser."""
 	parser = argparse.ArgumentParser(
 		prog="model",
-		description="Validate on a fixed holdout, build, or submit a Qwen comparison model.",
+		description="Validate on a fixed holdout or build a Qwen comparison model.",
 	)
 	add_config_argument(parser)
 	parser.add_argument(
@@ -54,16 +53,10 @@ def build_parser() -> argparse.ArgumentParser:
 		choices=(*MODEL_REGISTRY, WARMUP_MODEL, ALL_MODELS),
 		help="Model profile to execute, warmup (--build only), or ALL for configured model profiles.",
 	)
-	modes = parser.add_mutually_exclusive_group()
-	modes.add_argument(
+	parser.add_argument(
 		"--build",
 		action="store_true",
 		help="Build a full-data head checkpoint (plus a merged backbone for LoRA), or a train-partition head-warmup cache for warmup.",
-	)
-	modes.add_argument(
-		"--submit",
-		action="store_true",
-		help="Load each selected model's checkpoint and generate a test submission.",
 	)
 	parser.add_argument(
 		"--refresh-cache",
@@ -74,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"--checkpoint-tag",
 		type=_checkpoint_tag,
 		metavar="TAG",
-		help="Select head_TAG.pt or adapter_TAG.pt and LoRA merged_TAG/ (build and submit only).",
+		help="Select head_TAG.pt or adapter_TAG.pt and LoRA merged_TAG/ (build only).",
 	)
 	return parser
 
@@ -82,23 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
 def run(arguments: Sequence[str] | None = None) -> int:
 	"""Run the selected model mode and return a process exit code."""
 	parsed_arguments = build_parser().parse_args(arguments)
-	if (
-		parsed_arguments.submit
-		and parsed_arguments.model in MODEL_REGISTRY
-		and not MODEL_REGISTRY[parsed_arguments.model].profile.supports_submit
-	):
-		raise SystemExit(f"{parsed_arguments.model} does not support --submit")
 	if parsed_arguments.model == WARMUP_MODEL:
 		if not parsed_arguments.build:
-			raise SystemExit(
-				"warmup requires --build; validation and --submit are unsupported"
-			)
+			raise SystemExit("warmup requires --build; validation is unsupported")
 		if parsed_arguments.checkpoint_tag:
 			raise SystemExit("warmup does not support --checkpoint-tag")
-	if parsed_arguments.checkpoint_tag and not (
-		parsed_arguments.build or parsed_arguments.submit
-	):
-		raise SystemExit("--checkpoint-tag requires --build or --submit")
+	if parsed_arguments.checkpoint_tag and not parsed_arguments.build:
+		raise SystemExit("--checkpoint-tag requires --build")
 	try:
 		config = AppConfig.load(parsed_arguments.config)
 		project_root = Path.cwd()
@@ -154,7 +137,7 @@ def _run_registered_model(
 	checkpoint_tag: str | None,
 ) -> ModelExecutionResult:
 	model_started = perf_counter()
-	gpu_monitor = GPUMemoryMonitor(config.gpu) if mode is not ModelMode.SUBMIT else None
+	gpu_monitor = GPUMemoryMonitor(config.gpu)
 	with _report_gpu_memory_failure(registration.profile.selector, gpu_monitor):
 		result = registration.pipeline_type(
 			config=config,
@@ -166,8 +149,8 @@ def _run_registered_model(
 			refresh_cache=refresh_cache,
 			gpu_memory_monitor=gpu_monitor,
 		)
-		gpu_memory = gpu_monitor.snapshot() if gpu_monitor is not None else None
-		gpu_memory_stages = gpu_monitor.stage_peaks() if gpu_monitor is not None else {}
+		gpu_memory = gpu_monitor.snapshot()
+		gpu_memory_stages = gpu_monitor.stage_peaks()
 		elapsed_seconds = perf_counter() - model_started
 		if isinstance(result, ModelRunResult):
 			ModelResultPublisher.record_model_time(
@@ -176,10 +159,9 @@ def _run_registered_model(
 				gpu_memory=gpu_memory,
 				gpu_memory_stages=gpu_memory_stages,
 			)
-	if gpu_memory is not None:
-		_print_gpu_memory_report(
-			registration.profile.selector, gpu_memory, gpu_memory_stages
-		)
+	_print_gpu_memory_report(
+		registration.profile.selector, gpu_memory, gpu_memory_stages
+	)
 	print(
 		f"Model total time ({registration.profile.selector}): "
 		f"{format_duration(elapsed_seconds)}"
@@ -249,18 +231,10 @@ def _run_all_models(
 	checkpoint_tag: str | None,
 ) -> int:
 	"""Run configured models, preserving registry order after failures."""
-	if mode is ModelMode.SUBMIT:
-		for selector, registration in MODEL_REGISTRY.items():
-			if (
-				registration.profile.is_configured(config)
-				and not registration.profile.supports_submit
-			):
-				print(f"Skipping {selector}: --submit is unsupported.", flush=True)
 	registrations = {
 		selector: registration
 		for selector, registration in MODEL_REGISTRY.items()
 		if registration.profile.is_configured(config)
-		and (mode is not ModelMode.SUBMIT or registration.profile.supports_submit)
 	}
 	if not registrations:
 		raise ConfigurationError(
@@ -297,8 +271,6 @@ def _run_all_models(
 def _selected_mode(arguments: argparse.Namespace) -> ModelMode:
 	if arguments.build:
 		return ModelMode.BUILD
-	if arguments.submit:
-		return ModelMode.SUBMIT
 	return ModelMode.VALIDATION
 
 
@@ -332,9 +304,6 @@ def _print_result(selector: str, result: ModelExecutionResult) -> None:
 		print(f"Wrote model checkpoint: {result.checkpoint_path}")
 		if result.merged_backbone_path is not None:
 			print(f"Wrote merged backbone: {result.merged_backbone_path}")
-	elif isinstance(result, ModelSubmitResult):
-		print(f"Generated {result.predictions:,} competition test predictions.")
-		print(f"Wrote model submission: {result.submission_path}")
 	elif isinstance(result, ModelRunResult):
 		print(
 			f"Generated {result.predictions:,} predictions for the fixed validation set."

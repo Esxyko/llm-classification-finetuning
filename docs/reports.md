@@ -3,8 +3,8 @@
 [Documentation index](../README.md)
 
 A successful holdout validation publishes one timestamped directory containing
-`validation.csv`, `metrics.json`, and `config.yaml`. Builds and submissions do
-not produce validation reports. Files are staged and exposed together after
+`validation.csv`, `metrics.json`, and `config.yaml`. Builds do not produce
+validation reports. Files are staged and exposed together after
 training succeeds; predictions come from the final epoch.
 
 ## Generate a report
@@ -14,8 +14,8 @@ uv run result
 ```
 
 Without a run name, discovery selects the most recently modified eligible direct
-child of `RESULT_PATH` (default `./results`), excluding `comprehensive`, `submit`,
-`logs`, historical `test`, and `.comprehensive-*` staging/backup directories. It
+child of `RESULT_PATH` (default `./results`), excluding `comprehensive`, `logs`,
+historical `submit` and `test`, and `.comprehensive-*` staging/backup directories. It
 then validates that folder; it does not search backward for the latest valid run.
 
 For a specific run, replace `RUN_NAME` with its directory name:
@@ -179,8 +179,7 @@ loading and continues through saving, export, cleanup, and result publication.
 Full-data builds first complete CPU input/batch preparation and output-path
 write preflights (one head destination for frozen SR2, two outputs for LoRA),
 then start monitoring. Each model invocation has its own
-statistics, including under `ALL` and batch scripts. Submission does not enable
-monitoring.
+statistics, including under `ALL` and batch scripts.
 
 Training and validation have independent, cross-epoch maxima for the work
 executed in the current invocation:

@@ -8,7 +8,7 @@ After [setup](getting-started.md), choose the operation you need:
 | --- | --- |
 | Saved processed manifest and all volumes from this checkout | Start model validation directly; no raw download or preprocessing required |
 | `uv run init` | Download missing competition files, then rebuild processed training data |
-| `uv run data` | Download missing `train.csv`, `test.csv`, and `sample_submission.csv` only |
+| `uv run data` | Download missing `train.csv` only |
 | `uv run preprocess` | Rebuild processed data from local `train.csv` |
 
 All commands accept `--config PATH`. Downloads skip existing files and normalize

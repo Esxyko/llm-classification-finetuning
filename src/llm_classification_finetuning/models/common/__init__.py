@@ -1,6 +1,5 @@
 """Shared Qwen comparison model execution infrastructure."""
 
-from .attention import SubmissionAttention
 from .backbone import LocalBackboneFingerprint
 from .cache import EmbeddingCache, EmbeddingCacheKey, EmbeddingCacheRows
 from .cache_storage import CacheCorruptionError, CacheFileSession, CacheStorage
@@ -11,25 +10,23 @@ from .contracts import (
 	ModelMode,
 	ModelPipelineInterface,
 	ModelRunResult,
-	ModelSubmitResult,
 	WarmupBuildResult,
 )
 from .data import (
 	ConversationSerializer,
 	ModelData,
 	ModelDataRepository,
-	ModelTestDataRepository,
 	PairwiseText,
 )
 from .extraction_batching import ExtractionBatchSampler
 from .hardware import GPUEnvironment, GPUMemoryMonitor, GPUMemoryPeak
-from .inputs import TestInputLoader, TrainingInputLoader
+from .inputs import TrainingInputLoader
 from .loss import ClassificationLoss
 from .model import PairwiseClassificationHead, PairwiseQwenClassifier
 from .orientation import ABSwapAverager
 from .pipeline import ModelPipeline
 from .progress import TrainingProgress
-from .publishers import ModelResultPublisher, ModelSubmissionPublisher
+from .publishers import ModelResultPublisher
 from .token_cache import PairwiseTokenStore, TokenizationCache, TokenizedTexts
 from .trainer import EpochMetrics, FinalEvaluationMetrics, ValidationTrainingResult
 
@@ -60,15 +57,10 @@ __all__ = (
 	"ModelPipelineInterface",
 	"ModelResultPublisher",
 	"ModelRunResult",
-	"ModelSubmissionPublisher",
-	"ModelSubmitResult",
-	"ModelTestDataRepository",
 	"PairwiseClassificationHead",
 	"PairwiseQwenClassifier",
 	"PairwiseText",
 	"PairwiseTokenStore",
-	"SubmissionAttention",
-	"TestInputLoader",
 	"TokenizationCache",
 	"TokenizedTexts",
 	"TrainingInputLoader",

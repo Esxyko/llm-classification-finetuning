@@ -32,7 +32,6 @@ class LoRAQwenClassifier(nn.Module):
 		device: torch.device,
 		*,
 		revision: str | None = None,
-		device_map: dict[str, str] | None = None,
 		quantize_backbone: bool = False,
 		warmup_only: bool = False,
 		head_architecture: str = SR2,
@@ -44,7 +43,7 @@ class LoRAQwenClassifier(nn.Module):
 			raise ValueError("Standalone warmup requires a non-quantized backbone.")
 		self.warmup_only = warmup_only
 		self.head_architecture = head_architecture
-		self._gradient_checkpointing_allowed = not warmup_only and device_map is None
+		self._gradient_checkpointing_allowed = not warmup_only
 		self._gradient_checkpointing_threshold = (
 			config.gradient_checkpointing_threshold if not warmup_only else 0
 		)
@@ -63,14 +62,9 @@ class LoRAQwenClassifier(nn.Module):
 			self.backbone = None
 			self._frozen_model_name = config.model_name
 			self._frozen_attention = gpu.attention_implementation
-			self._frozen_device_map = device_map
 			self._gradient_checkpointing_enabled = False
 			self._initialize_head(config)
 			return
-		if quantize_backbone and device_map is not None:
-			raise ValueError(
-				"4-bit adapter training requires a single training device."
-			)
 		quantization_config = (
 			BitsAndBytesConfig(
 				load_in_4bit=True,
@@ -87,7 +81,7 @@ class LoRAQwenClassifier(nn.Module):
 			revision=revision,
 			dtype=self.dtype,
 			attn_implementation=gpu.attention_implementation,
-			device_map=device_map if device_map is not None else {"": str(device)},
+			device_map={"": str(device)},
 			quantization_config=quantization_config,
 		)
 		backbone.config.use_cache = False
@@ -154,9 +148,7 @@ class LoRAQwenClassifier(nn.Module):
 				revision=self.base_revision,
 				dtype=self.dtype,
 				attn_implementation=self._frozen_attention,
-				device_map=self._frozen_device_map
-				if self._frozen_device_map is not None
-				else {"": str(self.device)},
+				device_map={"": str(self.device)},
 				quantization_config=None,
 			)
 		if (

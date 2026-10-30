@@ -30,13 +30,13 @@ This process-wide allocator setting requires a fresh process to take effect.
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
 | `HF_HUB_OFFLINE` | Environment or `.env`; runtime template and Colab validation/build use `1` | Load required HF files locally without Hub requests; use `0` in a separate download process to fill missing files |
 | `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen/warmup features, LoRA batch plans, and head-warmup states |
-| `RESULT_PATH` | Environment or `.env`; missing/blank uses `./results` | Validation runs, submissions, comprehensive reports, and batch-run logs |
+| `RESULT_PATH` | Environment or `.env`; missing/blank uses `./results` | Validation runs, comprehensive reports, and batch-run logs |
 | Production checkpoints | `./models/SR2_Qwen3_4B/`, `./models/SR2_Qwen3_4B_lora/` | Frozen head or LoRA adapter/head files |
 
 `RESULT_PATH` follows the same path rules as `CACHE_PATH`: surrounding
 whitespace is stripped, `~` expands, and relative values resolve from the process
-working directory. Validation runs are direct children of this root; submissions,
-comprehensive reports, and batch logs use `submit/`, `comprehensive/`, and `logs/`.
+working directory. Validation runs are direct children of this root; comprehensive
+reports and batch logs use `comprehensive/` and `logs/`.
 The batch script loads `.env` and resolves relative paths from its project root,
 matching its child commands even when launched from another directory.
 
@@ -54,7 +54,7 @@ See [cache layout](caching.md) and [Colab persistence](colab.md).
 | --- | --- | --- |
 | `data` | Always | Competition and data paths |
 | `validation` | Always | Saved holdout fraction, seed, and balance tokenizer |
-| `gpu` | Always | Training device, submission devices, precision, and attention |
+| `gpu` | Always | Training device, precision, and attention |
 | `SR2_Qwen3_4B` | Selecting `SR2-Qwen3-4B` | Frozen Skywork and independent SR2 head training |
 | `SR2_Qwen3_4B_lora` | Selecting `SR2-Qwen3-4B-lora` | Skywork LoRA and swap-equivariant comparison head |
 | `warmup` | LoRA section is present, or selecting `warmup --build` | Shared warmup controls and standalone warmup model |
@@ -97,7 +97,6 @@ without adding a second set of special tokens.
 | Field | Rule / parser default |
 | --- | --- |
 | `gpu.device` | One `cuda:N` device |
-| `gpu.submit_devices` | List of exactly two distinct `cuda:N` devices; default `[cuda:0, cuda:1]` |
 | `gpu.precision` | `fp16`, `bf16`, or `fp32` |
 | `gpu.attention_implementation` | `sdpa` or `eager` |
 | `gpu.allow_tf32` | Boolean |
@@ -243,7 +242,7 @@ See [data preparation](data-preparation.md#one-shared-trainvalidation-split).
 | Setting | Used for |
 | --- | --- |
 | `warmup.extraction_budget` | Inline LoRA and standalone warmup extraction |
-| A LoRA section's `extraction_budget` | Its joint-validation and submission extraction |
+| A LoRA section's `extraction_budget` | Its joint-validation extraction |
 | A LoRA section's `head_inference_batch_size` | Head inference after extraction, including inline warmup train/validation evaluation; counts pairs, not tokens |
 | `warmup.training_batch_size` | Standalone warmup head training and train/validation inference batch size |
 | `SR2_Qwen3_4B.extraction_budget` | Frozen SR2 missing-branch feature extraction |
@@ -298,15 +297,9 @@ See [the packing algorithm](lora.md#optional-token-budget-training-batches) and
 
 ## GPU configuration
 
-Validation, full-data builds, and standalone warmup use `gpu.device`.
-Submission splits one backbone across `gpu.submit_devices`: embeddings/rotary
-modules and the first half of decoder layers on the first GPU, remaining layers
-and final normalization on the second, and the classifier head on the first.
-Adapters follow their base layers; decoder layers remain intact.
-
-Both submission GPUs must support the selected precision. There is no automatic
-precision change, CPU/disk offload, or single-GPU submission fallback. Hardware
-checks still run on complete warmup-cache hits. Standalone warmup still initializes
+Validation, full-data builds, and standalone warmup use `gpu.device`. The selected
+GPU must support the configured precision; there is no automatic precision change
+or CPU/disk offload. Hardware checks still run on complete warmup-cache hits. Standalone warmup still initializes
 backbone weights on a hit, but compatible feature hits skip backbone forward
 calls while the head recomputes current train/validation losses.
 `ALL` executes SR2 on the configured device layout.
@@ -314,8 +307,7 @@ calls while the head recomputes current train/validation losses.
 Device placement can change without invalidating caches or checkpoints.
 SR2 checkpoints allow precision, attention, and TF32 changes; compatibility does
 not guarantee identical predictions. See
-[precision and attention behavior](lora.md#hardware-and-input-limits)
-and [submission setup](getting-started.md#submission-environment-pytorch-211--cuda-128).
+[precision and attention behavior](lora.md#hardware-and-input-limits).
 
 ## Batch experiments
 

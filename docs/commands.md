@@ -5,20 +5,17 @@
 Run from the project root after [setup](getting-started.md). All entry points
 accept `--config PATH`, defaulting to `config.yaml` in the working directory,
 except the batch scripts, which select configs through their constants.
-Use `uv run COMMAND --help` to inspect the installed parser. In the separate
-[submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128),
-run `model` directly instead of `uv run model`.
+Use `uv run COMMAND --help` to inspect the installed parser.
 
 ## Entry points
 
 | Command | Purpose | Output with default paths |
 | --- | --- | --- |
-| `uv run init` | Download missing raw files and rebuild processed data | `data/processed/train_validation.parquet` |
-| `uv run data` | Download missing Kaggle files only | `data/raw/*.csv` |
+| `uv run init` | Download missing training data and rebuild processed data | `data/processed/train_validation.parquet` |
+| `uv run data` | Download missing Kaggle training data only | `data/raw/train.csv` |
 | `uv run preprocess` | Rebuild the split from local `train.csv` | `data/processed/train_validation.parquet` |
 | `uv run model MODEL` | Validate on the saved holdout | `results/MODEL-<timestamp>/` |
 | `uv run model MODEL --build` | Train on IDs from both partitions; save a head, or LoRA adapter/head and merged backbone | `models/SR2_Qwen3_4B/head.pt`, or `models/SR2_Qwen3_4B_lora/adapter.pt` and `merged/` |
-| `uv run model SR2-Qwen3-4B-lora --submit` | Load a checkpoint and predict test probabilities | `results/submit/MODEL-<timestamp>/submission.csv` |
 | `uv run model warmup --build` | Train/cache an SR2 head on the train partition only | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/<key>.pt` |
 | `uv run result [RUN]` | Report a selected or latest validation run | `results/comprehensive/` |
 | `uv run python scripts/validate.py` | Validate explicit model/config pairs sequentially | Validation directories and `results/logs/validate-*.log` |
@@ -27,7 +24,7 @@ run `model` directly instead of `uv run model`.
 The processed `.parquet` path is logical; large files use a manifest and volumes.
 See [multipart storage](caching.md#shared-storage-and-multipart-files).
 
-`RESULT_PATH` selects the root for validation runs, submissions, reports, and
+`RESULT_PATH` selects the root for validation runs, reports, and
 batch logs; the table shows its default `./results`. See
 [path rules](configuration.md#configuration-files-and-paths).
 
@@ -41,28 +38,24 @@ selector is build-only. Selector spelling differs from the
 | --- | --- |
 | No mode flag | Holdout validation; publishes final predictions (current evaluation after a frozen head-cache hit), without saving a production checkpoint |
 | `--build` | Train on all original IDs; save a frozen head, or LoRA adapter/head plus the merged backbone |
-| `--submit` | LoRA only: load the selected checkpoint; requires test files and two configured GPUs |
 | `--refresh-cache` | Rebuild requested token entries and the selected mode's model-specific caches |
-| `--checkpoint-tag TAG` | Choose frozen `head_TAG.pt`, or LoRA `adapter_TAG.pt` and build `merged_TAG/`; build/submit only |
+| `--checkpoint-tag TAG` | Choose frozen `head_TAG.pt`, or LoRA `adapter_TAG.pt` and build `merged_TAG/`; build only |
 
-`--build` and `--submit` are mutually exclusive. A tag starts with an ASCII
-letter or digit and contains only ASCII letters, digits, `_`, or `-`.
-Without a tag, builds replace frozen `head.pt`, or LoRA `adapter.pt` and `merged/`. Use the same tag and
-compatible configuration when submitting. Submission continues to use the
-adapter/head checkpoint with the original base weights. See
-[build outputs](models.md#build-and-submit).
+A checkpoint tag starts with an ASCII letter or digit and contains only ASCII
+letters, digits, `_`, or `-`. It requires `--build`. Without a tag, builds replace
+frozen `head.pt`, or LoRA `adapter.pt` and `merged/`. See
+[build outputs](models.md#full-data-builds).
 
-`ALL` runs configured frozen SR2 before LoRA. `ALL --submit` skips frozen SR2
-with a message; explicitly requesting `SR2-Qwen3-4B --submit` fails before
-configuration/data/GPU setup. `ALL` accepts the same mode, refresh, and tag options, continues
-after model failures, and exits with status `1` if any fail. An empty selection
-or no model supporting the selected mode is an error. The entire YAML is validated before any model runs.
+`ALL` runs configured frozen SR2 before LoRA. It accepts the same mode, refresh,
+and tag options, continues after model failures, and exits with status `1` if any
+fail. An empty selection is an error. The entire YAML is validated before any
+model runs.
 
 ## Standalone warmup
 
 `warmup` is a separate selector requiring `--build`. It accepts `--config` and
-`--refresh-cache`; the default validation command mode, `--submit`, and
-`--checkpoint-tag` are unsupported.
+`--refresh-cache`; the default validation command mode and `--checkpoint-tag`
+are unsupported.
 It is excluded from `ALL`.
 
 It prepares train and validation tokens, then trains the SR2 comparison head
@@ -94,9 +87,9 @@ See [warmup configuration](configuration.md#standalone-warmup) and
 For LoRA validation/build with warmup enabled, it forces a new warmup and
 refreshes requested tokens, warmup feature entries, and batch plans. Standalone
 warmup also refreshes its requested tokens, features, and head state. Frozen SR2
-validation/build refreshes requested tokens, features, and shared head state. LoRA submission
-uses neither warmup states nor joint-training plans. Refresh is not a checkpoint rebuild or a
-request to delete all existing caches; see [cache identities](caching.md).
+validation/build refreshes requested tokens, features, and shared head state.
+Refresh is not a checkpoint rebuild or a request to delete all existing caches;
+see [cache identities](caching.md).
 
 ## Batch validation
 

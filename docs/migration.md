@@ -6,6 +6,24 @@ Use the current [configuration reference](configuration.md) for new runs.
 These notes explain historical names and artifacts; they do not change saved
 experiments or make old checkpoints compatible with a new architecture.
 
+## Removed submission workflow
+
+The project no longer provides submission inference. `model MODEL --submit` and
+the older `--test` option have no current replacement command. Validation,
+full-data builds, and standalone warmup remain available; build still exports
+the frozen head or LoRA adapter/head plus merged backbone and tokenizer.
+
+Remove `gpu.submit_devices` from custom YAML files: it is now an unknown key
+and is rejected by the strict configuration loader. Current presets and new
+snapshots omit it. `--checkpoint-tag` requires `--build`, and remains unsupported
+for standalone warmup. Submission-only Python interfaces and the separate
+`requirements-submit.txt` installation are removed.
+
+`data` and `init` now download only missing `train.csv`. Existing test CSVs,
+checkpoints, caches, results, and historical configuration snapshots remain
+untouched. Reporting continues to exclude historical `submit` and `test`
+directories from validation-run discovery.
+
 ## Five folds to one holdout
 
 Replace `cross_validation` with `validation`, remove `n_splits`, set the desired
@@ -20,7 +38,7 @@ five-fold result directories; retain them for the corresponding historical code.
 ## Retired profiles
 
 The active model selectors are `SR2-Qwen3-4B` (frozen head training, validation/build)
-and `SR2-Qwen3-4B-lora` (validation/build/submit); `warmup` is a separate
+and `SR2-Qwen3-4B-lora` (validation/build); `warmup` is a separate
 build-only utility. The new frozen SR2 profile uses the current Skywork backbone
 and SR2 head, independently of the retired frozen Qwen profile.
 On 2026-10-27, frozen `qwen3-4b` and
@@ -125,11 +143,11 @@ Existing token shards and batch plans coexist with newly keyed inputs/plans.
 The changed serializer marker makes previous warmup entries miss and rejects
 plain-text production checkpoints, even when their head architecture matches.
 Rebuild those checkpoints with `uv run model SR2-Qwen3-4B-lora --build` and the
-matching configuration before submission. Historical artifacts are not converted.
+matching configuration when producing current checkpoints. Historical artifacts are not converted.
 Storage schemas and model/head architecture are unchanged.
 
 Python callers must supply a tokenizer to `ConversationSerializer` and pass the
-result as `serializer=` when constructing either model-data repository. Resolve
+result as `serializer=` when constructing `ModelDataRepository`. Resolve
 the tokenizer revision before serializing, then encode using that same tokenizer
 with `add_special_tokens=False`.
 
@@ -161,7 +179,8 @@ execute; persistent branch-cache details remain in
 
 | Old setting | Current setting / action |
 | --- | --- |
-| `model MODEL --test` | `model MODEL --submit` |
+| `model MODEL --test` / `--submit` | Removed; submission inference is no longer provided |
+| `gpu.submit_devices` | Remove; model workflows use `gpu.device` |
 | `DATA_PATH` | Set `data.raw_dir` and `data.processed_path` in YAML |
 | `extraction_batch_size` | `extraction_budget`, measured in padded tokens; old branch counts are not equivalent values |
 | LoRA `inference_batch_size` | `head_inference_batch_size`; keep the head batch count |

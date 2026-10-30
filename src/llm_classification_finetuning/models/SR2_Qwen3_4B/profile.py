@@ -9,7 +9,6 @@ PROFILE = ModelProfile(
 	result_prefix="SR2-Qwen3-4B",
 	head_architecture="swap_equivariant_harmonic_discrepancy_v3",
 	ab_swap_override="none",
-	supports_submit=False,
 )
 
 __all__ = ("PROFILE",)

@@ -19,7 +19,6 @@ class ModelMode(Enum):
 
 	VALIDATION = "validation"
 	BUILD = "build"
-	SUBMIT = "submit"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,17 +48,6 @@ class ModelBuildResult:
 
 
 @dataclass(frozen=True, slots=True)
-class ModelSubmitResult:
-	"""Summary of a completed competition submission run."""
-
-	output_dir: Path
-	submission_path: Path
-	predictions: int
-	cache_path: Path | None = None
-	cache_reused: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class WarmupBuildResult:
 	"""Summary and current train/validation losses of a head-warmup build or hit."""
 
@@ -71,9 +59,7 @@ class WarmupBuildResult:
 	validation_loss: float
 
 
-ModelExecutionResult = (
-	ModelRunResult | ModelBuildResult | ModelSubmitResult | WarmupBuildResult
-)
+ModelExecutionResult = ModelRunResult | ModelBuildResult | WarmupBuildResult
 
 
 class ModelPipelineInterface(Protocol):

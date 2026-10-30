@@ -230,8 +230,6 @@ class LoRATrainer:
 		*,
 		seed: int,
 		revision: str | None = None,
-		device_map: dict[str, str] | None = None,
-		quantize_backbone: bool | None = None,
 	) -> LoRAQwenClassifier:
 		"""Initialize joint training eagerly or a head with deferred frozen extraction."""
 		set_seed(seed)
@@ -240,12 +238,7 @@ class LoRATrainer:
 			self._gpu,
 			self._device,
 			revision=revision if revision is not None else self._base_revision,
-			device_map=device_map,
-			quantize_backbone=(
-				self._quantize_training
-				if quantize_backbone is None
-				else quantize_backbone
-			),
+			quantize_backbone=self._quantize_training,
 			warmup_only=self._warmup_only,
 			head_architecture=self._head_architecture,
 		)
@@ -1063,11 +1056,7 @@ class LoRATrainer:
 			)
 		model.eval()
 		progress_stage = stage or (
-			f"{self._head_stage} validation"
-			if head_only
-			else "joint validation"
-			if "label" in reference
-			else "submission"
+			f"{self._head_stage} validation" if head_only else "joint validation"
 		)
 		if feature_loader is None:
 			embeddings = self._extract_features(
@@ -1103,13 +1092,12 @@ class LoRATrainer:
 					model.classifier, features[:, 0], features[:, 1]
 				)
 			finite_probabilities.logical_and_(torch.isfinite(log_probabilities).all())
-			if "label" in reference:
-				labels = labels.to(self._device, non_blocking=True)
-				loss_total.add_(
-					F.nll_loss(log_probabilities, labels, reduction="sum")
-					if criterion is None
-					else criterion.from_log_probabilities(log_probabilities, labels)
-				)
+			labels = labels.to(self._device, non_blocking=True)
+			loss_total.add_(
+				F.nll_loss(log_probabilities, labels, reduction="sum")
+				if criterion is None
+				else criterion.from_log_probabilities(log_probabilities, labels)
+			)
 			stop = start + log_probabilities.shape[0]
 			if stop > len(reference):
 				raise ModelExecutionError(

@@ -1,4 +1,4 @@
-"""Publish model validation runs and test submissions."""
+"""Publish model validation runs."""
 
 from __future__ import annotations
 
@@ -241,66 +241,6 @@ class ModelResultPublisher:
 		)
 		if not _probabilities_are_valid(values):
 			raise ModelExecutionError("The holdout run produced invalid probabilities.")
-
-
-class ModelSubmissionPublisher:
-	"""Atomically publish one timestamped competition submission."""
-
-	PROBABILITY_COLUMNS = ModelResultPublisher.PROBABILITY_COLUMNS
-
-	def __init__(self, results_root: Path, result_prefix: str) -> None:
-		self._results_root = results_root.resolve()
-		self._result_prefix = result_prefix
-
-	def publish(
-		self,
-		ids: tuple[int, ...],
-		probabilities: np.ndarray,
-	) -> tuple[Path, Path]:
-		"""Write a submission CSV in a newly exposed submission-run directory."""
-		if probabilities.shape != (len(ids), len(self.PROBABILITY_COLUMNS)):
-			raise ModelExecutionError(
-				"Test probabilities do not match the test ID count."
-			)
-		if not _probabilities_are_valid(probabilities):
-			raise ModelExecutionError(
-				"Model submission inference produced invalid probabilities."
-			)
-
-		generated_at = datetime.now(UTC).astimezone()
-		output_dir = self._results_root / generated_at.strftime(
-			f"{self._result_prefix}-%Y%m%d-%H%M%S"
-		)
-		submission_path = output_dir / "submission.csv"
-		try:
-			self._results_root.mkdir(parents=True, exist_ok=True)
-			if output_dir.exists():
-				raise ModelExecutionError(
-					"Model submission result directory already exists for this second: "
-					f"{output_dir}"
-				)
-			with tempfile.TemporaryDirectory(
-				dir=self._results_root,
-				prefix=f".{self._result_prefix}-",
-			) as temporary_dir:
-				staging_dir = Path(temporary_dir)
-				pd.DataFrame(
-					{
-						"id": ids,
-						**{
-							column: probabilities[:, index]
-							for index, column in enumerate(self.PROBABILITY_COLUMNS)
-						},
-					}
-				).to_csv(staging_dir / "submission.csv", index=False)
-				os.replace(staging_dir, output_dir)
-		except ModelExecutionError:
-			raise
-		except Exception as error:
-			raise ModelExecutionError(
-				f"Could not publish model submission results to {output_dir}: {error}"
-			) from error
-		return output_dir, submission_path
 
 
 def _probabilities_are_valid(values: np.ndarray) -> bool:

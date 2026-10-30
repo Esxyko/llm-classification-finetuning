@@ -1,0 +1,123 @@
+Saving build log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/build-20261029-201124-077412.log
+Running full-data build for 1.yaml: SR2-Qwen3-4B
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 672,513 trainable parameters.
+Rebuilding SR2-Qwen3-4B head training (Build): completed_epochs=0, target_epochs=25, remaining_epochs=25; precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/fe60ef15ef09d1cb3f33c80aa9aca91d0481ff202bc70a29d60532b91681fb10.pt
+SR2-Qwen3-4B warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+Build head training epoch 1/25 (total 1/25): train_loss=1.002266
+Build head training epoch 2/25 (total 2/25): train_loss=1.412574
+Build head training epoch 3/25 (total 3/25): train_loss=1.066106
+Build head training epoch 4/25 (total 4/25): train_loss=0.965263
+SR2_Qwen3_4B build Head training (head training training evaluation) Build epoch 5/25 (total 5/25):
+progress: 20.0% work: 145.0/725.0 time: 00:00:03/00:00:16
+Build head training epoch 5/25 (total 5/25): train_loss=0.951774
+Build head training epoch 6/25 (total 6/25): train_loss=0.941334
+Build head training epoch 7/25 (total 7/25): train_loss=0.953640
+Build head training epoch 8/25 (total 8/25): train_loss=0.951234
+Build head training epoch 9/25 (total 9/25): train_loss=0.941402
+SR2_Qwen3_4B build Head training (head training training evaluation) Build epoch 10/25 (total 10/25):
+progress: 40.0% work: 290.0/725.0 time: 00:00:06/00:00:15
+Build head training epoch 10/25 (total 10/25): train_loss=0.937688
+Build head training epoch 11/25 (total 11/25): train_loss=0.928716
+Build head training epoch 12/25 (total 12/25): train_loss=0.920749
+Build head training epoch 13/25 (total 13/25): train_loss=0.923884
+Build head training epoch 14/25 (total 14/25): train_loss=0.915135
+SR2_Qwen3_4B build Head training (head training training evaluation) Build epoch 15/25 (total 15/25):
+progress: 60.0% work: 435.0/725.0 time: 00:00:09/00:00:15
+Build head training epoch 15/25 (total 15/25): train_loss=0.916212
+Build head training epoch 16/25 (total 16/25): train_loss=0.908431
+Build head training epoch 17/25 (total 17/25): train_loss=0.903949
+Build head training epoch 18/25 (total 18/25): train_loss=0.931210
+Build head training epoch 19/25 (total 19/25): train_loss=0.900405
+SR2_Qwen3_4B build Head training (head training training evaluation) Build epoch 20/25 (total 20/25):
+progress: 80.0% work: 580.0/725.0 time: 00:00:11/00:00:14
+Build head training epoch 20/25 (total 20/25): train_loss=0.895404
+Build head training epoch 21/25 (total 21/25): train_loss=0.896800
+Build head training epoch 22/25 (total 22/25): train_loss=0.890397
+Build head training epoch 23/25 (total 23/25): train_loss=0.886959
+Build head training epoch 24/25 (total 24/25): train_loss=0.883795
+SR2_Qwen3_4B build Head training Build epoch 25/25 (total 25/25):
+progress: 100.0% work: 725.0/725.0 time: 00:00:14/00:00:14
+Build head training epoch 25/25 (total 25/25): train_loss=0.881538
+Saved SR2-Qwen3-4B head training (Build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/fe60ef15ef09d1cb3f33c80aa9aca91d0481ff202bc70a29d60532b91681fb10.pt
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.18 GiB reserved=0.19 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.18 GiB reserved=0.19 GiB
+Model total time (SR2-Qwen3-4B): 00:00:59
+Trained SR2-Qwen3-4B on 57,477 rows for 25 epochs.
+Final training loss: 0.881538
+Wrote model checkpoint: /content/llm-classification-finetuning/models/SR2_Qwen3_4B/head.pt
+Running full-data build for 1.yaml: SR2-Qwen3-4B-lora
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (build): 57,477 rows, 56 updates, 4,114 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/c11bf29d4799b6d3c377abfc318274affabf0ffdf7d8a90c73863465a0749556.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:08).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 132,793,089 trainable parameters.
+Rebuilding LoRA head warmup (Build): completed_epochs=0, target_epochs=15, remaining_epochs=15; precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/21d5b5d291c5a7835d186457067537f02ef94a7a16a9dea345301bae77640fb2.pt
+LoRA warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+Build head warmup epoch 1/15 (total 1/16): train_loss=1.033708
+Build head warmup epoch 2/15 (total 2/16): train_loss=1.230230
+SR2_Qwen3_4B_lora build Head warmup (head warmup training evaluation) Build epoch 3/15 (total 3/16):
+progress: 20.0% work: 213.0/1,065.0 time: 00:00:02/00:00:08
+Build head warmup epoch 3/15 (total 3/16): train_loss=0.960844
+Build head warmup epoch 4/15 (total 4/16): train_loss=1.007906
+Build head warmup epoch 5/15 (total 5/16): train_loss=0.945434
+SR2_Qwen3_4B_lora build Head warmup (head warmup training evaluation) Build epoch 6/15 (total 6/16):
+progress: 40.0% work: 426.0/1,065.0 time: 00:00:03/00:00:08
+Build head warmup epoch 6/15 (total 6/16): train_loss=1.018836
+Build head warmup epoch 7/15 (total 7/16): train_loss=0.932012
+Build head warmup epoch 8/15 (total 8/16): train_loss=0.925000
+SR2_Qwen3_4B_lora build Head warmup (head warmup training evaluation) Build epoch 9/15 (total 9/16):
+progress: 60.0% work: 639.0/1,065.0 time: 00:00:05/00:00:08
+Build head warmup epoch 9/15 (total 9/16): train_loss=0.964100
+Build head warmup epoch 10/15 (total 10/16): train_loss=0.917426
+Build head warmup epoch 11/15 (total 11/16): train_loss=1.029109
+SR2_Qwen3_4B_lora build Head warmup (head warmup training evaluation) Build epoch 12/15 (total 12/16):
+progress: 80.0% work: 852.0/1,065.0 time: 00:00:06/00:00:08
+Build head warmup epoch 12/15 (total 12/16): train_loss=0.911168
+Build head warmup epoch 13/15 (total 13/16): train_loss=0.912217
+Build head warmup epoch 14/15 (total 14/16): train_loss=0.908878
+SR2_Qwen3_4B_lora build Head warmup Build epoch 15/15 (total 15/16):
+progress: 100.0% work: 1,065.0/1,065.0 time: 00:00:08/00:00:08
+Build head warmup epoch 15/15 (total 15/16): train_loss=0.913563
+Saved LoRA head warmup (Build): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/21d5b5d291c5a7835d186457067537f02ef94a7a16a9dea345301bae77640fb2.pt
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 10.7% work: 6.0/56.0 time: 00:06:35/01:01:26
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 21.4% work: 12.0/56.0 time: 00:15:30/01:12:20
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 30.4% work: 17.0/56.0 time: 00:22:46/01:14:58
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 41.1% work: 23.0/56.0 time: 00:28:17/01:08:51
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 50.0% work: 28.0/56.0 time: 00:36:39/01:13:18
+[W1029 20:53:39.230959057 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 14548992, total: 101974081536).
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 60.7% work: 34.0/56.0 time: 00:47:29/01:18:12
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 71.4% work: 40.0/56.0 time: 00:56:32/01:19:08
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 80.4% work: 45.0/56.0 time: 01:04:48/01:20:39
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 91.1% work: 51.0/56.0 time: 01:12:24/01:19:30
+[W1029 21:30:45.984843333 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 20971520 bytes (free: 18743296, total: 101974081536).
+[W1029 21:30:48.608310583 CUDACachingAllocator.cpp:528] expandable_segments: memory mapping failed with OOM on device 0 while trying to map 2097152 bytes (free: 1966080, total: 101974081536).
+SR2_Qwen3_4B_lora build Joint training Build epoch 1/1 (total 16/16):
+progress: 100.0% work: 56.0/56.0 time: 01:19:31/01:19:31
+Build joint training epoch 1/1 (total 16/16): train_loss=0.910737 last_step_training_loss=0.814950
+Exporting merged backbone: /content/llm-classification-finetuning/models/SR2_Qwen3_4B_lora/merged.
+
+Writing model shards:   0%|          | 0/2 [00:00<?, ?it/s]
+Writing model shards:  50%|█████     | 1/2 [00:04<00:04,  4.69s/it]
+Writing model shards: 100%|██████████| 2/2 [00:13<00:00,  7.14s/it]
+Writing model shards: 100%|██████████| 2/2 [00:13<00:00,  6.77s/it]
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0, training): allocated=93.22 GiB reserved=94.31 GiB
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0, global): allocated=93.22 GiB reserved=94.31 GiB
+Model total time (SR2-Qwen3-4B-lora): 01:21:32
+Trained SR2-Qwen3-4B-lora on 57,477 rows for 16 epochs.
+Executed head warmup epochs: 15
+Executed joint training epochs: 1
+Final training loss: 0.910737
+Wrote model checkpoint: /content/llm-classification-finetuning/models/SR2_Qwen3_4B_lora/adapter.pt
+Wrote merged backbone: /content/llm-classification-finetuning/models/SR2_Qwen3_4B_lora/merged
+Completed 2/2 tasks.

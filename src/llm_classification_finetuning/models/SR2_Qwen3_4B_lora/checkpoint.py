@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from peft import get_peft_model_state_dict, set_peft_model_state_dict
+from peft import get_peft_model_state_dict
 from peft.tuners.tuners_utils import BaseTunerLayer
 from safetensors import safe_open
 from torch import Tensor
@@ -170,14 +170,10 @@ class LoRACheckpointStore:
 				except OSError:
 					pass
 
-	def load(self, expected: LoRACheckpointCompatibility) -> LoadedLoRACheckpoint:
-		"""Validate training identity without imposing the original GPU settings."""
-		return self._load_checkpoint(self.path, expected)
-
 	def _load_checkpoint(
 		self, path: Path, expected: LoRACheckpointCompatibility
 	) -> LoadedLoRACheckpoint:
-		"""Apply identical CPU loading checks to staged and published checkpoints."""
+		"""Validate staged checkpoint metadata and tensors on CPU before publication."""
 		if not path.is_file():
 			raise ModelExecutionError(
 				f"{self._model_label} checkpoint not found: {path}. Run '{self._build_command}' "
@@ -248,32 +244,6 @@ class LoRACheckpointStore:
 		except Exception as error:
 			raise ModelExecutionError(
 				f"Could not load {self._model_label} checkpoint {path}: {error}"
-			) from error
-
-	def restore(
-		self, model: LoRAQwenClassifier, checkpoint: LoadedLoRACheckpoint
-	) -> None:
-		"""Require a complete adapter tensor set before assigning any weights."""
-		try:
-			if model.backbone_hidden_size != checkpoint.backbone_hidden_size:
-				raise ValueError("backbone hidden size does not match")
-			if model.base_revision != checkpoint.base_revision:
-				raise ValueError("backbone revision does not match")
-			expected = get_peft_model_state_dict(
-				model.backbone, save_embedding_layers=False
-			)
-			if expected.keys() != checkpoint.adapter_state_dict.keys():
-				raise ValueError(
-					"checkpoint does not contain the exact configured adapter tensor set"
-				)
-			for name, value in expected.items():
-				if value.shape != checkpoint.adapter_state_dict[name].shape:
-					raise ValueError(f"adapter shape does not match for {name}")
-			set_peft_model_state_dict(model.backbone, checkpoint.adapter_state_dict)
-			model.classifier.load_state_dict(checkpoint.head_state_dict, strict=True)
-		except Exception as error:
-			raise ModelExecutionError(
-				f"Could not restore {self._model_label} checkpoint {self.path}: {error}"
 			) from error
 
 	@staticmethod

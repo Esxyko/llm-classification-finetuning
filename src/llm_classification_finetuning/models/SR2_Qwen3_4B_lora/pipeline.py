@@ -1,4 +1,4 @@
-"""Coordinate live LoRA holdout validation, production builds, and inference."""
+"""Coordinate live LoRA holdout validation and production builds."""
 
 from __future__ import annotations
 
@@ -6,15 +6,11 @@ import gc
 from contextlib import suppress
 from pathlib import Path
 
-import pandas as pd
 import torch
-from transformers import AutoConfig
 
 from ...config import AppConfig, LoRAModelConfig
 from ...errors import ModelExecutionError
-from ...model_storage import load_pretrained
 from ..common import (
-	ConversationSerializer,
 	GPUEnvironment,
 	GPUMemoryMonitor,
 	ModelBuildResult,
@@ -22,11 +18,6 @@ from ..common import (
 	ModelMode,
 	ModelResultPublisher,
 	ModelRunResult,
-	ModelSubmissionPublisher,
-	ModelSubmitResult,
-	ModelTestDataRepository,
-	SubmissionAttention,
-	TokenizationCache,
 )
 from ..profile import ModelProfile
 from .batching import LoRATrainingBatchRepository
@@ -39,7 +30,7 @@ from .trainer import LoRATrainer
 
 
 class LoRAModelPipeline:
-	"""Run single-GPU training or dual-GPU submission with portable adapters."""
+	"""Run single-GPU validation and full-data builds with portable adapters."""
 
 	def __init__(
 		self,
@@ -76,9 +67,6 @@ class LoRAModelPipeline:
 		self._result_publisher = ModelResultPublisher(
 			config.result_dir, profile.result_prefix
 		)
-		self._submission_publisher = ModelSubmissionPublisher(
-			config.result_dir / "submit", profile.result_prefix
-		)
 
 	def run(
 		self,
@@ -89,7 +77,7 @@ class LoRAModelPipeline:
 	) -> ModelExecutionResult:
 		"""Reuse training tokens, batch plans and head warmup before live joint training."""
 		try:
-			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD, ModelMode.SUBMIT):
+			if mode not in (ModelMode.VALIDATION, ModelMode.BUILD):
 				raise ModelExecutionError(f"Unsupported model mode: {mode!r}")
 			if mode is ModelMode.BUILD:
 				return self._run_build(
@@ -98,20 +86,12 @@ class LoRAModelPipeline:
 			if mode is ModelMode.VALIDATION and gpu_memory_monitor is not None:
 				gpu_memory_monitor.start()
 			environment = GPUEnvironment(self._config.gpu)
-			submit_devices = (
-				environment.configure_submit() if mode is ModelMode.SUBMIT else None
-			)
-			device = submit_devices[0] if submit_devices else environment.configure()
+			device = environment.configure()
 			trainer = self._create_trainer(
 				device,
 				refresh_cache=refresh_cache,
-				gpu_memory_monitor=gpu_memory_monitor
-				if mode is ModelMode.VALIDATION
-				else None,
+				gpu_memory_monitor=gpu_memory_monitor,
 			)
-			if submit_devices is not None:
-				with SubmissionAttention(self._config.gpu).activate():
-					return self._run_submit(trainer, submit_devices)
 			batches = LoRATrainingBatchRepository.from_config(
 				self._config, refresh_cache=refresh_cache, profile=self._profile
 			)
@@ -135,7 +115,7 @@ class LoRAModelPipeline:
 				"or lower warmup.extraction_budget for warmup extraction, "
 				"warmup.warmup_training_batch_size for warmup head training, "
 				f"{self._profile.config_key}.extraction_budget for "
-				"joint-validation/submission extraction, or training_batch_size "
+				"joint-validation extraction, or training_batch_size "
 				"or head_inference_batch_size for the affected stage. "
 				"Keep max_length at least "
 				"as large as the longest required input; inputs are never truncated. "
@@ -230,52 +210,6 @@ class LoRAModelPipeline:
 				executed_joint_epochs=history.executed_joint_epochs,
 				merged_backbone_path=merged_backbone_path,
 			)
-		finally:
-			del model
-
-	def _run_submit(
-		self,
-		trainer: LoRATrainer,
-		submit_devices: tuple[torch.device, torch.device],
-	) -> ModelSubmitResult:
-		checkpoint = self._checkpoint_store.load(
-			self._compatibility(ConversationSerializer.FORMAT_VERSION)
-		)
-		token_cache = TokenizationCache.from_pretrained(
-			self._config.cache_dir / "token_cache",
-			self._model_config.model_name,
-			revision=checkpoint.base_revision,
-		)
-		data = ModelTestDataRepository(
-			self._config.data.raw_dir,
-			serializer=ConversationSerializer(token_cache.tokenizer),
-		).load()
-		trainer.prepare_tokens(
-			data.canonical_texts,
-			token_cache=token_cache,
-			revision=checkpoint.base_revision,
-		)
-		base_config = load_pretrained(
-			AutoConfig.from_pretrained,
-			self._model_config.model_name,
-			revision=checkpoint.base_revision,
-		)
-		model = trainer.create_model(
-			seed=self._model_config.random_state,
-			revision=checkpoint.base_revision,
-			device_map=GPUEnvironment.submission_device_map(
-				base_config, submit_devices
-			),
-			quantize_backbone=False,
-		)
-		try:
-			self._checkpoint_store.restore(model, checkpoint)
-			reference = pd.DataFrame({"id": data.ids, "is_swapped": False})
-			_, probabilities = trainer.evaluate(model, reference, data.canonical_texts)
-			output_dir, submission_path = self._submission_publisher.publish(
-				data.ids, probabilities
-			)
-			return ModelSubmitResult(output_dir, submission_path, len(data.ids))
 		finally:
 			del model
 

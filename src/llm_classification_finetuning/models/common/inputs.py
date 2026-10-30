@@ -6,7 +6,6 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from ...config import MAX_VALIDATION_ROW_DEVIATION
@@ -17,13 +16,6 @@ from .cache_storage import CacheCorruptionError, CacheStorage
 @dataclass(frozen=True, slots=True)
 class TrainingInputs:
 	data: pd.DataFrame
-	fingerprint: str
-
-
-@dataclass(frozen=True, slots=True)
-class TestInputs:
-	data: pd.DataFrame
-	ids: tuple[int, ...]
 	fingerprint: str
 
 
@@ -140,83 +132,6 @@ class TrainingInputLoader:
 			raise ModelExecutionError(
 				"Swapped labels do not match their canonical labels."
 			)
-
-
-class TestInputLoader:
-	"""Validate test rows against the exact submission template order."""
-
-	TEST_COLUMNS = ("id", "prompt", "response_a", "response_b")
-	SUBMISSION_COLUMNS = ("id", "winner_model_a", "winner_model_b", "winner_tie")
-
-	def __init__(self, raw_dir: Path) -> None:
-		self._test_path = raw_dir.resolve() / "test.csv"
-		self._submission_path = raw_dir.resolve() / "sample_submission.csv"
-
-	def load(self) -> TestInputs:
-		test = self._read_csv(self._test_path, "competition test data")
-		submission = self._read_csv(self._submission_path, "sample submission")
-		self._validate_columns(test, self.TEST_COLUMNS, self._test_path)
-		self._validate_columns(
-			submission, self.SUBMISSION_COLUMNS, self._submission_path
-		)
-		if test.loc[:, list(self.TEST_COLUMNS)].isna().any().any():
-			raise ModelExecutionError("Competition test data contains missing values.")
-		test_ids = self._validated_ids(test, self._test_path)
-		submission_ids = self._validated_ids(submission, self._submission_path)
-		if not np.array_equal(test_ids, submission_ids):
-			raise ModelExecutionError(
-				"test.csv and sample_submission.csv IDs must match in the same order."
-			)
-		return TestInputs(
-			data=test,
-			ids=tuple(int(row_id) for row_id in test_ids),
-			fingerprint=_sha256(self._test_path),
-		)
-
-	@staticmethod
-	def _read_csv(path: Path, description: str) -> pd.DataFrame:
-		if not path.is_file():
-			raise ModelExecutionError(
-				f"{description.capitalize()} not found: {path}. Run 'uv run data' first."
-			)
-		try:
-			return pd.read_csv(path)
-		except Exception as error:
-			raise ModelExecutionError(
-				f"Could not read {description} {path}: {error}"
-			) from error
-
-	@staticmethod
-	def _validate_columns(
-		data: pd.DataFrame, expected: tuple[str, ...], path: Path
-	) -> None:
-		if tuple(data.columns) != expected:
-			columns = ", ".join(expected)
-			raise ModelExecutionError(
-				f"{path.name} must contain exactly these columns in order: {columns}."
-			)
-		if data.empty:
-			raise ModelExecutionError(f"{path.name} contains no rows.")
-
-	@staticmethod
-	def _validated_ids(data: pd.DataFrame, path: Path) -> np.ndarray:
-		try:
-			numeric_ids = pd.to_numeric(data["id"], errors="raise").to_numpy(
-				dtype=np.float64
-			)
-		except (TypeError, ValueError) as error:
-			raise ModelExecutionError(
-				f"{path.name} IDs must be numeric integers."
-			) from error
-		if (
-			not np.isfinite(numeric_ids).all()
-			or not np.equal(numeric_ids, np.floor(numeric_ids)).all()
-		):
-			raise ModelExecutionError(f"{path.name} IDs must be finite integers.")
-		integer_ids = numeric_ids.astype(np.int64)
-		if pd.Series(integer_ids).duplicated().any():
-			raise ModelExecutionError(f"{path.name} IDs must be unique.")
-		return integer_ids
 
 
 def _sha256(path: Path) -> str:

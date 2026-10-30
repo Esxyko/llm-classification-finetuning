@@ -26,7 +26,7 @@ base weights or every artifact in the cache root.
 
 Adapter-free SR2 warmup features are persisted across runs and configurations;
 their in-memory views are shared within the warmup stage. Each joint-validation
-or submission call extracts fresh temporary features with the current adapters
+call extracts fresh temporary features with the current adapters
 and releases them on return. Live LoRA embeddings are never persisted.
 
 ## Hugging Face model downloads
@@ -199,7 +199,7 @@ unrequested entries. Invalid vectors become misses; corrupt storage follows the
 shared archive/rebuild policy, while storage access failures remain explicit
 execution errors. Splits without `warmup_context` and retained quantized profiles
 continue using temporary extraction without this feature cache. Head state,
-losses, and current-adapter joint-validation/submission features are separate.
+losses, and current-adapter joint-validation features are separate.
 
 ## LoRA batch plans
 
@@ -269,7 +269,6 @@ remain on disk and are not reused or migrated. Exact head/optimizer tensor names
 and shapes additionally reject earlier structures without the fused L/M layout
 and B3, even if their metadata is relabeled.
 Warmup is regenerated for the new architecture.
-Submission does not use warmup caches.
 
 SR2 also includes `head_initialization_version` in its warmup metadata, currently
 `scaled_uniform_zero_discrepancy_v1`. The full metadata is hashed with SHA-256
@@ -429,15 +428,12 @@ first_ids = encoded[0]  # Unpadded int32 IDs, in requested input order.
 
 An already loaded tokenizer can be passed to `TokenizationCache(cache_dir, tokenizer)`.
 For model inputs, construct `ConversationSerializer(cache.tokenizer)` and pass it
-as the required `serializer=` argument of `ModelDataRepository` or
-`ModelTestDataRepository`. Encode the returned A/B texts with
-`cache.encode(texts, add_special_tokens=False)`. `PairwiseTokenStore` sets this
+as the required `serializer=` argument of `ModelDataRepository`. Encode the
+returned A/B texts with `cache.encode(texts, add_special_tokens=False)`. `PairwiseTokenStore` sets this
 option automatically. Formatting and encoding must use the same tokenizer.
 
-Submission loads the checkpoint compatibility and saved base revision before
-creating its tokenizer and test serializer. `LoRATrainer.prepare_tokens` can
-prepare and validate those inputs with the same token cache on CPU before
-backbone weights are loaded.
+`LoRATrainer.prepare_tokens` prepares and validates complete inputs with the
+same token cache on CPU; training and validation reuse this token storage.
 
 Model registration and SR2 pipeline/trainer exports are loaded on demand, so
 importing CPU data/batch preparation does not import PEFT or initialize CUDA

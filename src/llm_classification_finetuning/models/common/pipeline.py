@@ -1,4 +1,4 @@
-"""Coordinate model holdout validation, builds, and submission inference."""
+"""Coordinate model holdout validation and builds."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from ...config import AppConfig, ModelConfig
 from ...errors import ModelExecutionError
 from ...model_storage import load_pretrained
 from ..profile import ModelProfile
-from .attention import SubmissionAttention
 from .cache import CachedEmbeddings, EmbeddingCache
 from .checkpoint import ModelCheckpointStore
 from .compatibility import ModelCompatibility
@@ -21,25 +20,22 @@ from .contracts import (
 	ModelExecutionResult,
 	ModelMode,
 	ModelRunResult,
-	ModelSubmitResult,
 )
 from .data import (
 	ConversationSerializer,
 	ModelData,
 	ModelDataRepository,
-	ModelTestDataRepository,
 	PairwiseText,
 )
 from .extractor import QwenEmbeddingExtractor
 from .hardware import GPUEnvironment, GPUMemoryMonitor
-from .predictor import ModelPredictor
-from .publishers import ModelResultPublisher, ModelSubmissionPublisher
+from .publishers import ModelResultPublisher
 from .token_cache import TokenizationCache
 from .trainer import ModelTrainer
 
 
 class ModelPipeline:
-	"""Run holdout validation, build, or submission inference for one model profile."""
+	"""Run holdout validation or a full-data build for one model profile."""
 
 	CACHE_SCHEMA_VERSION = 2
 	CHECKPOINT_SCHEMA_VERSION = 3
@@ -77,23 +73,14 @@ class ModelPipeline:
 			serializer=serializer,
 			validation_fraction=config.validation.validation_fraction,
 		)
-		self._test_repository = ModelTestDataRepository(
-			config.data.raw_dir, serializer=serializer
-		)
 		self._embedding_cache = EmbeddingCache(config.cache_dir / "embedding_cache")
 		project_root = project_root.resolve()
 		checkpoint_name = f"head_{checkpoint_tag}.pt" if checkpoint_tag else "head.pt"
 		self._checkpoint_store = ModelCheckpointStore(
 			project_root / "models" / profile.artifact_stem / checkpoint_name,
-			selector=profile.selector,
-			checkpoint_tag=checkpoint_tag,
 		)
 		self._result_publisher = ModelResultPublisher(
 			config.result_dir,
-			result_prefix=profile.result_prefix,
-		)
-		self._submission_publisher = ModelSubmissionPublisher(
-			config.result_dir / "submit",
 			result_prefix=profile.result_prefix,
 		)
 
@@ -105,10 +92,6 @@ class ModelPipeline:
 		gpu_memory_monitor: GPUMemoryMonitor | None = None,
 	) -> ModelExecutionResult:
 		"""Execute the selected model mode and return its summary."""
-		if mode is ModelMode.SUBMIT:
-			with SubmissionAttention(self._config.gpu).activate():
-				return self._run_submit(refresh_cache=refresh_cache)
-
 		if gpu_memory_monitor is not None:
 			gpu_memory_monitor.start()
 		device = GPUEnvironment(self._config.gpu).configure()
@@ -169,44 +152,12 @@ class ModelPipeline:
 			cache_reused=cache_reused,
 		)
 
-	def _run_submit(self, *, refresh_cache: bool) -> ModelSubmitResult:
-		submit_devices = GPUEnvironment(self._config.gpu).configure_submit()
-		device = submit_devices[0]
-		checkpoint = self._checkpoint_store.load(
-			self._compatibility.checkpoint(self._test_repository.serializer_version)
-		)
-		data = self._test_repository.load()
-		embeddings, cache_reused = self._load_or_extract_embeddings(
-			records=data.canonical_texts,
-			refresh_cache=refresh_cache,
-			device=device,
-			submit_devices=submit_devices,
-		)
-		probabilities = ModelPredictor(
-			config=self._model_config,
-			device=device,
-			selector=self._profile.selector,
-			config_key=self._profile.config_key,
-		).predict(checkpoint, embeddings)
-		output_dir, submission_path = self._submission_publisher.publish(
-			data.ids,
-			probabilities,
-		)
-		return ModelSubmitResult(
-			output_dir=output_dir,
-			submission_path=submission_path,
-			predictions=len(data.ids),
-			cache_path=self._embedding_cache.root,
-			cache_reused=cache_reused,
-		)
-
 	def _load_or_extract_embeddings(
 		self,
 		*,
 		records: tuple[PairwiseText, ...],
 		refresh_cache: bool,
 		device: torch.device,
-		submit_devices: tuple[torch.device, torch.device] | None = None,
 	) -> tuple[CachedEmbeddings, bool]:
 		extractor = QwenEmbeddingExtractor(
 			gpu_config=self._config.gpu,
@@ -216,7 +167,6 @@ class ModelPipeline:
 			token_cache=self._token_cache,
 			revision=self._base_revision,
 			refresh_cache=refresh_cache,
-			submit_devices=submit_devices,
 		)
 		try:
 			tokens = extractor.prepare(records)

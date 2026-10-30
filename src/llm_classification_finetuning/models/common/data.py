@@ -11,7 +11,7 @@ import pandas as pd
 from transformers import PreTrainedTokenizerBase
 
 from ...errors import ModelExecutionError
-from .inputs import TestInputLoader, TrainingInputLoader
+from .inputs import TrainingInputLoader
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,15 +28,6 @@ class ModelData:
 	"""Validated augmented references and canonical model inputs."""
 
 	reference: pd.DataFrame
-	canonical_texts: tuple[PairwiseText, ...]
-	fingerprint: str
-
-
-@dataclass(frozen=True, slots=True)
-class ModelTestData:
-	"""Validated competition test records and submission IDs."""
-
-	ids: tuple[int, ...]
 	canonical_texts: tuple[PairwiseText, ...]
 	fingerprint: str
 
@@ -179,40 +170,4 @@ class ModelDataRepository:
 			.reset_index(drop=True),
 			canonical_texts=canonical_texts,
 			fingerprint=fingerprint,
-		)
-
-
-class ModelTestDataRepository:
-	"""Read and validate competition test and submission-template records."""
-
-	TEST_COLUMNS = TestInputLoader.TEST_COLUMNS
-	SUBMISSION_COLUMNS = TestInputLoader.SUBMISSION_COLUMNS
-
-	def __init__(self, raw_dir: Path, *, serializer: ConversationSerializer) -> None:
-		self._loader = TestInputLoader(raw_dir)
-		self._serializer = serializer
-
-	@property
-	def serializer_version(self) -> str:
-		"""Return the cache-relevant conversation format identifier."""
-		return self._serializer.FORMAT_VERSION
-
-	def load(self) -> ModelTestData:
-		"""Return validated test texts in sample-submission order."""
-		inputs = self._loader.load()
-		test = inputs.data
-
-		canonical_texts = tuple(
-			self._serializer.serialize_pair(
-				row_id=int(row.id),
-				prompt_value=row.prompt,
-				response_a_value=row.response_a,
-				response_b_value=row.response_b,
-			)
-			for row in test.itertuples(index=False)
-		)
-		return ModelTestData(
-			ids=inputs.ids,
-			canonical_texts=canonical_texts,
-			fingerprint=inputs.fingerprint,
 		)

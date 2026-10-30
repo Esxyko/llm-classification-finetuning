@@ -26,7 +26,7 @@ class DownloadResult:
 class CompetitionDataDownloader:
 	"""Ensure official competition files exist without replacing raw data."""
 
-	REQUIRED_FILES = ("train.csv", "test.csv", "sample_submission.csv")
+	REQUIRED_FILES = ("train.csv",)
 
 	def __init__(self, config: DataConfig) -> None:
 		self._config = config

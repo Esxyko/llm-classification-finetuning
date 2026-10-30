@@ -6,7 +6,7 @@ SR2 trains adapters and a three-class comparison head over
 one Skywork reward-trained Qwen3 backbone. Original base parameters remain frozen;
 training is non-quantized on one GPU. Each pair is serialized as separate A and B
 branches and pooled at the last real token. Both stages train on **original rows
-only**; validation/submission make one head prediction per ID.
+only**; validation makes one head prediction per ID.
 
 ```shell
 uv run model SR2-Qwen3-4B-lora
@@ -121,9 +121,8 @@ There is no `A/B_swap` setting or orientation averaging for SR2.
 
 ## Hardware and input limits
 
-Validation/build uses `gpu.device`; submission uses the
-[two-GPU layer split](configuration.md#gpu-configuration). All branches are
-right-padded independently without padding masks. Qwen's causal attention
+Validation/build uses [`gpu.device`](configuration.md#gpu-configuration). All
+branches are right-padded independently without padding masks. Qwen's causal attention
 protects real tokens from right padding, and CPU-computed last-real-token
 positions select pooled features. KV caching is disabled. Joint training encodes
 A then B while retaining both gradient graphs. The head consumes both features,
@@ -142,10 +141,9 @@ just the model name/revision.
 
 All stages use [SR2 chat-template inputs](data-preparation.md#conversation-serialization)
 with no system message. Template output includes its terminal newline and is
-encoded without additional special tokens. Submission checks checkpoint
-compatibility first, then loads the tokenizer at the saved base revision and
-validates full input lengths before loading backbone weights. Plain-text
-checkpoints require rebuilding.
+encoded without additional special tokens. Full-data builds validate complete
+input lengths before loading backbone weights. Plain-text checkpoints require
+rebuilding.
 
 | Precision | Backbone / pooled CPU features | Trainable state and head computation |
 | --- | --- | --- |
@@ -162,11 +160,10 @@ calculation.
 Harmonic feature fusion and final logit arithmetic remain FP32 in every mode.
 
 With `sdpa`, LoRA permits Flash, memory-efficient, and cuDNN backends and disables
-math fallback during warmup, joint training, validation, submission, and
+math fallback during warmup, joint training, validation, and
 checkpoint recomputation. Unsupported fused inputs fail explicitly. Scoped flags
-are restored on exit; explicit `eager` attention is available. Submission also
-applies the [T4 compatibility path](getting-started.md#submission-environment-pytorch-211--cuda-128)
-that expands K/V heads. Training/validation keep their native GQA policy.
+are restored on exit; explicit `eager` attention is available. Training/validation
+keep their native GQA policy.
 
 ## Measured input lengths
 
@@ -183,16 +180,15 @@ branches of all original training rows, before augmentation:
 | Longest branch | 13,866 tokens |
 | Canonical A+B token total | 44,873,727 |
 
-The longest branch is A for ID `2995198009`. The local three-row test CSV has a
-maximum branch length of 851 tokens and a total of 2,328 A+B tokens. All current
-presets set both warmup and SR2 `max_length` to 13,866. New competition test data
-must still pass the normal length checks. The matching saved split and its
-fingerprint are documented under [data preparation](data-preparation.md#saved-sr2-split-2026-10-27).
+The longest branch is A for ID `2995198009`. All current presets set both warmup
+and SR2 `max_length` to 13,866. New training inputs must still pass the normal
+length checks. The matching saved split and its fingerprint are documented under
+[data preparation](data-preparation.md#saved-sr2-split-2026-10-27).
 
 ### Historical plain-text inputs
 
 These are **historical measurements**, not a guarantee for the current saved
-split or test inputs. A 2026-10-20 snapshot used
+split. A 2026-10-20 snapshot used
 `aligned-prompt-newline-response-v1`, the Qwen3-4B tokenizer at revision
 `1cfa9a7208912126459214e8b04321603b3df60c`, default special tokens, and no truncation.
 
@@ -208,7 +204,7 @@ The longest branch was A for ID `2995198009`; B had 4,225 tokens. The snapshot's
 Parquet SHA-256 was
 `0db037aac8f94bf68d3f6e02b2bf4214e6bf4817ed01d4c475af5c2f41fab4ff`, which differs
 from the checked-in manifest. Its int32 token payload was about 164 MiB before
-offsets/metadata. Current train/test inputs are checked independently.
+offsets/metadata. Current training inputs are checked independently.
 
 ## Optimization and head warmup
 
@@ -323,20 +319,19 @@ groups with the same joint learning rate. The classifier's AdamW state is
 retained. These joint-only settings do not change warmup cache identity or
 production checkpoint compatibility.
 
-## Two-stage validation and submission
+## Two-stage validation
 
 Each joint-validation call extracts canonical A/B features using the current
-adapters, then runs the head over original IDs. Submission does the same after
-restoring its checkpoint. Backbone extraction uses the selected LoRA section's
-`extraction_budget`; head inference uses `head_inference_batch_size`.
+adapters, then runs the head over original IDs. Backbone extraction uses the
+selected LoRA section's `extraction_budget`; head inference uses `head_inference_batch_size`.
 
 Extraction completes before head inference, stores temporary CPU features, and
 releases them on return. Features are never reused across joint epochs/runs.
 Warmup train and validation inference instead reuse that stage's frozen features.
 Inline warmup uses `head_inference_batch_size` for both evaluations; standalone
 warmup uses `warmup.training_batch_size`. Logs distinguish warmup training
-evaluation, warmup validation, joint validation, and submission; joint-validation
-timing includes both extraction and head inference. Validation/submission still work when warmup is
+evaluation, warmup validation, and joint validation; joint-validation timing
+includes both extraction and head inference. Validation still works when warmup is
 disabled. See [extraction packing](configuration.md#extraction-token-budgets).
 
 ## Optional token-budget training batches
@@ -496,8 +491,8 @@ Adjust the setting for the stage that actually failed:
 | Warmup head training | Lower `warmup.training_batch_size` |
 | Joint backbone training | Lower a positive checkpointing threshold; lower the second-pass budget or set it to `0` |
 | Fixed initial joint batches, threshold `0` | Lower `training_batch_size`; adjust accumulation if retaining effective batch size |
-| Joint-validation / submission extraction | Lower the selected LoRA section's `extraction_budget` |
-| Head validation / submission | Lower `head_inference_batch_size` |
+| Joint-validation extraction | Lower the selected LoRA section's `extraction_budget` |
+| Head validation | Lower `head_inference_batch_size` |
 
 With a positive threshold, keeping `training_batch_size * gradient_accumulation_steps`
 fixed does not lower packing limits; change the token controls instead. A budget
@@ -516,23 +511,22 @@ interrupted joint training.
 
 Before initializing CUDA, full-data builds prepare their data/tokens/batch plan
 and probe both the adapter/head and merged-backbone destinations for writability.
-Saving reloads the staged file on CPU with the same validation used by
-submission, then atomically replaces the destination. Failed writes or staged
+Saving reloads the staged file on CPU to validate its metadata and tensors,
+then atomically replaces the destination. Failed writes or staged
 validation preserve the previous checkpoint and clean up the temporary file.
 The CPU snapshot used for serialization is released before readback; neither
 the probe nor readback loads base weights or runs inference.
 
-Loading checks model name, serializer, classifier width/dropout, head
+CPU readback checks model name, serializer, classifier width/dropout, head
 architecture, LoRA rank/alpha/dropout/targets, schema/classes, pooling/truncation
-policy, bias, and `training_quantization: none`. Head tensor names/shapes are
-checked before backbone loading. Hub inference reloads the saved base revision.
-Local base weights are neither embedded nor content-fingerprinted by the
-production checkpoint.
+policy, bias, and `training_quantization: none`. It also checks head tensor
+names/shapes and records the saved Hub base revision. Local base weights are
+neither embedded nor content-fingerprinted by the production checkpoint.
 
-`max_length` and internal `ab_swap` are recorded but not checked. Device,
-precision, attention, TF32, batches, and accumulation may change; inputs must
-still fit the current length limit. Historical quantized or retired-head
-checkpoints are incompatible. See [migration](migration.md).
+`max_length` and internal `ab_swap` are recorded but excluded from readback
+compatibility comparisons. Device, precision, attention, TF32, batches, and
+accumulation are also outside these comparisons. Historical quantized or
+retired-head checkpoints are incompatible. See [migration](migration.md).
 
 ### Merged backbone export
 
@@ -568,6 +562,4 @@ review instead of discarding either. Temporary files are cleaned up after
 failure, and cleanup errors do not replace the export error.
 
 An export failure returns a command failure while retaining the already saved
-adapter/head checkpoint. Submission continues to use the original base weights
-plus that checkpoint; it does not load the merged directory or apply adapters
-to the merged weights. Both outputs must be saved before build reports success.
+adapter/head checkpoint. Both outputs must be saved before build reports success.

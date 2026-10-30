@@ -48,13 +48,12 @@ class ValidationConfig:
 
 @dataclass(frozen=True, slots=True)
 class GPUConfig:
-	"""Single-GPU training and two-GPU submission settings."""
+	"""Single-GPU model execution settings."""
 
 	device: str
 	precision: str
 	attention_implementation: str
 	allow_tf32: bool
-	submit_devices: tuple[str, str] = ("cuda:0", "cuda:1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +211,6 @@ class AppConfig:
 			gpu_section,
 			{
 				"device",
-				"submit_devices",
 				"precision",
 				"attention_implementation",
 				"allow_tf32",
@@ -279,20 +277,6 @@ class AppConfig:
 			)
 
 		device = _require_cuda_device(gpu_section.get("device"), "gpu.device")
-		submit_devices = gpu_section.get("submit_devices", ["cuda:0", "cuda:1"])
-		if not isinstance(submit_devices, list) or len(submit_devices) != 2:
-			raise ConfigurationError(
-				"gpu.submit_devices must be a list of exactly two CUDA devices."
-			)
-		first_submit_device, second_submit_device = (
-			_require_cuda_device(value, f"gpu.submit_devices[{index}]")
-			for index, value in enumerate(submit_devices)
-		)
-		if first_submit_device == second_submit_device:
-			raise ConfigurationError(
-				"gpu.submit_devices must contain distinct devices."
-			)
-
 		precision = _require_choice(
 			gpu_section.get("precision"),
 			"gpu.precision",
@@ -327,7 +311,6 @@ class AppConfig:
 				precision=precision,
 				attention_implementation=attention_implementation,
 				allow_tf32=allow_tf32,
-				submit_devices=(first_submit_device, second_submit_device),
 			),
 			warmup=warmup,
 			SR2_Qwen3_4B_lora=SR2_Qwen3_4B_lora,

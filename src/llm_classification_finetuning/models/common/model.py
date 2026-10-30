@@ -54,7 +54,6 @@ class PairwiseQwenClassifier(nn.Module):
 		attention_implementation: str,
 		*,
 		revision: str | None = None,
-		device_map: dict[str, str] | None = None,
 	) -> None:
 		super().__init__()
 		self.device = device
@@ -64,7 +63,7 @@ class PairwiseQwenClassifier(nn.Module):
 			revision=revision,
 			dtype=dtype,
 			attn_implementation=attention_implementation,
-			device_map=device_map if device_map is not None else {"": str(device)},
+			device_map={"": str(device)},
 		)
 		self.backbone.config.use_cache = False
 		self.base_revision = getattr(self.backbone.config, "_commit_hash", None)

@@ -34,7 +34,6 @@ class QwenEmbeddingExtractor:
 		token_cache: TokenizationCache | None = None,
 		revision: str | None = None,
 		refresh_cache: bool = False,
-		submit_devices: tuple[torch.device, torch.device] | None = None,
 	) -> None:
 		self._config = model_config
 		self._gpu = gpu_config
@@ -44,11 +43,6 @@ class QwenEmbeddingExtractor:
 		try:
 			base_config = load_pretrained(
 				AutoConfig.from_pretrained, model_config.model_name, revision=revision
-			)
-			self._device_map = (
-				GPUEnvironment.submission_device_map(base_config, submit_devices)
-				if submit_devices is not None
-				else None
 			)
 			self.base_revision = getattr(base_config, "_commit_hash", None)
 			self.hidden_size = int(base_config.hidden_size)
@@ -118,7 +112,6 @@ class QwenEmbeddingExtractor:
 				dtype=GPUEnvironment.PRECISION_DTYPES[self._gpu.precision],
 				attention_implementation=self._gpu.attention_implementation,
 				revision=self.base_revision,
-				device_map=self._device_map,
 			)
 			if self._model.backbone_hidden_size != self.hidden_size or (
 				self.local_weights_sha256 is None

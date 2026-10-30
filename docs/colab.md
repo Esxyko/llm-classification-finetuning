@@ -8,8 +8,8 @@ Windows terminal or local `.env` does not configure its project process.
 
 ## Set up a runtime checkout
 
-1. Select a CUDA runtime. Validation/build uses one GPU; submission requires
-   two. Choose precision supported by the selected devices in the YAML you will
+1. Select a CUDA runtime. Validation/build uses one GPU. Choose precision
+   supported by the selected device in the YAML you will
    actually run. For a T4, use `fp16` instead of the root preset's `bf16`.
 2. Mount Drive in a notebook cell if you want persistent caches and results:
 
@@ -71,7 +71,7 @@ environment changes; configure that terminal's process or the runtime `.env`.
 | `PROJECT_DIR` under `/content/` | Git checkout, installed environment, and local data | Runtime-local |
 | `MODEL_PATH` on mounted Drive | Separate online download preparation populates the native cache; offline model execution reads it | Directly on Drive; reused by later runs |
 | `CACHE_PATH` on mounted Drive | Token, embedding, batch-plan, and warmup caches publish when those stages complete | Directly to Drive; unchanged hits do not republish |
-| `RESULT_PATH` on mounted Drive | Batch logs stream during execution; completed model runs publish predictions, metrics, and YAML; submissions and comprehensive reports use their subdirectories | Directly to Drive |
+| `RESULT_PATH` on mounted Drive | Batch logs stream during execution; completed model runs publish predictions, metrics, and YAML; comprehensive reports use their subdirectory | Directly to Drive |
 | `PROJECT_DIR/models/` | `--build` publishes adapter/head and the merged backbone directory | Runtime-local until copied separately |
 | `BUILD_OUTPUT_PATH` in `!build.ipynb` | Copy the current SR2 build directory after the batch finishes, including after a failed batch | Timestamped backup on Drive before runtime release |
 
@@ -116,8 +116,8 @@ remote branch.
 
 The settings cell points `RESULT_PATH` to the mounted Drive results directory.
 Batch logs stream to `<RESULT_PATH>/logs/` throughout execution; each successful
-validation publishes its completed run directory there. Submission commands and
-report generation also use this root. There is no end-of-run results copy step.
+validation publishes its completed run directory there. Report generation also
+uses this root. There is no end-of-run results copy step.
 
 Previously published results remain at the configured destination when a later
 task fails. An interrupted training run may have no completed result directory;
@@ -168,7 +168,5 @@ backup directory. An error during Drive flushing prevents runtime release.
 - If writing failed, inspect the configured `RESULT_PATH`, Drive mount, and
   destination permissions. Cleanup can still release the runtime after a model
   failure; a build-output copy failure leaves it available for recovery.
-- Use the dedicated [submission environment](getting-started.md#submission-environment-pytorch-211--cuda-128)
-  for submission pins; normal `uv run` uses the training lock.
 
 See [troubleshooting](troubleshooting.md) for CUDA, memory, and input failures.

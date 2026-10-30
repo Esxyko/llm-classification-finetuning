@@ -4,16 +4,15 @@ Compare two responses to a shared prompt and predict **A wins, B wins, or tie**
 for the [Kaggle competition](https://www.kaggle.com/competitions/llm-classification-finetuning).
 
 The project provides a saved prompt-grouped holdout, frozen and LoRA Skywork
-classifiers, validation reports, full-data checkpoint builds, and LoRA submission
-inference. Training uses **one CUDA GPU**; LoRA submission uses **two CUDA GPUs**.
+classifiers, validation reports, and full-data checkpoint builds. Model workflows
+use **one CUDA GPU**.
 
 ## Start here
 
 1. [Install the project](docs/getting-started.md) with Python 3.14+ and `uv`.
 2. Use the saved processed split, or [prepare it from raw data](docs/data-preparation.md).
 3. [Validate a model and inspect its report](docs/models.md).
-4. Build a full-data checkpoint, then generate a submission in the
-   [submission environment](docs/getting-started.md#submission-environment-pytorch-211--cuda-128).
+4. [Build a full-data checkpoint and export the trained backbone](docs/models.md#full-data-builds).
 
 For Colab and the local VS Code notebook workflow, see
 [Colab setup and persistence](docs/colab.md).
@@ -28,8 +27,8 @@ Selectors and YAML section names are case-sensitive.
 | `SR2-Qwen3-4B-lora` | `SR2_Qwen3_4B_lora` | Skywork reward-trained Qwen3-4B LoRA; swap-equivariant three-class head |
 
 Both profiles consume the saved train/validation split and train and predict on
-original rows only. `ALL` runs configured frozen SR2 before LoRA; `ALL --submit`
-skips frozen SR2. The frozen model has independent training settings and shares
+original rows only. `ALL` runs configured frozen SR2 before LoRA.
+The frozen model has independent training settings and shares
 compatible head/feature caches with LoRA warmup and the separate `warmup --build`
 selector. Retired Qwen profiles and
 their historical artifacts are described in [migration](docs/migration.md).
@@ -43,7 +42,7 @@ their historical artifacts are described in [migration](docs/migration.md).
 | [Commands](docs/commands.md) | Select modes, checkpoints, cache refresh, and batch validation |
 | [Configuration](docs/configuration.md) | Look up YAML fields, defaults, paths, GPU settings, and token budgets |
 | [Data preparation](docs/data-preparation.md) | Understand grouping, balancing, augmentation, and the processed schema |
-| [Model workflows](docs/models.md) | Validate/build frozen or LoRA SR2, and submit LoRA predictions |
+| [Model workflows](docs/models.md) | Validate/build frozen or LoRA SR2, and inspect build outputs |
 | [LoRA training](docs/lora.md) | Understand the head, warmup, batching, checkpointing, and memory controls |
 | [Caching and Python APIs](docs/caching.md) | Check reuse conditions, multipart storage, and CPU preparation APIs |
 | [Reports](docs/reports.md) | Interpret predictions, configuration snapshots, timings, and GPU peaks |

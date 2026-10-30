@@ -52,15 +52,12 @@ production-checkpoint compatibility are independent; see [cache identities](cach
 
 ## CUDA, attention, and memory
 
-For unsupported CUDA/precision, select an available `gpu.device`, or two distinct
-`gpu.submit_devices` for submission. Both submission devices must support the
-selected precision. There is no automatic precision or single-GPU fallback.
+For unsupported CUDA/precision, select an available `gpu.device` supporting the
+selected precision. There is no automatic precision change or CPU fallback.
 
-For T4 submission `No available kernel`, check the
-[submission pins](getting-started.md#submission-environment-pytorch-211--cuda-128),
-`fp16`, and `sdpa`. The inference process applies its K/V-head expansion workaround;
-a notebook-only patch does not affect an independent child process. Math fallback
-remains disabled, so unsupported fused inputs still fail.
+With `sdpa`, unsupported fused-attention inputs fail explicitly because math
+fallback is disabled. Select `eager` attention when the fused backends do not
+support the selected GPU or inputs.
 
 Match an OOM to its stage before adjusting settings:
 
@@ -70,7 +67,7 @@ Match an OOM to its stage before adjusting settings:
 | LoRA warmup head | `warmup.training_batch_size` |
 | LoRA joint training, positive threshold | `gradient_checkpointing_threshold` and/or `gradient_checkpointing_budget` |
 | LoRA fixed initial batches, threshold `0` | `training_batch_size`; adjust accumulation to retain target update size |
-| LoRA joint-validation/submission extraction | Selected model section's `extraction_budget` |
+| LoRA joint-validation extraction | Selected model section's `extraction_budget` |
 | LoRA head inference | Selected model section's `head_inference_batch_size` |
 
 With positive token packing, changing batch size and accumulation while keeping

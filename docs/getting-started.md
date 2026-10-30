@@ -6,8 +6,8 @@
 
 - Python **3.14 or newer**, as declared in `pyproject.toml` and `.python-version`.
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
-- One CUDA GPU for model validation, builds, or standalone warmup; two for
-  submission inference. Data preparation and reporting run on the CPU.
+- One CUDA GPU for model validation, builds, or standalone warmup. Data
+  preparation and reporting run on the CPU.
 - A Kaggle account and accepted competition rules **only when downloading raw
   competition files**. The saved processed split can be used without them.
 
@@ -23,8 +23,7 @@ uv sync --locked
 ```
 
 The training lock currently selects PyTorch `2.14.0+cu130` from the CUDA 13.0
-index. The separate [submission environment](#submission-environment-pytorch-211--cuda-128)
-uses different pins; do not synchronize the training lock into it.
+index.
 
 Copy `.env.example` to `.env` if you need credentials or custom storage paths:
 
@@ -44,7 +43,7 @@ RESULT_PATH=results
 Get a token from [Kaggle API settings](https://www.kaggle.com/settings/api).
 `.env` is ignored by Git. Existing process environment variables take precedence.
 `MODEL_PATH` selects the downloaded model cache; `CACHE_PATH` selects training
-caches; `RESULT_PATH` selects validation runs, submissions, comprehensive reports,
+caches; `RESULT_PATH` selects validation runs, comprehensive reports,
 and batch logs, defaulting to `./results` when missing or blank. Relative paths
 resolve from the working directory. YAML data paths and production checkpoint
 locations are configured independently; changing a path does not move existing
@@ -115,33 +114,6 @@ preserved. See [model download storage](caching.md#hugging-face-model-downloads)
 In a Python notebook, import `llm_classification_finetuning` before `transformers`
 or `huggingface_hub` for these defaults to take effect. Restart the kernel if
 those libraries were already imported with different settings.
-
-## Submission environment: PyTorch 2.11 / CUDA 12.8
-
-In a separate Python 3.14+ environment, install the submission requirements
-from the project root:
-
-```shell
-python -m pip install -r requirements-submit.txt
-model SR2-Qwen3-4B-lora --submit --config path/to/submit.yaml
-```
-
-[requirements-submit.txt](../requirements-submit.txt) pins PyTorch `2.11.0+cu128`
-and Transformers `5.16.1`, and installs this project. Run the installed `model`
-command directly: `uv run` would synchronize the training lock again.
-Build and transfer the matching checkpoint first; see [build and submit](models.md#build-and-submit).
-
-For two T4 GPUs, select `gpu.precision: fp16`,
-`gpu.attention_implementation: sdpa`, and
-`gpu.submit_devices: [cuda:0, cuda:1]` in a complete YAML configuration.
-The root preset uses BF16 and therefore needs a precision change for this setup.
-
-All active profiles apply their SDPA submission compatibility inside the
-inference process, including subprocesses. It forces K/V-head expansion and
-enables fused attention backends with math fallback disabled, then restores
-the previous settings on exit. Explicit `eager` attention is unchanged.
-The pins and compatibility path still require a run on the target GPUs to
-establish runtime behavior and memory fit.
 
 Next: [commands](commands.md), [configuration](configuration.md), or
 [troubleshooting](troubleshooting.md).

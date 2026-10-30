@@ -28,11 +28,7 @@ def _row_indices(row_ids: Iterable[int], positions: dict[int, int]) -> np.ndarra
 
 
 def _labels(reference: pd.DataFrame) -> np.ndarray:
-	return (
-		reference["label"].to_numpy(dtype=np.int64)
-		if "label" in reference
-		else np.full(len(reference), -1, dtype=np.int64)
-	)
+	return reference["label"].to_numpy(dtype=np.int64)
 
 
 @dataclass(frozen=True, slots=True)
