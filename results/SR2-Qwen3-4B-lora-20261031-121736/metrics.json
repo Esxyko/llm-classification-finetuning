@@ -1,0 +1,65 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_harmonic_abs_diff",
+  "epochs": [
+    {
+      "epoch": 16,
+      "last_step_training_loss": 0.9317671712495353,
+      "total_time": "01:15:04",
+      "training_loss": 0.9263171643868745,
+      "training_time": "01:07:17",
+      "validation_loss": 0.9223925059128969,
+      "validation_time": "00:07:44"
+    },
+    {
+      "epoch": 17,
+      "last_step_training_loss": 0.8472128089710963,
+      "total_time": "01:14:51",
+      "training_loss": 0.8704583061301457,
+      "training_time": "01:07:08",
+      "validation_loss": 0.9044480929845518,
+      "validation_time": "00:07:42"
+    },
+    {
+      "epoch": 18,
+      "last_step_training_loss": 0.7630675777864143,
+      "total_time": "01:14:54",
+      "training_loss": 0.8398818467143728,
+      "training_time": "01:07:09",
+      "validation_loss": 0.8997570553879574,
+      "validation_time": "00:07:45"
+    }
+  ],
+  "generated_at": "2026-10-31T12:17:36+00:00",
+  "head_architecture": "swap_equivariant_harmonic_discrepancy_v3",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-lora-20261031-121736",
+  "source_training_rows": 45982,
+  "total_time": "03:47:08",
+  "training_rows": 45982,
+  "training_time": "03:21:34",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.8997570553879574,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:23:11",
+  "config_total_time": "03:47:08",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 100121394688,
+    "peak_reserved_bytes": 101269372928,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 100121394688,
+        "peak_reserved_bytes": 101269372928
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 82451872768,
+        "peak_reserved_bytes": 101267275776
+      }
+    }
+  }
+}
