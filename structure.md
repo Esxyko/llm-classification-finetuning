@@ -9,7 +9,7 @@ focused classes. Prefer package public exports to private cross-package helpers.
 | Document | Owns |
 | --- | --- |
 | [README.md](README.md) | Overview, active profiles, and navigation |
-| [docs/getting-started.md](docs/getting-started.md), [docs/colab.md](docs/colab.md) | Local/remote setup and operational workflows |
+| [docs/getting-started.md](docs/getting-started.md), [docs/colab.md](docs/colab.md), [docs/kaggle-submission.md](docs/kaggle-submission.md) | Local/remote setup, operational workflows, and the Kaggle submission notebook |
 | [docs/commands.md](docs/commands.md), [docs/configuration.md](docs/configuration.md) | CLI behavior, field definitions, defaults, path rules, and batch experiments |
 | [docs/data-preparation.md](docs/data-preparation.md), [docs/models.md](docs/models.md), [docs/lora.md](docs/lora.md) | Data/model behavior and training algorithms |
 | [docs/caching.md](docs/caching.md), [docs/reports.md](docs/reports.md) | Cache identities/APIs, artifacts, reporting, and measurements |
@@ -77,6 +77,14 @@ their corresponding batch workflows. The build notebook additionally copies
 current SR2 outputs to timestamped Drive backups before runtime release,
 retaining the runtime if copying fails. Their behavior belongs in
 [Colab](docs/colab.md#local-notebook-behavior).
+
+[submit.ipynb](submit.ipynb) is the tracked, self-contained Kaggle inference notebook (GPU
+T4 x2, Python 3.13+, offline inference after upload-time dependency setup). It sits
+outside the package and the `model` CLI: it reads the build's
+`adapter.pt` head and `merged/` backbone and writes `submission.csv`. It duplicates the
+SR2 v3 head and the conversation serializer, so changes to
+`models/SR2_Qwen3_4B_lora/heads.py` or `models/common/data.py` must be mirrored there.
+Behavior belongs in [Kaggle submission](docs/kaggle-submission.md).
 
 ## Package map
 

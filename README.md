@@ -15,7 +15,8 @@ use **one CUDA GPU**.
 4. [Build a full-data checkpoint and export the trained backbone](docs/models.md#full-data-builds).
 
 For Colab and the local VS Code notebook workflow, see
-[Colab setup and persistence](docs/colab.md).
+[Colab setup and persistence](docs/colab.md). To submit a build to Kaggle, see
+[Kaggle submission notebook](docs/kaggle-submission.md).
 
 ## Model profiles
 
@@ -39,6 +40,7 @@ their historical artifacts are described in [migration](docs/migration.md).
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install dependencies, choose saved or raw data, and run a first validation |
 | [Colab](docs/colab.md) | Set remote paths, persist caches, and understand result copying and shutdown |
+| [Kaggle submission](docs/kaggle-submission.md) | Prepare the model dataset, configure and run the offline T4 x2 submission notebook |
 | [Commands](docs/commands.md) | Select modes, checkpoints, cache refresh, and batch validation |
 | [Configuration](docs/configuration.md) | Look up YAML fields, defaults, paths, GPU settings, and token budgets |
 | [Data preparation](docs/data-preparation.md) | Understand grouping, balancing, augmentation, and the processed schema |
