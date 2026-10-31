@@ -16,33 +16,33 @@ gpu:
   attention_implementation: sdpa
   allow_tf32: false
 
-warmup:
-  label_smoothing: 0.0
-  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
-  max_length: 13866
-  hidden_size: 128
-  dropout: 0.1
-  epochs: 4
-  extraction_budget: 1081344
-  training_batch_size: 1024
-  learning_rate: 0.001
-  lr_decay_base: 1.5
-  weight_decay: 0.01
-  max_grad_norm: 1.0
-  random_state: 42
-  dataloader_workers: 0
-
 SR2_Qwen3_4B:
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  epochs: 4
+  epochs: 25
   extraction_budget: 1081344
-  training_batch_size: 1024
+  training_batch_size: 4096
   learning_rate: 0.001
-  lr_decay_base: 1.5
+  lr_decay_base: 1.1
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  random_state: 42
+  dataloader_workers: 0
+
+warmup:
+  label_smoothing: 0.0
+  model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
+  max_length: 13866
+  hidden_size: 128
+  dropout: 0.1
+  epochs: 15
+  extraction_budget: 1081344
+  training_batch_size: 4096
+  learning_rate: 0.001
+  lr_decay_base: 1.1
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
@@ -57,10 +57,10 @@ SR2_Qwen3_4B_lora:
   training_batch_size: 1
   head_inference_batch_size: 1024
   gradient_accumulation_steps: 1024
-  epochs: 2
+  epochs: 1
   extraction_budget: 737280
   learning_rate: 0.0001
-  min_lr_ratio: 1.0
+  min_lr_ratio: 1
   hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1
