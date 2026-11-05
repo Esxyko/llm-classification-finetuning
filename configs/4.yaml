@@ -44,7 +44,7 @@ warmup:
   build_epochs: 100
   extraction_budget: 1081344
   training_batch_size: 4096
-  learning_rate: 0.0004
+  learning_rate: 0.0001
   build_min_lr: 0.00008
   weight_decay: 0.01
   max_grad_norm: 1.0

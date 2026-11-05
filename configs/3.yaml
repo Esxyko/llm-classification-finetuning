@@ -28,7 +28,7 @@ SR2_Qwen3_4B:
   build_epochs: 75
   extraction_budget: 1081344
   training_batch_size: 2048
-  learning_rate: 0.0004
+  learning_rate: 0.0001
   build_min_lr: 0.0001
   weight_decay: 0.01
   max_grad_norm: 1.0
