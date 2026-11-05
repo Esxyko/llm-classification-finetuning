@@ -84,7 +84,7 @@ class WarmupModelConfig:
 	hidden_size: int
 	dropout: float
 	weight_decay: float
-	warmup_epochs: int
+	warmup_epochs: int | None
 	extraction_budget: int
 	warmup_training_batch_size: int
 	warmup_learning_rate: float
@@ -100,12 +100,17 @@ class WarmupModelConfig:
 class SR2ModelConfig(ModelConfig):
 	"""Independent frozen-Skywork head settings with warmup-compatible optimization."""
 
+	epochs: int | None = field(default=None, kw_only=True)
 	max_grad_norm: float = field(kw_only=True)
 	lr_decay_base: float = field(default=1.5, kw_only=True)
+	early_stopping: int = field(default=5, kw_only=True)
 
-	def as_warmup_config(self) -> WarmupModelConfig:
-		"""Translate public model fields into the shared head-training configuration."""
+	def as_warmup_config(self, *, validation: bool = False) -> WarmupModelConfig:
+		"""Translate head settings, leaving validation's epoch count unbounded."""
 		values = asdict(self)
+		values.pop("early_stopping")
+		if validation:
+			values["epochs"] = None
 		for name in LORA_WARMUP_FIELDS:
 			values[name] = values.pop(name.removeprefix("warmup_"))
 		return WarmupModelConfig(**values)
@@ -327,18 +332,27 @@ def resolve_result_dir(base_dir: Path) -> Path:
 
 def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 	section_name = "SR2_Qwen3_4B"
-	shared = _load_warmup_model_config(root, section_name)
+	section = dict(_require_mapping(root.get(section_name), section_name))
+	early_stopping = _require_positive_integer(
+		section.pop("early_stopping", 5), f"{section_name}.early_stopping"
+	)
+	shared = _load_warmup_model_config(
+		{section_name: section}, section_name, allow_unbounded_epochs=True
+	)
 	aliases = {name: name.removeprefix("warmup_") for name in LORA_WARMUP_FIELDS}
-	if shared.warmup_epochs <= 0:
+	if shared.warmup_epochs is not None and shared.warmup_epochs <= 0:
 		raise ConfigurationError(f"{section_name}.epochs must be greater than 0.")
 	values = asdict(shared)
 	for internal, public in aliases.items():
 		values[public] = values.pop(internal)
-	return SR2ModelConfig(**values)
+	return SR2ModelConfig(**values, early_stopping=early_stopping)
 
 
 def _load_warmup_model_config(
-	root: Mapping[str, Any], section_name: str = "warmup"
+	root: Mapping[str, Any],
+	section_name: str = "warmup",
+	*,
+	allow_unbounded_epochs: bool = False,
 ) -> WarmupModelConfig:
 	"""Map public head-training fields to the shared internal warmup settings."""
 	section = _require_mapping(root.get(section_name), section_name)
@@ -351,7 +365,12 @@ def _load_warmup_model_config(
 	for internal, public in aliases.items():
 		if public in values:
 			values[internal] = values.pop(public)
-	return _load_warmup_fields(values, section_name, field_aliases=aliases)
+	return _load_warmup_fields(
+		values,
+		section_name,
+		field_aliases=aliases,
+		allow_unbounded_epochs=allow_unbounded_epochs,
+	)
 
 
 def _load_warmup_fields(
@@ -359,6 +378,7 @@ def _load_warmup_fields(
 	section_name: str,
 	*,
 	field_aliases: Mapping[str, str] | None = None,
+	allow_unbounded_epochs: bool = False,
 ) -> WarmupModelConfig:
 	"""Validate the same head-warmup fields for standalone and adapter training."""
 
@@ -380,10 +400,10 @@ def _load_warmup_fields(
 	weight_decay = _require_float(section.get("weight_decay"), field("weight_decay"))
 	if weight_decay < 0.0:
 		raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
-	warmup_epochs = _require_integer(
-		section.get("warmup_epochs"), field("warmup_epochs")
-	)
-	if warmup_epochs < 0:
+	warmup_epochs = section.get("warmup_epochs")
+	if warmup_epochs is not None or not allow_unbounded_epochs:
+		warmup_epochs = _require_integer(warmup_epochs, field("warmup_epochs"))
+	if warmup_epochs is not None and warmup_epochs < 0:
 		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
 	warmup_lr_decay_base = _require_float(
 		section.get("warmup_lr_decay_base", 1.5), field("warmup_lr_decay_base")

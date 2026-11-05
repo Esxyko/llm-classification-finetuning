@@ -114,7 +114,9 @@ The following names apply independently inside each relevant section.
 | `random_state` | All model sections and `warmup` | Integer |
 | `dataloader_workers` | All model sections and `warmup` | Integer at least `0` |
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
-| `training_batch_size`, `epochs`, `learning_rate` | Frozen SR2 and LoRA | Positive integers for batches/epochs; positive number for rate |
+| `training_batch_size`, `learning_rate` | Frozen SR2 and LoRA | Positive integer for batches; positive number for rate |
+| `epochs` | Frozen SR2 and LoRA | Positive integer when supplied; required for LoRA and frozen SR2 builds; optional or `null` for frozen SR2 validation, which does not use a fixed epoch limit |
+| `early_stopping` | Frozen SR2 | Positive integer; default `5`; stop validation after this many consecutive epochs without a strictly lower validation loss |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | LoRA | Number in `[0, 1]`; default `0.125`; minimum joint learning rate as a fraction of `learning_rate` |
 | `lr_decay_base` | Frozen SR2 and `warmup` | Finite number at least `1`; default `1.5`; divide the head learning rate by this base each epoch |
@@ -136,13 +138,24 @@ not YAML fields. See [migration](migration.md) for retired keys.
 
 `SR2_Qwen3_4B` trains only the SR2 head with exponential decay of `learning_rate`,
 using `training_batch_size` for both optimization groups and head inference.
-It accepts the common model fields above, `epochs`, `training_batch_size`,
-`learning_rate`, `lr_decay_base`, and `max_grad_norm`; it rejects LoRA,
+It accepts the common model fields above, `epochs`, `early_stopping`,
+`training_batch_size`, `learning_rate`, `lr_decay_base`, and `max_grad_norm`; it rejects LoRA,
 joint-training, and `warmup_*` controls.
 Its independent section needs neither `warmup` nor `SR2_Qwen3_4B_lora`.
 Shipped values were copied once from each preset's warmup settings; changing
-either section later does not modify the other. Compatible training states and
-features still share the [warmup caches](caching.md#frozen-sr2-head-training).
+either section later does not modify the other. Compatible features and build
+training states share the [warmup caches](caching.md#frozen-sr2-head-training).
+
+Frozen SR2 validation ignores `epochs` as a training limit and starts a fresh
+head at epoch `1`. After each epoch it compares the full holdout's unsmoothed
+log loss with the lowest loss so far, using full precision rather than the
+rounded log value. A strictly lower loss resets the consecutive non-improvement
+count; an equal or higher loss increments it. The first epoch establishes the
+best loss with count `0`. Reaching `early_stopping` stops the run and publishes
+the best epoch's predictions and loss, retaining the earliest epoch on a tie.
+There is no fixed epoch cap or minimum improvement threshold. Boolean,
+non-integer, and non-positive patience values are rejected. A build requires
+positive `epochs` before input or GPU preparation and does not use early stopping.
 
 Joint training uses `learning_rate` for both adapters and the classifier head.
 One cosine curve spans all joint epochs and reaches

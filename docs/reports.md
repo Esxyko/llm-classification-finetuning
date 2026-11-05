@@ -111,11 +111,14 @@ no fold counters or cross-fold means. Training can use label smoothing, but
 validation/reporting log loss is unsmoothed.
 
 Frozen SR2 includes `executed_training_epochs`, counting only this invocation's
-training. An exact compatible head-cache hit has `epochs: []` and
-`executed_training_epochs: 0`; current train/validation losses and phase times
-are recorded under `cached_head_evaluation`. Its final `validation_loss` and
-top-level phase times come from that evaluation, without fabricated epoch rows.
-Partial hits include only the epochs actually executed, with continuous numbers.
+training, and `best_epoch`, identifying the epoch with the lowest unsmoothed
+validation loss. `validation.csv`, top-level `validation_loss`, and the CLI
+summary all use that epoch. Tied losses retain the earlier epoch. The `epochs`
+list includes every executed epoch through the stopping epoch, and phase times
+and GPU peaks cover the whole run. The effective YAML snapshot includes
+`early_stopping`. Validation always trains a fresh head and does not publish a
+`cached_head_evaluation` section. Historical fixed-epoch result files, including
+cached-head evaluation summaries and empty epoch lists, remain unchanged.
 
 | Profile | `head_architecture` | `embedding_combination` |
 | --- | --- | --- |
@@ -140,7 +143,7 @@ seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
 | Epoch `training_time` | That epoch's training phase, including full-training-set inference at the end of warmup epochs |
 | Epoch `validation_time` | Validation phase; joint LoRA validation includes fresh extraction plus head inference |
 | Epoch `total_time` | Epoch setup and training/validation; excludes warmup feature extraction performed before epochs |
-| Top-level `training_time`, `validation_time` | Sums of executed epoch phase durations, or current cached-head evaluation times for an exact frozen-SR2 hit |
+| Top-level `training_time`, `validation_time` | Sums of all executed epoch phase durations, including epochs after the best epoch; historical cached-head runs use their current evaluation times |
 | Final `total_time`, `config_total_time` | Complete successful model run: initialization, input/cache/embedding preparation, training, validation, cleanup, and publication |
 
 Warmup train and validation inference reuse their shared extracted features.

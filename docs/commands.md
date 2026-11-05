@@ -36,7 +36,7 @@ selector is build-only. Selector spelling differs from the
 
 | Option | Behavior |
 | --- | --- |
-| No mode flag | Holdout validation; publishes final predictions (current evaluation after a frozen head-cache hit), without saving a production checkpoint |
+| No mode flag | Holdout validation; frozen SR2 uses early stopping and publishes its best epoch, while LoRA publishes its final epoch; no production checkpoint |
 | `--build` | Train on all original IDs; save a frozen head, or LoRA adapter/head plus the merged backbone |
 | `--refresh-cache` | Rebuild requested token entries and the selected mode's model-specific caches |
 | `--checkpoint-tag TAG` | Choose frozen `head_TAG.pt`, or LoRA `adapter_TAG.pt` and build `merged_TAG/`; build only |

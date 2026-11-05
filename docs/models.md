@@ -11,17 +11,16 @@ Both SR2 profiles use the saved holdout; validation/build uses
 
 | Mode | Training data | Main output | Does it save a production checkpoint? |
 | --- | --- | --- | --- |
-| `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Final-epoch `validation.csv`, `metrics.json`, `config.yaml` | No |
+| `model MODEL` | Saved train partition; evaluate the saved validation partition after each epoch | Best-epoch predictions for frozen SR2, final-epoch predictions for LoRA; `validation.csv`, `metrics.json`, `config.yaml` | No |
 | `model SR2-Qwen3-4B --build` | All original IDs from both partitions | `head[_TAG].pt` | Yes |
 | `model SR2-Qwen3-4B-lora --build` | All original IDs from both partitions | `adapter[_TAG].pt` and `merged[_TAG]/` | Yes |
 | `model warmup --build` | Train partition only, original rows; evaluate train and validation | Completed SR2 warmup cache and both losses | No |
 
 Full-data model builds have no validation set. Standalone warmup evaluates the
 saved validation partition, including after restoring a cache hit.
-Validation publishes final-epoch predictions, or current head evaluation after
-an exact frozen-SR2 cache hit;
-there is no best-epoch selection. Warmup caches and production checkpoints serve
-different purposes. See [LoRA stages](lora.md#optimization-and-head-warmup).
+Frozen SR2 validation uses early stopping and publishes best-epoch predictions;
+LoRA validation publishes final-epoch predictions. Warmup caches and production
+checkpoints serve different purposes. See [LoRA stages](lora.md#optimization-and-head-warmup).
 
 ## Frozen Skywork reward backbone
 
@@ -32,26 +31,32 @@ uv run model SR2-Qwen3-4B --build --checkpoint-tag experiment
 
 `SR2-Qwen3-4B` freezes the same Skywork backbone and trains the same current
 SR2 swap-equivariant head without creating adapters. Its independent
-`SR2_Qwen3_4B` section uses ordinary `epochs`, `training_batch_size`, and
-`learning_rate` fields, plus `lr_decay_base` (default `1.5`), and does not require
+`SR2_Qwen3_4B` section uses `early_stopping` (default `5`) for validation and
+`epochs` for builds, with ordinary `training_batch_size` and `learning_rate`
+fields, plus `lr_decay_base` (default `1.5`), and does not require
 `warmup` or LoRA sections. The optimizer, epoch-based exponential learning-rate
 decay, clipping, precision, full-input serialization, and pooling follow head
 warmup. Training and inference use original rows only;
 the backbone stays in evaluation mode during feature extraction/head training.
 
-Validation trains on the saved train partition and publishes current holdout
-predictions, metrics, and the independent configuration snapshot. Each executed
-epoch evaluates the whole training set with final weights, dropout disabled,
+Validation starts a fresh head on the saved train partition and runs until
+`early_stopping` consecutive epochs fail to strictly lower the best unsmoothed
+validation log loss. Improvements reset the count; ties count as non-improvements.
+The first epoch establishes the best loss with count zero. `epochs` may be omitted
+and never caps validation. The run publishes the best epoch's holdout predictions
+and loss, all executed epoch metrics, `best_epoch`, and the independent
+configuration snapshot. Each executed epoch evaluates the whole training set
+with final weights, dropout disabled,
 and configured label smoothing; validation log loss remains unsmoothed.
-Compatible tokens, frozen features, and completed head/optimizer/RNG states are
-[shared with warmup](caching.md#frozen-sr2-head-training). An exact head-cache hit
-evaluates current data without training and publishes `epochs: []`,
-`executed_training_epochs: 0`, and `cached_head_evaluation` losses/times. A
-lower-epoch hit is supported only with `lr_decay_base: 1`; it executes only the
-remaining epochs, retaining their epoch numbers. With decay enabled, a changed
-target epoch count requires a complete new run on a cache miss.
+Compatible tokens and frozen features are
+[shared with warmup](caching.md#frozen-sr2-head-training). Validation does not
+read or write completed head/optimizer/RNG states, so every run executes training
+from epoch `1`, including when an old fixed-epoch head entry exists.
 
 Build uses every original ID from both partitions, without holdout evaluation.
+It requires positive `epochs` and retains completed head-state cache reuse:
+exact hits skip training; lower-epoch hits continue only with `lr_decay_base: 1`;
+decay-enabled misses train the full configured epoch count.
 It prepares CPU inputs and checks the destination before configuring CUDA.
 It writes `models/SR2_Qwen3_4B/head[_TAG].pt`, containing FP32 head parameters,
 the head architecture, immutable backbone/tokenizer/serializer identities,
@@ -166,6 +171,12 @@ Progress logs include model/mode/stage/epoch, percentage, work count, and
 `time: elapsed/estimated_total`. Durations use unbounded `HH:MM:SS`; the right-hand
 duration is the current counter's estimated total time, calculated as
 `elapsed * total_work / completed_work`, rather than remaining time.
+
+Frozen SR2 validation starts and completes a separate Head training progress
+counter for each epoch. Epoch labels have no fixed denominator, and estimates
+cover only the current epoch. Each epoch's summary includes current and best
+validation loss, `best_epoch`, and the consecutive non-improvement count against
+`early_stopping`. The stop message reports the stopping and best epochs.
 
 [LoRA progress](lora.md#training-progress) has independent Warmup feature
 extraction, Head warmup, and Joint training stages. Work and timing reset between

@@ -60,10 +60,18 @@ class ValidationTrainingResult:
 	training_rows: int
 	source_training_rows: int
 	final_evaluation: FinalEvaluationMetrics | None = None
+	best_epoch: int | None = None
 
 	@property
 	def final_loss(self) -> float:
-		"""Return the final executed epoch or current cached-head validation loss."""
+		"""Return the selected epoch or current cached-head validation loss."""
+		if self.best_epoch is not None:
+			for epoch in self.epochs:
+				if epoch.epoch == self.best_epoch:
+					return epoch.validation_loss
+			raise ModelExecutionError(
+				"The selected best epoch has no validation metrics."
+			)
 		if self.final_evaluation is not None:
 			if self.final_evaluation.validation_loss is None:
 				raise ModelExecutionError(

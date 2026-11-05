@@ -236,8 +236,15 @@ update counts follow finalized merged groups. See
 
 ## Frozen SR2 head training
 
-`SR2_Qwen3_4B` uses the same token, adapter-free feature, and completed head
-state caches as standalone/inline LoRA warmup. Its independent `epochs`,
+`SR2_Qwen3_4B` uses the same token and adapter-free feature caches as
+standalone/inline LoRA warmup. Validation always initializes a fresh head and
+trains from epoch `1` until early stopping. It neither reads nor writes completed
+head/optimizer/RNG states, because the fixed-epoch cache contains no best-loss
+history or patience counter. Changing `early_stopping` leaves feature identities
+unchanged. `--refresh-cache` refreshes validation's requested tokens and features.
+
+Frozen SR2 builds also share completed head-state caches with warmup.
+Their independent `epochs`,
 `training_batch_size`, `learning_rate`, and `lr_decay_base` map to
 the shared internal `warmup_epochs`, `warmup_training_batch_size`,
 `warmup_learning_rate`, and `warmup_lr_decay_base` settings. The public `warmup`
@@ -246,17 +253,17 @@ cache identities unchanged. Matching curves share head state without
 changing the cache namespace or schema. Other compatibility rules below,
 including training ID sets and the treatment of changed text/labels, still apply.
 
-Exact head hits evaluate current train/validation data for validation runs, or
-all training data for builds, without optimizing or rewriting the cached state.
+Exact build head hits evaluate all training data without optimizing or rewriting
+the cached state.
 Fixed-rate partial hits (`lr_decay_base: 1`) continue only the remaining epochs
 with the existing shuffle/RNG restoration. Exponential decay requires an exact
-target epoch count. Validation publishes a new report even when no epochs run; build
-saves its independent `head[_TAG].pt` artifact even when the head is fully cached.
-`--refresh-cache` refreshes requested token, feature, and head entries.
+target epoch count. Build saves its independent `head[_TAG].pt` artifact even
+when the head is fully cached. `--refresh-cache` refreshes its requested token,
+feature, and head entries. Existing cache files and schema v5 are preserved.
 
 ## LoRA head warmup
 
-Frozen SR2, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
+Frozen SR2 builds, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. All use the
 `swap_equivariant_penalized_harmonic_v4` head architecture and warmup schema v5.
 This head packs L/M into one projection for subtractive cross-projected wins and
@@ -281,7 +288,7 @@ disk without reuse or migration. Initialization versioning
 does not change the head architecture, warmup schema v5, production-checkpoint
 compatibility, or other heads' cache identities. V4 retains the previous
 L/M and win/tie readout initialization scales, with zero B1/B3/b and no q branch.
-Compatible v4 entries remain shared by frozen SR2 and standalone/inline SR2 warmup
+Compatible v4 entries remain shared by frozen SR2 builds and standalone/inline SR2 warmup
 when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 
@@ -320,8 +327,9 @@ identity field matches.
 **Editing training text or labels while keeping the same IDs can reuse stale
 warmup state. Use `--refresh-cache` when that state must be retrained.** Tokens
 and input-length checks still follow current content. Changing only validation
-IDs preserves reuse because validation neither updates the head nor selects an
-early-stopping checkpoint.
+IDs preserves warmup-state reuse because fixed-epoch warmup validation neither
+updates the head nor selects an early-stopping checkpoint. Frozen SR2 validation
+selects its best epoch but does not use this state cache.
 
 Normal holdout and standalone warmup use train-partition IDs; full-data builds
 use all original IDs. These normally select different cache keys. Checkpoint tags
@@ -404,8 +412,9 @@ Reuse in inline SR2 requires matching both training IDs and effective model/head
 settings, not merely using the same cache directory. See
 [standalone configuration](configuration.md#standalone-warmup). Fresh standalone
 and inline runs can differ because standalone skips adapter-initialization RNG
-draws. A train-partition standalone cache can prewarm holdout validation; the
-full-data build uses a different set of training IDs and needs its own entry.
+draws. A train-partition standalone head cache can prewarm LoRA holdout validation;
+frozen SR2 validation reuses only the standalone run's tokens and features.
+The full-data build uses a different set of training IDs and needs its own head entry.
 
 ## Python APIs
 

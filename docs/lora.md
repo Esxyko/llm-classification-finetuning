@@ -275,11 +275,16 @@ lr = warmup.learning_rate * exp(-decay_rate * epoch_index)
 ```
 
 The warmup base `warmup.lr_decay_base` defaults to `1.5` and accepts a
-finite number at least `1`. Frozen SR2 maps its independent `epochs`,
+finite number at least `1`. Frozen SR2 builds map their independent `epochs`,
 `training_batch_size`, `learning_rate`, and `lr_decay_base` to these warmup
 settings. Its base also defaults to `1.5`. Both keep the original base in
 configuration snapshots, checkpoint training metadata, and cache identity;
 only the scheduler computes its natural logarithm.
+
+Frozen SR2 validation uses the same epoch-indexed formula with its independent
+rate and base, continuing until `early_stopping` consecutive epochs do not lower
+validation loss. It has no configured final epoch and does not use head-state
+caches; see [frozen SR2 validation](models.md#frozen-skywork-reward-backbone).
 
 Each epoch starts by setting the learning rate, which remains fixed throughout
 that epoch, including FP16-skipped updates. The first epoch, or a run with just

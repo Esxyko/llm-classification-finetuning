@@ -41,7 +41,6 @@ class SR2ModelPipeline:
 		if not isinstance(model_config, SR2ModelConfig):
 			raise TypeError("Frozen SR2 execution requires an SR2ModelConfig.")
 		self._model_config = model_config
-		self._head_config = model_config.as_warmup_config()
 		checkpoint_name = f"head_{checkpoint_tag}.pt" if checkpoint_tag else "head.pt"
 		self._checkpoint_store = SR2HeadCheckpointStore(
 			project_root / "models" / profile.artifact_stem / checkpoint_name
@@ -62,13 +61,22 @@ class SR2ModelPipeline:
 			raise ModelExecutionError(
 				f"{self._profile.selector} does not support {mode.value}."
 			)
+		if mode is ModelMode.BUILD and (
+			type(self._model_config.epochs) is not int or self._model_config.epochs <= 0
+		):
+			raise ModelExecutionError(
+				f"{self._profile.config_key}.epochs must be a positive integer for --build."
+			)
+		head_config = self._model_config.as_warmup_config(
+			validation=mode is ModelMode.VALIDATION
+		)
 		try:
 			batches = LoRATrainingBatchRepository.from_config(
 				self._config,
 				refresh_cache=refresh_cache,
 				profile=self._profile,
 				warmup_only=True,
-				head_only_config=self._head_config,
+				head_only_config=head_config,
 			)
 			training = None
 			if mode is ModelMode.BUILD:
@@ -82,7 +90,7 @@ class SR2ModelPipeline:
 				gpu_memory_monitor.start()
 			device = GPUEnvironment(self._config.gpu).configure()
 			trainer = LoRATrainer(
-				self._head_config,
+				head_config,
 				self._config.gpu,
 				device,
 				token_cache_dir=self._config.cache_dir / "token_cache",
@@ -94,7 +102,9 @@ class SR2ModelPipeline:
 				gpu_memory_monitor=gpu_memory_monitor,
 			)
 			if mode is ModelMode.VALIDATION:
-				result = trainer.validate(batches)
+				result = trainer.validate(
+					batches, early_stopping=self._model_config.early_stopping
+				)
 				output_dir, validation_loss, predictions = (
 					self._result_publisher.publish(
 						result,

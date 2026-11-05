@@ -110,6 +110,8 @@ class ModelResultPublisher:
 			metrics["prediction_aggregation"] = prediction_aggregation
 		if isinstance(model_config, SR2ModelConfig):
 			metrics["executed_training_epochs"] = len(result.epochs)
+		if result.best_epoch is not None:
+			metrics["best_epoch"] = result.best_epoch
 		if result.final_evaluation is not None:
 			evaluation = result.final_evaluation
 			metrics["cached_head_evaluation"] = {

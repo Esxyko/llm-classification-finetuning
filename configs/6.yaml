@@ -17,6 +17,7 @@ gpu:
   allow_tf32: false
 
 SR2_Qwen3_4B:
+  early_stopping: 5
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
