@@ -61,6 +61,7 @@ class ValidationTrainingResult:
 	source_training_rows: int
 	final_evaluation: FinalEvaluationMetrics | None = None
 	best_epoch: int | None = None
+	lr_reduction_count: int | None = None
 
 	@property
 	def final_loss(self) -> float:

@@ -347,12 +347,16 @@ present in a fresh checkout.
 12. **Metrics and history:** frozen SR2 validation ignores fixed epoch counts,
     stops after `early_stopping` consecutive epochs without a strictly lower
     unsmoothed validation loss, and publishes best-epoch predictions with
-    `best_epoch` and every executed epoch. LoRA publishes final-epoch predictions.
+    `best_epoch` and every executed epoch. Its top-level `lr_reduction_count`
+    counts actual ReduceLROnPlateau rate reductions over the complete run,
+    once per scheduler step even if multiple optimizer groups decrease.
+    LoRA publishes final-epoch predictions.
     Publish matching current-only YAML sections; never rewrite historical snapshots. Successful
     complete-run timing/global peaks and cross-epoch training/validation peaks are
     appended atomically for holdout runs and include epochs after the selected best
-    epoch. Frozen SR2 validation uses one millisecond-precision summary per epoch,
-    with intermediate progress at five-second intervals for slow epochs and no
+    epoch. Frozen SR2 validation logs one millisecond-precision summary every
+    `early_stopping` epochs, plus the stopping epoch without duplicate output.
+    It keeps complete epoch metrics and has no intermediate epoch logs or
     fixed total epoch count; its configuration snapshot records effective
     `factor`, `patience`, and `early_stopping` separately.
     Builds and standalone warmup report the

@@ -180,21 +180,21 @@ Progress logs include model/mode/stage/epoch, percentage, work count, and
 duration is the current counter's estimated total time, calculated as
 `elapsed * total_work / completed_work`, rather than remaining time.
 
-Frozen SR2 validation starts and completes a separate Head training progress
-counter for each epoch. Epochs taking less than five seconds print only one
-completion summary, combining 100% progress, completed work, current and best
-validation loss, `best_epoch`, and the consecutive non-improvement count against
-`early_stopping`. Longer epochs report intermediate progress at most once every
-five seconds, when a work unit completes, with explicit `training`,
-`training evaluation`, or `validation` labels. They use the same single completion
-summary instead of an additional 100% progress block. Epoch labels have no fixed
-denominator, and intermediate estimates cover only the current epoch.
+Frozen SR2 validation prints one epoch summary every `early_stopping` epochs:
+with `early_stopping: 5`, regular summaries appear at epochs `5`, `10`, `15`,
+and so on. There are no intermediate percentage or timed epoch logs. Training
+and validation still execute and record metrics after every epoch. Each summary
+combines the latest epoch's completed work, current and best validation loss,
+`best_epoch`, and the consecutive non-improvement count against `early_stopping`.
+The stopping epoch always prints one final summary, even between regular log
+boundaries, prefixed with `Early stopping` and including `stopped_epoch`.
+Stopping on a regular log boundary prints that summary only once.
 
 These validation logs use `HH:MM:SS.mmm` durations. The completion summary gives
 the whole epoch's elapsed `time` plus `optimization_time`,
 `training_evaluation_time`, and `validation_time`, making all three phases visible
-even in a fast epoch. Serialized metrics retain their whole-second format and
-combined training-phase meaning. The stop message reports the stopping and best epochs.
+for the reported epoch. Serialized metrics retain their whole-second format,
+combined training-phase meaning, and complete per-epoch history.
 
 [LoRA progress](lora.md#training-progress) has independent Warmup feature
 extraction, Head warmup, and Joint training stages. Work and timing reset between
@@ -213,7 +213,7 @@ epochs, keeping epoch numbers continuous with the source cache. CPU preparation,
 saving, and publication remain outside the stage boundaries, so stage estimates
 differ from [complete-run timing](reports.md#timing-metrics). Each successfully
 completed stage prints 100% once with its actual duration on both sides;
-frozen SR2 early-stopping epochs combine completion into their loss summary.
+frozen SR2 validation instead logs at the epoch cadence described above.
 Failures do not force completion.
 
 The retained frozen-model infrastructure keeps its legacy shared CPU counter and

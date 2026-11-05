@@ -117,7 +117,13 @@ training, and `best_epoch`, identifying the epoch with the lowest unsmoothed
 validation loss. `validation.csv`, top-level `validation_loss`, and the CLI
 summary all use that epoch. Tied losses retain the earlier epoch. The `epochs`
 list includes every executed epoch through the stopping epoch, and phase times
-and GPU peaks cover the whole run. The effective YAML snapshot includes
+and GPU peaks cover the whole run. The top-level `lr_reduction_count` counts
+ReduceLROnPlateau steps that actually lower at least one optimizer group's
+learning rate across all executed epochs, including epochs after `best_epoch`
+and the stopping epoch. A step counts once even if multiple groups decrease;
+changes skipped by `eps` or `min_lr` do not count. The value is `0` when no
+reduction occurs. Runs without this scheduler omit the field, and historical
+metrics remain unchanged. The effective YAML snapshot includes
 `factor`, `patience`, and `early_stopping`. The scheduler uses the unrounded
 per-epoch validation loss; rate reductions do not reset early-stopping patience
 or change best-epoch selection. Validation always trains a fresh head and does
@@ -142,8 +148,9 @@ original values. Combination markers are metrics, not additional YAML options.
 Times are elapsed wall-clock durations formatted as `HH:MM:SS`, rounded to whole
 seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
 
-Frozen SR2 early-stopping terminal logs use millisecond precision for each epoch
-and its intermediate progress. Their `optimization_time` and
+Frozen SR2 early-stopping terminal summaries use millisecond precision and appear
+every `early_stopping` epochs, plus the stopping epoch. Each summary describes
+that epoch; metrics still record every executed epoch. Their `optimization_time` and
 `training_evaluation_time` separate the two parts of the metrics' combined
 `training_time`; serialized metrics keep the whole-second format below.
 

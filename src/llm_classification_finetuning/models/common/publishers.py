@@ -112,6 +112,8 @@ class ModelResultPublisher:
 			metrics["executed_training_epochs"] = len(result.epochs)
 		if result.best_epoch is not None:
 			metrics["best_epoch"] = result.best_epoch
+		if result.lr_reduction_count is not None:
+			metrics["lr_reduction_count"] = result.lr_reduction_count
 		if result.final_evaluation is not None:
 			evaluation = result.final_evaluation
 			metrics["cached_head_evaluation"] = {

@@ -72,6 +72,7 @@ class LoRATrainingHistory:
 	executed_joint_epochs: int = 0
 	final_evaluation: FinalEvaluationMetrics | None = None
 	best_epoch: int | None = None
+	lr_reduction_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,6 +381,7 @@ class LoRATrainer:
 			),
 			final_evaluation=history.final_evaluation,
 			best_epoch=history.best_epoch,
+			lr_reduction_count=history.lr_reduction_count,
 		)
 
 	def fit(
@@ -556,6 +558,7 @@ class LoRATrainer:
 		best_validation_loss = math.inf
 		best_probabilities: np.ndarray | None = None
 		unimproved_epochs = 0
+		lr_reduction_count = 0
 		total_epochs = warmup_epochs + (0 if self._warmup_only else self._config.epochs)
 		first_epoch = completed_warmup_epochs + 1
 		if (
@@ -666,7 +669,8 @@ class LoRATrainer:
 				progress.start_stage(
 					stage=self._head_stage.capitalize(),
 					total_steps=epoch_steps,
-					update_interval_seconds=5.0,
+					# Epoch summaries below own the early-stopping logging cadence.
+					milestone_percent=100,
 				)
 			if head_only:
 				if head_lr_schedule is not None:
@@ -781,7 +785,17 @@ class LoRATrainer:
 					)
 				)
 				if plateau_lr_schedule is not None:
+					previous_lrs = tuple(
+						group["lr"] for group in optimizer.param_groups
+					)
 					plateau_lr_schedule.step(validation_loss)
+					if any(
+						group["lr"] < previous_lr
+						for group, previous_lr in zip(
+							optimizer.param_groups, previous_lrs
+						)
+					):
+						lr_reduction_count += 1
 				if early_stopping is not None:
 					if validation_loss < best_validation_loss:
 						best_validation_loss = validation_loss
@@ -831,13 +845,14 @@ class LoRATrainer:
 					f" training_evaluation_time={training_evaluation_time}"
 					f" validation_time={validation_time}"
 				)
-			print(message, flush=True)
-			if early_stopping is not None and unimproved_epochs >= early_stopping:
-				print(
-					f"Early stopping {self._model_label} ({description}): stopped_epoch={epoch}; "
-					f"best_epoch={best_epoch}; best_validation_loss={best_validation_loss:.6f}",
-					flush=True,
-				)
+			should_stop = (
+				early_stopping is not None and unimproved_epochs >= early_stopping
+			)
+			if should_stop:
+				message = f"Early stopping {message} stopped_epoch={epoch}"
+			if early_stopping is None or epoch % early_stopping == 0 or should_stop:
+				print(message, flush=True)
+			if should_stop:
 				break
 			if head_only and epoch == warmup_epochs and entry is not None:
 				self._warmup_cache.save(entry, model.classifier, optimizer, scaler)
@@ -859,6 +874,9 @@ class LoRATrainer:
 			executed_joint_epochs=executed_joint_epochs,
 			final_evaluation=final_evaluation,
 			best_epoch=best_epoch,
+			lr_reduction_count=lr_reduction_count
+			if plateau_lr_schedule is not None
+			else None,
 		)
 
 	def _prepare_warmup(
