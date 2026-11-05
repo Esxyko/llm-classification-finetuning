@@ -31,11 +31,12 @@ uv run model SR2-Qwen3-4B --build --checkpoint-tag experiment
 
 `SR2-Qwen3-4B` freezes the same Skywork backbone and trains the same current
 SR2 swap-equivariant head without creating adapters. Its independent
-`SR2_Qwen3_4B` section uses `early_stopping` (default `5`) for validation and
+`SR2_Qwen3_4B` section uses `early_stopping` (default `7`) for validation and
 `epochs` for builds, with ordinary `training_batch_size` and `learning_rate`
-fields, plus `lr_decay_base` (default `1.5`), and does not require
-`warmup` or LoRA sections. The optimizer, epoch-based exponential learning-rate
-decay, clipping, precision, full-input serialization, and pooling follow head
+fields, validation-only `factor` (default `0.95`) and `patience` (default `2`),
+and build-only `lr_decay_base` (default `1.5`). It does not require
+`warmup` or LoRA sections. The optimizer, clipping, precision, full-input
+serialization, and pooling follow head
 warmup. Training and inference use original rows only;
 the backbone stays in evaluation mode during feature extraction/head training.
 
@@ -43,7 +44,13 @@ Validation starts a fresh head on the saved train partition and runs until
 `early_stopping` consecutive epochs fail to strictly lower the best unsmoothed
 validation log loss. Improvements reset the count; ties count as non-improvements.
 The first epoch establishes the best loss with count zero. `epochs` may be omitted
-and never caps validation. The run publishes the best epoch's holdout predictions
+and never caps validation. After each validation evaluation, ReduceLROnPlateau
+consumes that same unrounded loss, using configured `factor` and `patience` with
+fixed `threshold=0` and `min_lr=0`. The first epoch uses the initial learning rate;
+reductions apply to the next epoch. Scheduler patience is independent of early
+stopping, whose counter is not reset by a rate reduction. See
+[configuration](configuration.md#model-fields) for scheduler parameters.
+The run publishes the best epoch's holdout predictions
 and loss, all executed epoch metrics, `best_epoch`, and the independent
 configuration snapshot. Each executed epoch evaluates the whole training set
 with final weights, dropout disabled,
@@ -54,7 +61,8 @@ read or write completed head/optimizer/RNG states, so every run executes trainin
 from epoch `1`, including when an old fixed-epoch head entry exists.
 
 Build uses every original ID from both partitions, without holdout evaluation.
-It requires positive `epochs` and retains completed head-state cache reuse:
+It requires positive `epochs`, uses the warmup-compatible epoch-based exponential
+decay controlled by `lr_decay_base`, and retains completed head-state cache reuse:
 exact hits skip training; lower-epoch hits continue only with `lr_decay_base: 1`;
 decay-enabled misses train the full configured epoch count.
 It prepares CPU inputs and checks the destination before configuring CUDA.

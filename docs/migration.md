@@ -203,7 +203,8 @@ execute; persistent branch-cache details remain in
 | `extraction_batch_size` | `extraction_budget`, measured in padded tokens; old branch counts are not equivalent values |
 | LoRA `inference_batch_size` | `head_inference_batch_size`; keep the head batch count |
 | LoRA `head_learning_rate` | Remove; `learning_rate` now controls both adapters and the classifier head during joint training |
-| Frozen SR2 `min_lr_ratio` / `lr_decay_power` | Remove both; configure `lr_decay_base` (default `1.5`) for exponential decay once per epoch |
+| Frozen SR2 `min_lr_ratio` / `lr_decay_power` | Remove both; builds use `lr_decay_base` (default `1.5`); validation uses ReduceLROnPlateau with `factor` and `patience` |
+| Frozen SR2 validation `lr_decay_base` | Retain for builds; configure validation's `factor` (default `0.95`) and `patience` (default `2`) instead |
 | `warmup.warmup_min_lr_ratio` / `warmup.warmup_lr_decay_power` | Remove both; configure `warmup.lr_decay_base` (default `1.5`) |
 | `warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, `warmup.warmup_learning_rate`, `warmup.warmup_lr_decay_base` | Remove the field prefixes: `warmup.epochs`, `warmup.training_batch_size`, `warmup.learning_rate`, `warmup.lr_decay_base` |
 | LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section as `epochs`, `training_batch_size`, and `learning_rate` |
@@ -215,7 +216,7 @@ Joint training now applies one cosine curve across all joint epochs, with
 `min_lr_ratio` defaulting to `0.125` even when omitted from an older configuration.
 Set `min_lr_ratio: 1` to keep the shared learning rate fixed. Configurations
 containing `head_learning_rate` fail strict unknown-key validation; remove it
-before using current commands. Frozen SR2 head training now uses exponential
+before using current commands. Frozen SR2 builds use exponential
 decay with `SR2_Qwen3_4B.lr_decay_base: 1.5` as the parser default. Standalone and
 inline warmup use `warmup.lr_decay_base: 1.5`, independently of joint
 decay. Each base must be a finite number at least `1`. The scheduler computes
@@ -225,6 +226,14 @@ epoch. There is no head minimum-rate floor. Remove the old head minimum-ratio
 and polynomial-power fields, including any `e` string values: they now fail
 strict unknown-key validation. The new defaults apply when the base is omitted.
 LoRA joint `min_lr_ratio` retains its existing cosine behavior.
+
+Frozen SR2 validation now uses ReduceLROnPlateau rather than `lr_decay_base`.
+Its new `factor` and `patience` fields default to `0.95` and `2`, with
+`threshold=0` and `min_lr=0` fixed in code. The scheduler consumes the full,
+unrounded unsmoothed validation loss after each epoch; a reduction affects the
+next epoch and does not reset early-stopping patience. The `early_stopping`
+parser default is now `7`; explicit values in existing YAML still take precedence.
+Builds keep their configured decay bases and existing head-cache identities.
 
 Set either head base to `1` to restore its fixed learning rate and reuse legacy
 fixed-rate head caches, including lower-epoch continuation. With decay enabled,

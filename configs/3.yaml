@@ -17,7 +17,9 @@ gpu:
   allow_tf32: false
 
 SR2_Qwen3_4B:
-  early_stopping: 5
+  factor: 0.95
+  patience: 2
+  early_stopping: 7
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
@@ -42,7 +44,7 @@ warmup:
   epochs: 75
   extraction_budget: 1081344
   training_batch_size: 2048
-  learning_rate: 0.0005
+  learning_rate: 0.0004
   lr_decay_base: 1.05
   weight_decay: 0.01
   max_grad_norm: 1.0

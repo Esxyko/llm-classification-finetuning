@@ -103,7 +103,10 @@ class SR2ModelPipeline:
 			)
 			if mode is ModelMode.VALIDATION:
 				result = trainer.validate(
-					batches, early_stopping=self._model_config.early_stopping
+					batches,
+					early_stopping=self._model_config.early_stopping,
+					plateau_factor=self._model_config.factor,
+					plateau_patience=self._model_config.patience,
 				)
 				output_dir, validation_loss, predictions = (
 					self._result_publisher.publish(

@@ -17,6 +17,7 @@ import pandas as pd
 import torch
 from torch.nn import functional as F
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import set_seed
 
@@ -318,6 +319,8 @@ class LoRATrainer:
 		batches: LoRATrainingBatchRepository,
 		*,
 		early_stopping: int | None = None,
+		plateau_factor: float = 0.95,
+		plateau_patience: int = 2,
 	) -> ValidationTrainingResult:
 		"""Train against the saved holdout and align the selected epoch's predictions."""
 		if self._standalone_warmup:
@@ -342,6 +345,8 @@ class LoRATrainer:
 				validation=originals,
 				description="Validation run",
 				early_stopping=early_stopping,
+				plateau_factor=plateau_factor,
+				plateau_patience=plateau_patience,
 			)
 			if history.validation_probabilities is None:
 				raise ModelExecutionError(
@@ -389,8 +394,10 @@ class LoRATrainer:
 		progress: TrainingProgress | None = None,
 		warmup_cache_entry: WarmupCacheEntry | None = None,
 		early_stopping: int | None = None,
+		plateau_factor: float = 0.95,
+		plateau_patience: int = 2,
 	) -> LoRATrainingHistory:
-		"""Train the head with exponential decay, then adapters with cosine decay."""
+		"""Train heads with plateau or exponential decay, then adapters with cosine decay."""
 		if early_stopping is not None:
 			if type(early_stopping) is not int or early_stopping <= 0:
 				raise ModelExecutionError("early_stopping must be a positive integer.")
@@ -402,6 +409,19 @@ class LoRATrainer:
 			):
 				raise ModelExecutionError(
 					"Early stopping requires frozen-head validation without a head-state cache."
+				)
+			if (
+				isinstance(plateau_factor, bool)
+				or not isinstance(plateau_factor, (int, float))
+				or not math.isfinite(plateau_factor)
+				or not 0.0 < plateau_factor < 1.0
+			):
+				raise ModelExecutionError(
+					"plateau_factor must be a finite number in (0, 1)."
+				)
+			if type(plateau_patience) is not int or plateau_patience < 0:
+				raise ModelExecutionError(
+					"plateau_patience must be a non-negative integer."
 				)
 		elif self._config.warmup_epochs is None:
 			raise ModelExecutionError(
@@ -480,10 +500,26 @@ class LoRATrainer:
 				},
 			)
 		optimizer = AdamW(parameter_groups, weight_decay=self._config.weight_decay)
-		head_lr_schedule = _ExponentialLearningRateSchedule(
-			optimizer,
-			learning_rate=self._config.warmup_learning_rate,
-			decay_base=self._config.warmup_lr_decay_base,
+		head_lr_schedule = (
+			_ExponentialLearningRateSchedule(
+				optimizer,
+				learning_rate=self._config.warmup_learning_rate,
+				decay_base=self._config.warmup_lr_decay_base,
+			)
+			if early_stopping is None
+			else None
+		)
+		plateau_lr_schedule = (
+			ReduceLROnPlateau(
+				optimizer,
+				mode="min",
+				factor=plateau_factor,
+				patience=plateau_patience,
+				threshold=0,
+				min_lr=0,
+			)
+			if early_stopping is not None
+			else None
 		)
 		scaler = torch.amp.GradScaler("cuda", enabled=self._gpu.precision == "fp16")
 		if reused_warmup:
@@ -633,7 +669,8 @@ class LoRATrainer:
 					update_interval_seconds=5.0,
 				)
 			if head_only:
-				head_lr_schedule.set_epoch(stage_epoch - 1)
+				if head_lr_schedule is not None:
+					head_lr_schedule.set_epoch(stage_epoch - 1)
 			elif epoch == warmup_epochs + 1:
 				# Drop all views of the shared CPU feature store before joint training.
 				loader = None
@@ -743,6 +780,8 @@ class LoRATrainer:
 						last_step_training_loss=last_step_training_loss,
 					)
 				)
+				if plateau_lr_schedule is not None:
+					plateau_lr_schedule.step(validation_loss)
 				if early_stopping is not None:
 					if validation_loss < best_validation_loss:
 						best_validation_loss = validation_loss

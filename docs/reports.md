@@ -95,6 +95,8 @@ repeating the section name. Each section
 retains its own extraction budget and smoothing value. Other model sections are
 excluded; `metrics.json` has no embedded `config` field or source-config path.
 Frozen SR2 snapshots use its independent public fields and also omit `A/B_swap`.
+They include validation's `factor`, `patience`, and `early_stopping`, along with
+the build-only `lr_decay_base`; threshold and minimum rate are fixed in code.
 
 A current SR2 snapshot can be passed to `--config`, but reproducing a run also needs matching
 data/code/dependencies and model identity. It does not capture `.env` or persist
@@ -116,8 +118,10 @@ validation loss. `validation.csv`, top-level `validation_loss`, and the CLI
 summary all use that epoch. Tied losses retain the earlier epoch. The `epochs`
 list includes every executed epoch through the stopping epoch, and phase times
 and GPU peaks cover the whole run. The effective YAML snapshot includes
-`early_stopping`. Validation always trains a fresh head and does not publish a
-`cached_head_evaluation` section. Historical fixed-epoch result files, including
+`factor`, `patience`, and `early_stopping`. The scheduler uses the unrounded
+per-epoch validation loss; rate reductions do not reset early-stopping patience
+or change best-epoch selection. Validation always trains a fresh head and does
+not publish a `cached_head_evaluation` section. Historical fixed-epoch result files, including
 cached-head evaluation summaries and empty epoch lists, remain unchanged.
 
 | Profile | `head_architecture` | `embedding_combination` |

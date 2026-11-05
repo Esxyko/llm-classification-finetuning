@@ -262,7 +262,7 @@ For warmup identity and restoration details, see [warmup caches](caching.md#lora
 
 ### Learning-rate decay
 
-Frozen SR2 head training and standalone/inline warmup use exponential decay
+Frozen SR2 builds and standalone/inline warmup use exponential decay
 once per epoch. LoRA joint training uses an independent cosine curve once per
 planned optimizer update.
 
@@ -281,13 +281,16 @@ settings. Its base also defaults to `1.5`. Both keep the original base in
 configuration snapshots, checkpoint training metadata, and cache identity;
 only the scheduler computes its natural logarithm.
 
-Frozen SR2 validation uses the same epoch-indexed formula with its independent
-rate and base, continuing until `early_stopping` consecutive epochs do not lower
-validation loss. It has no configured final epoch and does not use head-state
-caches; see [frozen SR2 validation](models.md#frozen-skywork-reward-backbone).
+Frozen SR2 validation uses ReduceLROnPlateau on the full unsmoothed validation
+loss after each epoch, with `factor: 0.95` and `patience: 2` as defaults and fixed
+`threshold=0` and `min_lr=0`. Reductions apply to the following epoch; no
+epoch-indexed exponential rate is applied. Training continues until
+`early_stopping` consecutive epochs do not lower validation loss, independently
+of the scheduler's counter. It has no configured final epoch and does not use
+head-state caches; see [frozen SR2 validation](models.md#frozen-skywork-reward-backbone).
 
-Each epoch starts by setting the learning rate, which remains fixed throughout
-that epoch, including FP16-skipped updates. The first epoch, or a run with just
+For exponential builds/warmup, each epoch starts by setting the rate, which
+remains fixed throughout that epoch, including FP16-skipped updates. The first epoch, or a run with just
 one epoch, uses the initial rate. With an initial rate of `0.001` and base `1.5`,
 the first four epochs use approximately `0.001`, `0.000666667`, `0.000444444`,
 and `0.000296296`. There is no minimum-rate floor; base `1` keeps the rate fixed.

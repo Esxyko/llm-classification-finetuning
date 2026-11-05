@@ -240,8 +240,11 @@ update counts follow finalized merged groups. See
 standalone/inline LoRA warmup. Validation always initializes a fresh head and
 trains from epoch `1` until early stopping. It neither reads nor writes completed
 head/optimizer/RNG states, because the fixed-epoch cache contains no best-loss
-history or patience counter. Changing `early_stopping` leaves feature identities
-unchanged. `--refresh-cache` refreshes validation's requested tokens and features.
+history, early-stopping counter, or ReduceLROnPlateau state. Validation uses its
+own loss-driven scheduler. Changing `factor`, `patience`, or `early_stopping`
+leaves token/feature identities unchanged. These validation-only fields are
+excluded from shared warmup settings and build head-cache identities.
+`--refresh-cache` refreshes validation's requested tokens and features.
 
 Frozen SR2 builds also share completed head-state caches with warmup.
 Their independent `epochs`,

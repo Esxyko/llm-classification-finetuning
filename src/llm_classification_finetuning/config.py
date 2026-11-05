@@ -98,17 +98,20 @@ class WarmupModelConfig:
 
 @dataclass(frozen=True, slots=True)
 class SR2ModelConfig(ModelConfig):
-	"""Independent frozen-Skywork head settings with warmup-compatible optimization."""
+	"""Frozen-Skywork validation and warmup-compatible build settings."""
 
 	epochs: int | None = field(default=None, kw_only=True)
 	max_grad_norm: float = field(kw_only=True)
 	lr_decay_base: float = field(default=1.5, kw_only=True)
-	early_stopping: int = field(default=5, kw_only=True)
+	factor: float = field(default=0.95, kw_only=True)
+	patience: int = field(default=2, kw_only=True)
+	early_stopping: int = field(default=7, kw_only=True)
 
 	def as_warmup_config(self, *, validation: bool = False) -> WarmupModelConfig:
 		"""Translate head settings, leaving validation's epoch count unbounded."""
 		values = asdict(self)
-		values.pop("early_stopping")
+		for name in ("early_stopping", "factor", "patience"):
+			values.pop(name)
 		if validation:
 			values["epochs"] = None
 		for name in LORA_WARMUP_FIELDS:
@@ -334,8 +337,14 @@ def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 	section_name = "SR2_Qwen3_4B"
 	section = dict(_require_mapping(root.get(section_name), section_name))
 	early_stopping = _require_positive_integer(
-		section.pop("early_stopping", 5), f"{section_name}.early_stopping"
+		section.pop("early_stopping", 7), f"{section_name}.early_stopping"
 	)
+	factor = _require_float(section.pop("factor", 0.95), f"{section_name}.factor")
+	if not 0.0 < factor < 1.0:
+		raise ConfigurationError(f"{section_name}.factor must be in (0, 1).")
+	patience = _require_integer(section.pop("patience", 2), f"{section_name}.patience")
+	if patience < 0:
+		raise ConfigurationError(f"{section_name}.patience cannot be negative.")
 	shared = _load_warmup_model_config(
 		{section_name: section}, section_name, allow_unbounded_epochs=True
 	)
@@ -345,7 +354,9 @@ def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 	values = asdict(shared)
 	for internal, public in aliases.items():
 		values[public] = values.pop(internal)
-	return SR2ModelConfig(**values, early_stopping=early_stopping)
+	return SR2ModelConfig(
+		**values, factor=factor, patience=patience, early_stopping=early_stopping
+	)
 
 
 def _load_warmup_model_config(

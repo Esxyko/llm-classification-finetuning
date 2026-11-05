@@ -116,10 +116,12 @@ The following names apply independently inside each relevant section.
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
 | `training_batch_size`, `learning_rate` | Frozen SR2 and LoRA | Positive integer for batches; positive number for rate |
 | `epochs` | Frozen SR2 and LoRA | Positive integer when supplied; required for LoRA and frozen SR2 builds; optional or `null` for frozen SR2 validation, which does not use a fixed epoch limit |
-| `early_stopping` | Frozen SR2 | Positive integer; default `5`; stop validation after this many consecutive epochs without a strictly lower validation loss |
+| `early_stopping` | Frozen SR2 validation | Positive integer; default `7`; stop after this many consecutive epochs without a strictly lower validation loss |
+| `factor` | Frozen SR2 validation | Finite number in `(0, 1)`; default `0.95`; multiply the learning rate by this factor when validation loss plateaus |
+| `patience` | Frozen SR2 validation | Non-negative integer; default `2`; ReduceLROnPlateau reduces the rate after more than this many consecutive non-improving epochs |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | LoRA | Number in `[0, 1]`; default `0.125`; minimum joint learning rate as a fraction of `learning_rate` |
-| `lr_decay_base` | Frozen SR2 and `warmup` | Finite number at least `1`; default `1.5`; divide the head learning rate by this base each epoch |
+| `lr_decay_base` | Frozen SR2 builds and `warmup` | Finite number at least `1`; default `1.5`; divide the head learning rate by this base each epoch |
 | `max_grad_norm` | Frozen SR2, LoRA, and `warmup` | Positive number |
 | `lora_rank`, `lora_alpha` | LoRA | Positive integers |
 | `lora_dropout` | LoRA | Number in `[0, 1)` |
@@ -136,9 +138,9 @@ Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the
 Internal `ab_swap`, `warmup_extraction_budget`, and `warmup_label_smoothing` are
 not YAML fields. See [migration](migration.md) for retired keys.
 
-`SR2_Qwen3_4B` trains only the SR2 head with exponential decay of `learning_rate`,
+`SR2_Qwen3_4B` trains only the SR2 head with mode-specific learning-rate decay,
 using `training_batch_size` for both optimization groups and head inference.
-It accepts the common model fields above, `epochs`, `early_stopping`,
+It accepts the common model fields above, `epochs`, `early_stopping`, `factor`, `patience`,
 `training_batch_size`, `learning_rate`, `lr_decay_base`, and `max_grad_norm`; it rejects LoRA,
 joint-training, and `warmup_*` controls.
 Its independent section needs neither `warmup` nor `SR2_Qwen3_4B_lora`.
@@ -154,8 +156,22 @@ count; an equal or higher loss increments it. The first epoch establishes the
 best loss with count `0`. Reaching `early_stopping` stops the run and publishes
 the best epoch's predictions and loss, retaining the earliest epoch on a tie.
 There is no fixed epoch cap or minimum improvement threshold. Boolean,
-non-integer, and non-positive patience values are rejected. A build requires
+non-integer, and non-positive `early_stopping` values are rejected. A build requires
 positive `epochs` before input or GPU preparation and does not use early stopping.
+
+Validation uses PyTorch `ReduceLROnPlateau` with `mode="min"`, `factor` (default
+`0.95`), `patience` (default `2`), and fixed `threshold=0` and `min_lr=0`.
+The first epoch uses `learning_rate`; after each complete validation evaluation,
+the scheduler consumes the unrounded, unsmoothed loss once and sets the rate for
+the next epoch. With `patience: 2`, the third consecutive non-improving epoch
+triggers a reduction. With `patience: 0`, the first non-improving epoch triggers
+one. Strictly lower losses count as improvements; ties do not. Scheduler and
+early-stopping counters are independent, so reducing the rate does not reset
+early stopping. Other scheduler parameters retain PyTorch defaults, including
+`cooldown=0`, `threshold_mode="rel"`, and `eps=1e-8`; a smaller proposed rate
+change is ignored. Boolean values are rejected for `factor` and `patience`.
+`threshold` and `min_lr` are not YAML fields. Validation does not apply
+`lr_decay_base`; builds do not use `factor` or `patience`.
 
 Joint training uses `learning_rate` for both adapters and the classifier head.
 One cosine curve spans all joint epochs and reaches
@@ -163,7 +179,7 @@ One cosine curve spans all joint epochs and reaches
 only one update uses the initial rate. `min_lr_ratio: 0` decays to zero, while
 `1` keeps the rate fixed. Omitting the field uses `0.125`.
 
-Frozen SR2 uses exponential decay controlled by `SR2_Qwen3_4B.lr_decay_base`.
+Frozen SR2 builds use exponential decay controlled by `SR2_Qwen3_4B.lr_decay_base`.
 Standalone and inline head warmup use the independent
 `warmup.lr_decay_base`. Both default to `1.5` and accept finite numbers
 at least `1`; Boolean values and strings are rejected. The scheduler computes

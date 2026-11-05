@@ -115,7 +115,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `models/__init__.py` | `ModelRegistration` and lazily loaded ordered active execution registry, keeping CPU data imports independent of PEFT |
 | `models/profile.py` | Immutable selector/config/artifact identity and effective A/B policy |
 | `models/SR2_Qwen3_4B/__init__.py`, `profile.py` | Frozen SR2 registration and lazy pipeline export |
-| `models/SR2_Qwen3_4B/pipeline.py` | Independent frozen-head early-stopping validation and fixed-epoch build orchestration, mode-specific warmup-compatible settings, build epoch validation before CPU preparation, and head write preflight before GPU setup |
+| `models/SR2_Qwen3_4B/pipeline.py` | Independent frozen-head plateau-scheduled early-stopping validation and exponential fixed-epoch build orchestration, mode-specific warmup-compatible settings, build epoch validation before CPU preparation, and head write preflight before GPU setup |
 | `models/SR2_Qwen3_4B/checkpoint.py` | FP32 head-only checkpoint with immutable encoding/training identities, destination preflight, staged CPU metadata/tensor validation, and atomic replacement |
 | `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports, deferring pipeline/trainer imports until execution |
 | `models/SR2_Qwen3_4B_lora/profile.py` | SR2 identity usable below the registration surface without import cycles; default for LoRA Python APIs |
@@ -124,8 +124,9 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 Frozen SR2 and LoRA SR2 are registered in that order. `ALL` runs each configured
 profile supporting the requested mode; `warmup` stays outside the registry.
 Frozen SR2 has an independent `SR2ModelConfig` converted to shared head-training
-settings. Validation uses unbounded head training with early stopping and shared
-frozen features; builds reuse LoRA SR2's warmup state without changing cache identities.
+settings. Validation uses unbounded head training with ReduceLROnPlateau, independent
+early stopping, and shared frozen features; builds keep exponential decay and reuse
+LoRA SR2's warmup state without changing cache identities.
 Retired profiles remain unregistered and
 their configuration sections are rejected; local ignored
 archives are outside active imports. See [migration](docs/migration.md#retired-profiles).
@@ -172,7 +173,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | `heads.py` | Head factory, precision wrapper, fused subtractive L/M win projections with FP32 linear-difference penalized harmonic tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, config-only head initialization with lazy frozen-backbone loading on feature misses and CPU/CUDA RNG preservation, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup or joint validation, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
-| `trainer.py` | CPU token preparation, epoch-based exponential head/warmup and independent update-based cosine joint learning-rate curves, frozen-head validation early stopping with best-epoch predictions and per-epoch progress, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
+| `trainer.py` | CPU token preparation, plateau-scheduled frozen-head validation, epoch-based exponential build/warmup and independent update-based cosine joint learning-rate curves, frozen-head validation early stopping with best-epoch predictions and per-epoch progress, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
 | `warmup_cache.py` | Completed head/AdamW/scaler/RNG identity, exact exponential-training or descending fixed-rate compatible-epoch lookup, distinct source/target paths, validation, atomic storage, and restoration |
 | `warmup_feature_cache.py` | Adapter-free feature identity, complete-token branch lookup, missing-input deduplication/rebinding, and shared embedding-cache publication across frozen SR2 and standalone/inline warmup |
 | `checkpoint.py` | Destination write preflight, portable adapter/head persistence and CPU readback validation, revision/architecture compatibility, and merged-backbone/tokenizer export with metadata, local validation, and recoverable directory replacement |
@@ -255,8 +256,9 @@ present in a fresh checkout.
    `scaled_uniform_v2`, isolating earlier initialization states without changing
    storage schemas.
    Frozen SR2 uses this same head and initialization, freezing the backbone and
-   training only the head with the shared warmup epoch-based exponential-decay
-   algorithm and its independent initial rate/decay base, without adapters.
+   training only the head without adapters. Validation uses ReduceLROnPlateau;
+   builds use the shared warmup epoch-based exponential-decay algorithm with
+   their independent initial rate/decay base.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen/warmup features, plans,
    warmup state, and production checkpoints. Map cached entries to current rows/labels; never
@@ -301,13 +303,17 @@ present in a fresh checkout.
    both branch graphs are retained until one backward pass, and disabling
    checkpointing removes input-gradient hooks. Joint groups share one learning
    rate and one cosine curve across all joint epochs; each consumed optimizer
-   group advances decay once, including FP16-skipped updates. Head warmup has
-   its own exponential curve, setting `initial_lr * exp(-ln(base) * epoch_index)`
+   group advances decay once, including FP16-skipped updates. Head warmup and
+   frozen SR2 builds use exponential decay, setting `initial_lr * exp(-ln(base) * epoch_index)`
    at the start of each zero-based epoch and holding it fixed within that epoch.
    Both head bases default to `1.5` and accept finite numbers at least `1`;
    configurations, snapshots, checkpoint training metadata, and cache identities
    retain the original base. A head base of `1` keeps its rate fixed; joint
-   training uses a minimum ratio of `1` for a fixed rate. See
+   training uses a minimum ratio of `1` for a fixed rate. Frozen SR2 validation
+   steps ReduceLROnPlateau once after each complete unsmoothed validation loss,
+   with configurable factor/patience and fixed threshold/minimum rate of zero.
+   The next epoch retains the resulting rate without an exponential reset;
+   learning-rate reductions do not reset the early-stopping counter. See
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented
@@ -347,7 +353,8 @@ present in a fresh checkout.
     appended atomically for holdout runs and include epochs after the selected best
     epoch. Frozen SR2 validation uses one millisecond-precision summary per epoch,
     with intermediate progress at five-second intervals for slow epochs and no
-    fixed total epoch count; its configuration snapshot records effective patience.
+    fixed total epoch count; its configuration snapshot records effective
+    `factor`, `patience`, and `early_stopping` separately.
     Builds and standalone warmup report the
     same peak scopes in the terminal; monitoring starts after full-data build CPU
     preparation and write preflights. Progress remains CPU-only
