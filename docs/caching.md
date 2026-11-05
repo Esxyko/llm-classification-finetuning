@@ -247,18 +247,17 @@ excluded from shared warmup settings and build head-cache identities.
 `--refresh-cache` refreshes validation's requested tokens and features.
 
 Frozen SR2 builds also share completed head-state caches with warmup.
-Their independent `epochs`,
-`training_batch_size`, `learning_rate`, and `lr_decay_base` map to
-the shared internal `warmup_epochs`, `warmup_training_batch_size`,
-`warmup_learning_rate`, and `warmup_lr_decay_base` settings. The public `warmup`
-section uses the same unprefixed names as frozen SR2; this naming change leaves
-cache identities unchanged. Matching curves share head state without
-changing the cache namespace or schema. Other compatibility rules below,
-including training ID sets and the treatment of changed text/labels, still apply.
+Their independent `build_epochs`, `training_batch_size`, `learning_rate`, and
+`build_min_lr` map to the shared internal `warmup_build_epochs`,
+`warmup_training_batch_size`, `warmup_learning_rate`, and `warmup_build_min_lr`
+settings. The public `warmup` section uses the same unprefixed names as frozen
+SR2. Matching settings share head state within the existing namespace and schema.
+Other compatibility rules below, including training ID sets and the treatment of
+changed text/labels, still apply.
 
 Exact build head hits evaluate all training data without optimizing or rewriting
 the cached state.
-Fixed-rate partial hits (`lr_decay_base: 1`) continue only the remaining epochs
+Fixed-rate partial hits (`build_min_lr = learning_rate`) continue only the remaining epochs
 with the existing shuffle/RNG restoration. Exponential decay requires an exact
 target epoch count. Build saves its independent `head[_TAG].pt` artifact even
 when the head is fully cached. `--refresh-cache` refreshes its requested token,
@@ -295,24 +294,27 @@ Compatible v4 entries remain shared by frozen SR2 builds and standalone/inline S
 when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 
-With exponential decay (`warmup.lr_decay_base > 1`), lookup checks only the exact
-target `N`-epoch key. Metadata additionally includes
-`warmup_lr_schedule: exponential_epoch_v1` and `warmup_lr_decay_base`, retaining
-the original base rather than its logarithm. The existing `warmup_epochs` field
-identifies the completed target. A different base or target selects a different
-key and trains from epoch index `0` on a miss. Lower-epoch exponential entries
-are not continuation sources. Earlier polynomial/cosine entries and old
-fixed-rate entries are not reused for exponential decay; they remain on disk
-without migration.
+With exponential decay (`warmup.build_min_lr < warmup.learning_rate`), lookup
+checks only the exact target `N`-epoch key. Metadata additionally includes
+`warmup_lr_schedule: exponential_endpoint_epoch_v2` and `warmup_build_min_lr`.
+The existing persistent `warmup_epochs` field identifies the completed target;
+it keeps its historical name even though configuration objects now use
+`warmup_build_epochs`. A different minimum or target selects a different key
+because either changes the curve. A miss trains from epoch index `0`;
+lower-epoch decaying entries are not continuation sources. Earlier
+`exponential_epoch_v1` base-controlled entries, polynomial/cosine entries, and
+old fixed-rate entries are not reused for this decay schedule. They remain on
+disk without migration. A single-epoch target with a lower configured minimum
+also uses this exact-match identity, although its sole epoch uses the initial rate.
 
-With `warmup.lr_decay_base: 1`, both extra fields are omitted, preserving old
-fixed-rate identities. Lookup first checks the exact `N`-epoch key,
-then checks `N-1` down to `1`, changing only `warmup_epochs` in the metadata.
-The first fully validated state is selected. Missing, corrupt, or incompatible
-candidates are skipped; higher-epoch states are never used for a smaller target.
-Lookup computes existing keys directly and supports both single-file and multipart
-caches. Schema v5 and the saved-state layout remain unchanged; existing
-fixed-rate entries need no migration and remain on disk.
+With `warmup.build_min_lr = warmup.learning_rate`, both extra schedule fields
+are omitted, preserving old fixed-rate identities. Lookup first checks the
+exact `N`-epoch key, then checks `N-1` down to `1`, changing only the persistent
+`warmup_epochs` field. The first fully validated state is selected. Missing,
+corrupt, or incompatible candidates are skipped; higher-epoch states are never
+used for a smaller target. Lookup computes existing keys directly and supports
+both single-file and multipart caches. Schema v5 and the saved-state layout
+remain unchanged; existing fixed-rate entries need no migration.
 
 ### Identity
 
@@ -320,7 +322,7 @@ fixed-rate entries need no migration and remain on disk.
 | --- | --- |
 | Sorted original training ID set | Validation IDs, holdout/build label, source path/Parquet bytes, row order, training text and labels |
 | Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, SR2 initialization version, quantization, schema | Local path spelling when contents match |
-| Head dropout, A/B objective, warmup epochs/batch size/rate, exponential schedule version and original decay base when decay is enabled, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
+| Head dropout, A/B objective, warmup build epochs/batch size/initial rate, exponential schedule version and absolute minimum rate when decay is enabled, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
 | Non-quantized training identity for active profiles | LoRA rank/alpha/dropout/targets; joint learning rates, epochs, batch size, accumulation, and token controls |
 
 Warmup epochs remain part of each stored key. A lower-epoch entry is compatible
@@ -383,7 +385,7 @@ consume different RNG draws on a cache miss.
 Logs identify complete reuse, continuation, or rebuild; completed, target, and
 remaining epochs; source/target paths on hits; and precision. Reused work contributes
 no old epoch metrics or timing; joint epoch numbers retain their warmup offset.
-`warmup.epochs: 0` disables warmup state and feature cache reads/writes.
+`warmup.build_epochs: 0` disables warmup state and feature cache reads/writes.
 `--refresh-cache` bypasses every reuse candidate, refreshes requested warmup
 features, trains from scratch, and replaces the target head entry.
 Manually constructed `PreparedTrainingSplit` objects without `warmup_context`

@@ -23,9 +23,9 @@ class WarmupModelPipeline:
 				"Model warmup requires a 'warmup' section in the selected configuration. "
 				"Select a matching YAML with --config."
 			)
-		if config.warmup.warmup_epochs <= 0:
+		if config.warmup.warmup_build_epochs <= 0:
 			raise ConfigurationError(
-				"Standalone warmup requires warmup.warmup_epochs > 0."
+				"Standalone warmup requires warmup.build_epochs > 0."
 			)
 		self._model_config = replace(config.warmup, ab_swap=PROFILE.ab_swap_override)
 		self._config = replace(config, warmup=self._model_config)
@@ -61,7 +61,7 @@ class WarmupModelPipeline:
 		except torch.cuda.OutOfMemoryError as error:
 			raise ModelExecutionError(
 				"CUDA ran out of memory during warmup. Lower "
-				"warmup.extraction_budget or warmup.warmup_training_batch_size, "
+				"warmup.extraction_budget or warmup.training_batch_size, "
 				"or use fp16/bf16 instead of fp32."
 			) from error
 		except ModelExecutionError:

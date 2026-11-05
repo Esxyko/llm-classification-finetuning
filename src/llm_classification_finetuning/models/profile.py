@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from ..config import AppConfig, LoRAModelConfig, ModelConfig
+from ..config import AppConfig, LoRAModelConfig, ModelConfig, SR2ModelConfig
 from ..errors import ConfigurationError
 
 
@@ -24,7 +24,9 @@ class ModelProfile:
 		"""Return whether the selected YAML includes this model's section."""
 		return getattr(config, self.config_key, None) is not None
 
-	def resolve_config(self, config: AppConfig) -> ModelConfig | LoRAModelConfig:
+	def resolve_config(
+		self, config: AppConfig
+	) -> ModelConfig | LoRAModelConfig | SR2ModelConfig:
 		"""Return this profile's validated model configuration."""
 		value = getattr(config, self.config_key)
 		if value is None:
@@ -32,7 +34,7 @@ class ModelProfile:
 				f"Model {self.selector} requires a '{self.config_key}' section in "
 				"the selected configuration. Select a matching YAML with --config."
 			)
-		if not isinstance(value, (ModelConfig, LoRAModelConfig)):
+		if not isinstance(value, (ModelConfig, LoRAModelConfig, SR2ModelConfig)):
 			raise TypeError(f"{self.config_key} is not a model configuration.")
 		if self.ab_swap_override is not None:
 			return replace(value, ab_swap=self.ab_swap_override)

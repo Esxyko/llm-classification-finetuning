@@ -203,48 +203,59 @@ execute; persistent branch-cache details remain in
 | `extraction_batch_size` | `extraction_budget`, measured in padded tokens; old branch counts are not equivalent values |
 | LoRA `inference_batch_size` | `head_inference_batch_size`; keep the head batch count |
 | LoRA `head_learning_rate` | Remove; `learning_rate` now controls both adapters and the classifier head during joint training |
-| Frozen SR2 `min_lr_ratio` / `lr_decay_power` | Remove both; builds use `lr_decay_base` (default `1.5`); validation uses ReduceLROnPlateau with `factor` and `patience` |
-| Frozen SR2 validation `lr_decay_base` | Retain for builds; configure validation's `factor` (default `0.95`) and `patience` (default `2`) instead |
-| `warmup.warmup_min_lr_ratio` / `warmup.warmup_lr_decay_power` | Remove both; configure `warmup.lr_decay_base` (default `1.5`) |
-| `warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, `warmup.warmup_learning_rate`, `warmup.warmup_lr_decay_base` | Remove the field prefixes: `warmup.epochs`, `warmup.training_batch_size`, `warmup.learning_rate`, `warmup.lr_decay_base` |
-| LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section as `epochs`, `training_batch_size`, and `learning_rate` |
-| `warmup_ratio` | Choose explicit `warmup.epochs`, batch size, learning rate, and extraction budget |
+| Frozen SR2 `min_lr_ratio` / `lr_decay_power` | Remove both; builds use `build_epochs` and absolute `build_min_lr`; validation uses ReduceLROnPlateau with `factor` and `patience` |
+| Frozen SR2 / warmup `epochs` | Rename to `build_epochs`; LoRA joint `epochs` is unchanged |
+| Frozen SR2 / warmup `lr_decay_base` | Replace with absolute `build_min_lr`, defaulting to that head stage's `learning_rate / 5`; the numeric base is not a learning rate |
+| `warmup.warmup_min_lr_ratio` / `warmup.warmup_lr_decay_power` | Remove both; configure `warmup.build_epochs` and `warmup.build_min_lr` |
+| `warmup.warmup_epochs`, `warmup.warmup_training_batch_size`, `warmup.warmup_learning_rate`, `warmup.warmup_lr_decay_base` | Use `warmup.build_epochs`, `warmup.training_batch_size`, `warmup.learning_rate`, and a chosen absolute `warmup.build_min_lr` |
+| LoRA-local `warmup_epochs`, `warmup_training_batch_size`, `warmup_learning_rate` | Move to the required top-level `warmup` section as `build_epochs`, `training_batch_size`, and `learning_rate` |
+| `warmup_ratio` | Choose explicit `warmup.build_epochs`, batch size, learning rate, and extraction budget |
 | LoRA/warmup `A/B_swap` | Remove; active LoRA and standalone warmup always use original rows |
 | `training_token_budget` or Boolean `gradient_checkpointing` | Use the two current checkpointing/packing controls below |
 
-Joint training now applies one cosine curve across all joint epochs, with
-`min_lr_ratio` defaulting to `0.125` even when omitted from an older configuration.
-Set `min_lr_ratio: 1` to keep the shared learning rate fixed. Configurations
-containing `head_learning_rate` fail strict unknown-key validation; remove it
-before using current commands. Frozen SR2 builds use exponential
-decay with `SR2_Qwen3_4B.lr_decay_base: 1.5` as the parser default. Standalone and
-inline warmup use `warmup.lr_decay_base: 1.5`, independently of joint
-decay. Each base must be a finite number at least `1`. The scheduler computes
-`decay_rate = ln(base)` and sets `lr = initial_lr * exp(-decay_rate * epoch_index)`
-at the beginning of each zero-based epoch; learning rates stay fixed within an
-epoch. There is no head minimum-rate floor. Remove the old head minimum-ratio
-and polynomial-power fields, including any `e` string values: they now fail
-strict unknown-key validation. The new defaults apply when the base is omitted.
-LoRA joint `min_lr_ratio` retains its existing cosine behavior.
+Joint training applies one cosine curve across all joint epochs, with
+`min_lr_ratio` defaulting to `0.125`. Set `min_lr_ratio: 1` to keep its shared
+learning rate fixed. Its `epochs` field is unchanged. Remove `head_learning_rate`
+before using current commands; it fails strict unknown-key validation.
 
-Frozen SR2 validation now uses ReduceLROnPlateau rather than `lr_decay_base`.
-Its new `factor` and `patience` fields default to `0.95` and `2`, with
-`threshold=0` and `min_lr=0` fixed in code. The scheduler consumes the full,
-unrounded unsmoothed validation loss after each epoch; a reduction affects the
-next epoch and does not reset early-stopping patience. The `early_stopping`
-parser default is now `7`; explicit values in existing YAML still take precedence.
-Builds keep their configured decay bases and existing head-cache identities.
+Frozen SR2 and `warmup` now accept `build_epochs` and absolute `build_min_lr`.
+The old `epochs` and `lr_decay_base` names are rejected in those two sections,
+including when supplied alongside the new names. Omitted `build_min_lr` defaults
+to the corresponding head initial rate divided by five and must satisfy
+`0 < build_min_lr <= learning_rate`. Current presets explicitly set that
+one-fifth value and retain their previous epoch counts. Remove older head
+minimum-ratio and polynomial-power fields, including any `e` string values.
 
-Set either head base to `1` to restore its fixed learning rate and reuse legacy
-fixed-rate head caches, including lower-epoch continuation. With decay enabled,
-`exponential_epoch_v1` schedule metadata and the original base isolate head
-caches from earlier polynomial/cosine caches. Only the exact target epoch is
-reusable: extending 4 epochs to 8 or changing the base trains a complete new run
-on a cache miss. Exponential lower-epoch continuation is not enabled.
-Cache schema v5, token/feature/plan identities, and production checkpoint
-compatibility remain unchanged. New configuration snapshots and frozen-head
-checkpoint training metadata record the original bases, not their logarithms.
-Existing caches and historical configuration snapshots are preserved. See
+For `N = build_epochs > 1`, the scheduler derives
+`decay_rate = (ln(initial_lr) - ln(build_min_lr)) / (N - 1)` and uses
+`lr = initial_lr * exp(-decay_rate * epoch_index)` at the start of each
+zero-based epoch. The first and final epochs explicitly use the initial and
+minimum rates, with no change within an epoch. One epoch uses the initial rate;
+`warmup.build_epochs: 0` disables inline warmup without creating a scheduler.
+To preserve an old base-controlled curve for `N > 1`, choose
+`build_min_lr = learning_rate / old_base ** (N - 1)` when that value is positive
+and representable. Set the minimum equal to the initial rate for fixed-rate
+training. Configuration objects use `warmup_build_epochs` and
+`warmup_build_min_lr` internally; public snapshots and frozen-head checkpoint
+training metadata use the unprefixed `build_epochs` and `build_min_lr`.
+
+Frozen SR2 validation uses ReduceLROnPlateau with `factor: 0.95`, `patience: 2`,
+and `early_stopping: 7` as parser defaults. Threshold and minimum rate are fixed
+at zero. The scheduler consumes the unrounded unsmoothed validation loss once
+after each epoch; a reduction affects the next epoch and does not reset the
+early-stopping counter. Build fields do not control validation, which permits
+omitted or null `build_epochs`.
+
+Decaying head caches now include `exponential_endpoint_epoch_v2` and
+`warmup_build_min_lr`, with the target count still stored under the persistent
+`warmup_epochs` key. Only an exact target is reusable: changing the count or
+minimum trains a complete new run on a miss. Earlier `exponential_epoch_v1`
+base-controlled caches remain on disk without migration or reuse, even when a
+new curve is mathematically equivalent. Fixed-rate training omits the schedule
+and minimum metadata fields, preserving legacy fixed-rate cache identities and
+lower-epoch continuation. Cache schema v5, token/feature/plan identities, and
+production checkpoint compatibility remain unchanged. Existing caches and
+historical configuration snapshots are preserved. See
 [learning-rate decay](lora.md#learning-rate-decay).
 
 The historical `gradient_checkpointing_budget` used to name what is now

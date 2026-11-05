@@ -105,17 +105,17 @@ class HeadWarmupCache:
 			"classifier_hidden_size": config.hidden_size,
 			"classifier_dropout": config.dropout,
 			"ab_swap": config.ab_swap,
-			"warmup_epochs": config.warmup_epochs,
+			"warmup_epochs": config.warmup_build_epochs,
 			"warmup_training_batch_size": config.warmup_training_batch_size,
 			"warmup_learning_rate": config.warmup_learning_rate,
 			"seed": seed,
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
-		# Keep legacy fixed-rate keys while isolating epoch-based exponential decay.
-		if config.warmup_lr_decay_base != 1.0:
-			metadata["warmup_lr_schedule"] = "exponential_epoch_v1"
-			metadata["warmup_lr_decay_base"] = config.warmup_lr_decay_base
+		# Keep legacy fixed-rate keys while isolating endpoint-based exponential decay.
+		if config.warmup_build_min_lr != config.warmup_learning_rate:
+			metadata["warmup_lr_schedule"] = "exponential_endpoint_epoch_v2"
+			metadata["warmup_build_min_lr"] = config.warmup_build_min_lr
 		# Preserve existing unsmoothed cache identities while isolating smoothed warmup.
 		label_smoothing = (
 			config.warmup_label_smoothing
@@ -132,9 +132,9 @@ class HeadWarmupCache:
 		if refresh:
 			return entry
 		candidate_epochs = (
-			range(config.warmup_epochs, 0, -1)
-			if config.warmup_lr_decay_base == 1.0
-			else (config.warmup_epochs,)
+			range(config.warmup_build_epochs, 0, -1)
+			if config.warmup_build_min_lr == config.warmup_learning_rate
+			else (config.warmup_build_epochs,)
 		)
 		for epochs in candidate_epochs:
 			source_metadata = {**metadata, "warmup_epochs": epochs}

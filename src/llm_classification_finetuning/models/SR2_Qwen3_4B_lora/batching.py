@@ -537,7 +537,9 @@ class LoRATrainingBatchRepository:
 		self._backbone_hidden_size = backbone_hidden_size
 		self._local_weights_sha256 = local_weights_sha256
 		self._warmup_ids: pd.DataFrame | None = None
-		if (warmup_only or config.warmup_epochs) and backbone_hidden_size is not None:
+		if (
+			warmup_only or config.warmup_build_epochs
+		) and backbone_hidden_size is not None:
 			self._warmup_ids = data.reference.loc[
 				~data.reference["is_swapped"], ["id", "split"]
 			].sort_values("id")
@@ -620,7 +622,7 @@ class LoRATrainingBatchRepository:
 				backbone_hidden_size=int(base_config.hidden_size),
 				local_weights_sha256=(
 					LocalBackboneFingerprint.compute(Path(model.model_name))
-					if (warmup_only or model.warmup_epochs)
+					if (warmup_only or model.warmup_build_epochs)
 					and Path(model.model_name).is_dir()
 					else None
 				),

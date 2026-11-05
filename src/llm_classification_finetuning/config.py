@@ -19,10 +19,10 @@ MAX_VALIDATION_ROW_DEVIATION = 0.005
 MAX_VALIDATION_ROW_DEVIATION = 0.005
 
 LORA_WARMUP_FIELDS = (
-	"warmup_epochs",
+	"warmup_build_epochs",
 	"warmup_training_batch_size",
 	"warmup_learning_rate",
-	"warmup_lr_decay_base",
+	"warmup_build_min_lr",
 )
 
 
@@ -84,7 +84,7 @@ class WarmupModelConfig:
 	hidden_size: int
 	dropout: float
 	weight_decay: float
-	warmup_epochs: int | None
+	warmup_build_epochs: int | None
 	extraction_budget: int
 	warmup_training_batch_size: int
 	warmup_learning_rate: float
@@ -93,16 +93,28 @@ class WarmupModelConfig:
 	dataloader_workers: int
 	ab_swap: str
 	label_smoothing: float = field(default=0.0, kw_only=True)
-	warmup_lr_decay_base: float = field(default=1.5, kw_only=True)
+	warmup_build_min_lr: float = field(kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
-class SR2ModelConfig(ModelConfig):
+class SR2ModelConfig:
 	"""Frozen-Skywork validation and warmup-compatible build settings."""
 
-	epochs: int | None = field(default=None, kw_only=True)
+	model_name: str
+	max_length: int
+	extraction_budget: int
+	training_batch_size: int
+	hidden_size: int
+	dropout: float
+	learning_rate: float
+	weight_decay: float
+	random_state: int
+	dataloader_workers: int
+	ab_swap: str
+	label_smoothing: float = 0.0
+	build_epochs: int | None = field(default=None, kw_only=True)
 	max_grad_norm: float = field(kw_only=True)
-	lr_decay_base: float = field(default=1.5, kw_only=True)
+	build_min_lr: float = field(kw_only=True)
 	factor: float = field(default=0.95, kw_only=True)
 	patience: int = field(default=2, kw_only=True)
 	early_stopping: int = field(default=7, kw_only=True)
@@ -113,7 +125,7 @@ class SR2ModelConfig(ModelConfig):
 		for name in ("early_stopping", "factor", "patience"):
 			values.pop(name)
 		if validation:
-			values["epochs"] = None
+			values["build_epochs"] = None
 		for name in LORA_WARMUP_FIELDS:
 			values[name] = values.pop(name.removeprefix("warmup_"))
 		return WarmupModelConfig(**values)
@@ -349,8 +361,8 @@ def _load_sr2_model_config(root: Mapping[str, Any]) -> SR2ModelConfig:
 		{section_name: section}, section_name, allow_unbounded_epochs=True
 	)
 	aliases = {name: name.removeprefix("warmup_") for name in LORA_WARMUP_FIELDS}
-	if shared.warmup_epochs is not None and shared.warmup_epochs <= 0:
-		raise ConfigurationError(f"{section_name}.epochs must be greater than 0.")
+	if shared.warmup_build_epochs is not None and shared.warmup_build_epochs <= 0:
+		raise ConfigurationError(f"{section_name}.build_epochs must be greater than 0.")
 	values = asdict(shared)
 	for internal, public in aliases.items():
 		values[public] = values.pop(internal)
@@ -411,16 +423,21 @@ def _load_warmup_fields(
 	weight_decay = _require_float(section.get("weight_decay"), field("weight_decay"))
 	if weight_decay < 0.0:
 		raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
-	warmup_epochs = section.get("warmup_epochs")
+	warmup_epochs = section.get("warmup_build_epochs")
 	if warmup_epochs is not None or not allow_unbounded_epochs:
-		warmup_epochs = _require_integer(warmup_epochs, field("warmup_epochs"))
+		warmup_epochs = _require_integer(warmup_epochs, field("warmup_build_epochs"))
 	if warmup_epochs is not None and warmup_epochs < 0:
-		raise ConfigurationError(f"{field('warmup_epochs')} cannot be negative.")
-	warmup_lr_decay_base = _require_float(
-		section.get("warmup_lr_decay_base", 1.5), field("warmup_lr_decay_base")
+		raise ConfigurationError(f"{field('warmup_build_epochs')} cannot be negative.")
+	warmup_learning_rate = positive_float("warmup_learning_rate")
+	warmup_build_min_lr = _require_float(
+		section.get("warmup_build_min_lr", warmup_learning_rate / 5.0),
+		field("warmup_build_min_lr"),
 	)
-	if warmup_lr_decay_base < 1.0:
-		raise ConfigurationError(f"{field('warmup_lr_decay_base')} must be at least 1.")
+	if not 0.0 < warmup_build_min_lr <= warmup_learning_rate:
+		raise ConfigurationError(
+			f"{field('warmup_build_min_lr')} must be greater than 0 and at most "
+			f"{field('warmup_learning_rate')}."
+		)
 	workers = _require_integer(
 		section.get("dataloader_workers"), field("dataloader_workers")
 	)
@@ -434,11 +451,11 @@ def _load_warmup_fields(
 		hidden_size=positive_integer("hidden_size"),
 		dropout=dropout,
 		weight_decay=weight_decay,
-		warmup_epochs=warmup_epochs,
+		warmup_build_epochs=warmup_epochs,
 		extraction_budget=positive_integer("extraction_budget"),
 		warmup_training_batch_size=positive_integer("warmup_training_batch_size"),
-		warmup_learning_rate=positive_float("warmup_learning_rate"),
-		warmup_lr_decay_base=warmup_lr_decay_base,
+		warmup_learning_rate=warmup_learning_rate,
+		warmup_build_min_lr=warmup_build_min_lr,
 		max_grad_norm=positive_float("max_grad_norm"),
 		random_state=_require_integer(
 			section.get("random_state"), field("random_state")
@@ -464,9 +481,9 @@ def _load_lora_model_config(
 	_reject_unknown_keys(section, keys, section_name)
 	if warmup is None:
 		raise ConfigurationError(
-			f"{section_name} requires a 'warmup' section with epochs, "
+			f"{section_name} requires a 'warmup' section with build_epochs, "
 			"training_batch_size, learning_rate, and other head-warmup settings; "
-			"set warmup.epochs to 0 to disable head warmup."
+			"set warmup.build_epochs to 0 to disable head warmup."
 		)
 
 	def field(name: str) -> str:

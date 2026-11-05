@@ -90,13 +90,14 @@ resolved data paths, and contains only shared sections plus the current model:
 
 LoRA snapshots keep shared warmup controls under `warmup`, omit internal resolved
 fields, and omit `A/B_swap` from both model and warmup sections. Warmup fields use
-`epochs`, `training_batch_size`, `learning_rate`, and `lr_decay_base` without
+`build_epochs`, `training_batch_size`, `learning_rate`, and `build_min_lr` without
 repeating the section name. Each section
 retains its own extraction budget and smoothing value. Other model sections are
 excluded; `metrics.json` has no embedded `config` field or source-config path.
 Frozen SR2 snapshots use its independent public fields and also omit `A/B_swap`.
 They include validation's `factor`, `patience`, and `early_stopping`, along with
-the build-only `lr_decay_base`; threshold and minimum rate are fixed in code.
+build-only `build_epochs` and `build_min_lr`; the validation scheduler's threshold
+and minimum rate are fixed in code. LoRA joint training retains its `epochs` field.
 
 A current SR2 snapshot can be passed to `--config`, but reproducing a run also needs matching
 data/code/dependencies and model identity. It does not capture `.env` or persist

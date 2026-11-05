@@ -62,10 +62,11 @@ class SR2ModelPipeline:
 				f"{self._profile.selector} does not support {mode.value}."
 			)
 		if mode is ModelMode.BUILD and (
-			type(self._model_config.epochs) is not int or self._model_config.epochs <= 0
+			type(self._model_config.build_epochs) is not int
+			or self._model_config.build_epochs <= 0
 		):
 			raise ModelExecutionError(
-				f"{self._profile.config_key}.epochs must be a positive integer for --build."
+				f"{self._profile.config_key}.build_epochs must be a positive integer for --build."
 			)
 		head_config = self._model_config.as_warmup_config(
 			validation=mode is ModelMode.VALIDATION

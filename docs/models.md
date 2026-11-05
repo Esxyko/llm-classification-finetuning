@@ -32,9 +32,9 @@ uv run model SR2-Qwen3-4B --build --checkpoint-tag experiment
 `SR2-Qwen3-4B` freezes the same Skywork backbone and trains the same current
 SR2 swap-equivariant head without creating adapters. Its independent
 `SR2_Qwen3_4B` section uses `early_stopping` (default `7`) for validation and
-`epochs` for builds, with ordinary `training_batch_size` and `learning_rate`
+`build_epochs` for builds, with ordinary `training_batch_size` and `learning_rate`
 fields, validation-only `factor` (default `0.95`) and `patience` (default `2`),
-and build-only `lr_decay_base` (default `1.5`). It does not require
+and build-only `build_min_lr` (default `learning_rate / 5`). It does not require
 `warmup` or LoRA sections. The optimizer, clipping, precision, full-input
 serialization, and pooling follow head
 warmup. Training and inference use original rows only;
@@ -43,7 +43,7 @@ the backbone stays in evaluation mode during feature extraction/head training.
 Validation starts a fresh head on the saved train partition and runs until
 `early_stopping` consecutive epochs fail to strictly lower the best unsmoothed
 validation log loss. Improvements reset the count; ties count as non-improvements.
-The first epoch establishes the best loss with count zero. `epochs` may be omitted
+The first epoch establishes the best loss with count zero. `build_epochs` may be omitted
 and never caps validation. After each validation evaluation, ReduceLROnPlateau
 consumes that same unrounded loss, using configured `factor` and `patience` with
 fixed `threshold=0` and `min_lr=0`. The first epoch uses the initial learning rate;
@@ -61,9 +61,10 @@ read or write completed head/optimizer/RNG states, so every run executes trainin
 from epoch `1`, including when an old fixed-epoch head entry exists.
 
 Build uses every original ID from both partitions, without holdout evaluation.
-It requires positive `epochs`, uses the warmup-compatible epoch-based exponential
-decay controlled by `lr_decay_base`, and retains completed head-state cache reuse:
-exact hits skip training; lower-epoch hits continue only with `lr_decay_base: 1`;
+It requires positive `build_epochs`, uses the warmup-compatible epoch-based
+exponential curve from `learning_rate` to `build_min_lr`, and retains completed
+head-state cache reuse: exact hits skip training; lower-epoch hits continue only
+when `build_min_lr = learning_rate`;
 decay-enabled misses train the full configured epoch count.
 It prepares CPU inputs and checks the destination before configuring CUDA.
 It writes `models/SR2_Qwen3_4B/head[_TAG].pt`, containing FP32 head parameters,
@@ -104,7 +105,7 @@ or loading model weights. Every original ID from both partitions contributes
 one training row; there is no holdout evaluation during a build. Compatible token, batch,
 and frozen-feature caches are reused. The full-data head-warmup cache is keyed
 by all training IDs, so a train-partition-only head cache is not a complete hit.
-Exact warmup hits skip that stage. With `warmup.lr_decay_base: 1`, compatible
+Exact warmup hits skip that stage. With `warmup.build_min_lr = warmup.learning_rate`, compatible
 lower-epoch hits execute only the remaining warmup epochs before joint training;
 exponential decay requires an exact target-epoch hit or a complete new run.
 

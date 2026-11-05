@@ -115,7 +115,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `models/__init__.py` | `ModelRegistration` and lazily loaded ordered active execution registry, keeping CPU data imports independent of PEFT |
 | `models/profile.py` | Immutable selector/config/artifact identity and effective A/B policy |
 | `models/SR2_Qwen3_4B/__init__.py`, `profile.py` | Frozen SR2 registration and lazy pipeline export |
-| `models/SR2_Qwen3_4B/pipeline.py` | Independent frozen-head plateau-scheduled early-stopping validation and exponential fixed-epoch build orchestration, mode-specific warmup-compatible settings, build epoch validation before CPU preparation, and head write preflight before GPU setup |
+| `models/SR2_Qwen3_4B/pipeline.py` | Independent frozen-head plateau-scheduled early-stopping validation and exponential fixed-epoch build orchestration, mode-specific warmup-compatible settings, `build_epochs` validation before CPU preparation, and head write preflight before GPU setup |
 | `models/SR2_Qwen3_4B/checkpoint.py` | FP32 head-only checkpoint with immutable encoding/training identities, destination preflight, staged CPU metadata/tensor validation, and atomic replacement |
 | `models/SR2_Qwen3_4B_lora/__init__.py` | Active SR2 registration surface and public LoRA exports, deferring pipeline/trainer imports until execution |
 | `models/SR2_Qwen3_4B_lora/profile.py` | SR2 identity usable below the registration surface without import cycles; default for LoRA Python APIs |
@@ -125,8 +125,10 @@ Frozen SR2 and LoRA SR2 are registered in that order. `ALL` runs each configured
 profile supporting the requested mode; `warmup` stays outside the registry.
 Frozen SR2 has an independent `SR2ModelConfig` converted to shared head-training
 settings. Validation uses unbounded head training with ReduceLROnPlateau, independent
-early stopping, and shared frozen features; builds keep exponential decay and reuse
-LoRA SR2's warmup state without changing cache identities.
+early stopping, and shared frozen features. Builds and standalone/inline warmup
+share endpoint-based exponential decay from the initial rate to `build_min_lr`
+over `build_epochs`. Decaying head states use a versioned schedule identity;
+fixed-rate cache identities remain compatible.
 Retired profiles remain unregistered and
 their configuration sections are rejected; local ignored
 archives are outside active imports. See [migration](docs/migration.md#retired-profiles).
@@ -258,7 +260,7 @@ present in a fresh checkout.
    Frozen SR2 uses this same head and initialization, freezing the backbone and
    training only the head without adapters. Validation uses ReduceLROnPlateau;
    builds use the shared warmup epoch-based exponential-decay algorithm with
-   their independent initial rate/decay base.
+   their independent initial rate, minimum rate, and build epoch count.
    See [head definition](docs/lora.md#swap-equivariant-head).
 4. **Cache identities:** distinguish tokens, frozen/warmup features, plans,
    warmup state, and production checkpoints. Map cached entries to current rows/labels; never
@@ -276,8 +278,11 @@ present in a fresh checkout.
    data, and frozen-SR2 build hits evaluate all training data without training or
    rewriting cached state. Frozen SR2 validation always starts a fresh head and
    reads/writes only tokens and frozen features, never completed head-state caches. Exponential decay
-   reuses only the exact target epoch and includes `exponential_epoch_v1` schedule
-   and original decay-base identity fields, isolating earlier polynomial/cosine caches.
+   reuses only the exact target epoch and includes the
+   `exponential_endpoint_epoch_v2` schedule and `warmup_build_min_lr`, isolating
+   older base-controlled and polynomial/cosine caches. Persistent completed-epoch
+   metadata retains the `warmup_epochs` name; configuration objects use
+   `warmup_build_epochs`.
    Fixed-rate partial hits select the largest compatible lower epoch, reconstruct
    shuffle state with index-only
    replay, restore training RNG after feature preparation, and execute only remaining
@@ -304,12 +309,15 @@ present in a fresh checkout.
    checkpointing removes input-gradient hooks. Joint groups share one learning
    rate and one cosine curve across all joint epochs; each consumed optimizer
    group advances decay once, including FP16-skipped updates. Head warmup and
-   frozen SR2 builds use exponential decay, setting `initial_lr * exp(-ln(base) * epoch_index)`
-   at the start of each zero-based epoch and holding it fixed within that epoch.
-   Both head bases default to `1.5` and accept finite numbers at least `1`;
-   configurations, snapshots, checkpoint training metadata, and cache identities
-   retain the original base. A head base of `1` keeps its rate fixed; joint
-   training uses a minimum ratio of `1` for a fixed rate. Frozen SR2 validation
+   frozen SR2 builds derive exponential decay from `build_epochs` and `build_min_lr`,
+   setting one rate at the start of each epoch. The first epoch uses the initial
+   rate; for multiple epochs, the final epoch uses the minimum exactly. A single
+   epoch uses the initial rate. Minimum rates default to the corresponding head
+   initial rate divided by five and must be finite in `(0, initial_lr]`.
+   Configurations, snapshots, checkpoint training metadata, and decaying cache
+   identities retain the minimum. Equal initial/minimum rates keep head training
+   fixed; joint training uses a minimum ratio of `1` for a fixed rate. Disabled
+   warmup (`build_epochs: 0`) creates no head scheduler. Frozen SR2 validation
    steps ReduceLROnPlateau once after each complete unsmoothed validation loss,
    with configurable factor/patience and fixed threshold/minimum rate of zero.
    The next epoch retains the resulting rate without an exponential reset;

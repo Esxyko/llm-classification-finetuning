@@ -206,19 +206,19 @@ offsets/metadata. Current training inputs are checked independently.
 
 | Stage | Trainable work | Validation / persistence |
 | --- | --- | --- |
-| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head at `warmup.learning_rate / warmup.lr_decay_base ** epoch_index`, starting at epoch index `0` and keeping the rate fixed within each epoch | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
+| Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head with epoch-based exponential decay from `warmup.learning_rate` to `warmup.build_min_lr` across `warmup.build_epochs`, keeping the rate fixed within each epoch | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
 | Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup loads cached features, extracts missing branches, and recomputes both losses without training |
 | Head warmup, lower-epoch cache hit (fixed rate only) | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
 | Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
-The shared warmup section supplies epochs, head batch size, learning rate,
-exponential decay base, extraction budget, and smoothing.
+The shared warmup section supplies build epochs, head batch size, initial and
+minimum learning rates, extraction budget, and smoothing.
 Inline warmup's remaining model/head settings come from the selected LoRA section.
-`warmup.epochs: 0` skips warmup extraction
+`warmup.build_epochs: 0` skips warmup extraction
 and cache I/O. See [standalone versus inline settings](configuration.md#standalone-warmup).
 Exponential decay reuses only an exact target-epoch cache. Fixed-rate warmup
-(`warmup.lr_decay_base: 1`) can also continue from the largest compatible lower
+(`warmup.build_min_lr` equal to `warmup.learning_rate`) can also continue from the largest compatible lower
 epoch; all other cache identity fields must match.
 
 Adapter-free warmup features are persisted by branch token content and reused
@@ -266,37 +266,42 @@ Frozen SR2 builds and standalone/inline warmup use exponential decay
 once per epoch. LoRA joint training uses an independent cosine curve once per
 planned optimizer update.
 
-For head-training epoch index `epoch_index` from `0` through `warmup.epochs - 1`:
+For head training, let `N = build_epochs`, `L = learning_rate`, and
+`M = build_min_lr` in either the frozen SR2 or warmup section. For `N > 1`:
 
 ```text
-decay_rate = ln(warmup.lr_decay_base)
-lr = warmup.learning_rate * exp(-decay_rate * epoch_index)
-   = warmup.learning_rate / warmup.lr_decay_base ** epoch_index
+epoch_multiplier = (M / L) ** (1 / (N - 1))
+decay_rate = (ln(L) - ln(M)) / (N - 1)
+lr = L * exp(-decay_rate * epoch_index)
 ```
 
-The warmup base `warmup.lr_decay_base` defaults to `1.5` and accepts a
-finite number at least `1`. Frozen SR2 builds map their independent `epochs`,
-`training_batch_size`, `learning_rate`, and `lr_decay_base` to these warmup
-settings. Its base also defaults to `1.5`. Both keep the original base in
-configuration snapshots, checkpoint training metadata, and cache identity;
-only the scheduler computes its natural logarithm.
+The epoch index spans `0` through `N - 1`. The scheduler explicitly sets the first
+rate to `L` and the final rate to `M`. Each epoch keeps that rate throughout,
+including FP16-skipped updates. A single epoch uses `L`; `M = L` keeps every epoch
+fixed. For example, `L = 0.001`, `M = 0.0002`, and `N = 4` yield approximately
+`0.001`, `0.000584804`, `0.000341995`, and `0.0002`.
+
+`build_min_lr` defaults to the corresponding initial head rate divided by five
+and must be finite and in `(0, L]`. Frozen SR2 builds map `build_epochs`,
+`training_batch_size`, `learning_rate`, and `build_min_lr` to the shared internal
+`warmup_build_epochs`, `warmup_training_batch_size`, `warmup_learning_rate`, and
+`warmup_build_min_lr` settings. Standalone and inline warmup share the same
+mapping. Configurations, snapshots, checkpoint training metadata, and decaying
+cache identities store the minimum rate; only the scheduler derives its
+coefficient. `warmup.build_epochs: 0` skips the stage without creating a scheduler.
 
 Frozen SR2 validation uses ReduceLROnPlateau on the full unsmoothed validation
 loss after each epoch, with `factor: 0.95` and `patience: 2` as defaults and fixed
-`threshold=0` and `min_lr=0`. Reductions apply to the following epoch; no
-epoch-indexed exponential rate is applied. Training continues until
-`early_stopping` consecutive epochs do not lower validation loss, independently
-of the scheduler's counter. It has no configured final epoch and does not use
-head-state caches; see [frozen SR2 validation](models.md#frozen-skywork-reward-backbone).
+`threshold=0` and `min_lr=0`. Reductions apply to the following epoch. Training
+continues until `early_stopping` consecutive epochs do not lower validation
+loss, independently of the scheduler's counter. It ignores the build schedule
+and uses no head-state cache; see
+[frozen SR2 validation](models.md#frozen-skywork-reward-backbone).
 
-For exponential builds/warmup, each epoch starts by setting the rate, which
-remains fixed throughout that epoch, including FP16-skipped updates. The first epoch, or a run with just
-one epoch, uses the initial rate. With an initial rate of `0.001` and base `1.5`,
-the first four epochs use approximately `0.001`, `0.000666667`, `0.000444444`,
-and `0.000296296`. There is no minimum-rate floor; base `1` keeps the rate fixed.
-Exponential decay reuses only exact target-epoch caches. Changing the base or
-target starts training from epoch index `0` on a cache miss; lower-epoch
-continuation remains supported only for fixed-rate training.
+Decaying builds/warmup reuse only exact target-epoch caches. Changing the minimum
+rate or target epoch count changes the full curve and trains from epoch index
+`0` on a cache miss. Lower-epoch continuation remains supported only when
+`build_min_lr = learning_rate`.
 
 Joint training uses `N = epochs * max(1, rows // G)`, using the joint
 optimizer-group size `G` above. For planned update index `i` from `0` through

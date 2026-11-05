@@ -115,23 +115,25 @@ The following names apply independently inside each relevant section.
 | `dataloader_workers` | All model sections and `warmup` | Integer at least `0` |
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
 | `training_batch_size`, `learning_rate` | Frozen SR2 and LoRA | Positive integer for batches; positive number for rate |
-| `epochs` | Frozen SR2 and LoRA | Positive integer when supplied; required for LoRA and frozen SR2 builds; optional or `null` for frozen SR2 validation, which does not use a fixed epoch limit |
+| `epochs` | LoRA joint training | Required positive integer |
+| `build_epochs` | Frozen SR2 and `warmup` | Positive integer for frozen SR2 builds; optional or `null` for frozen SR2 validation; required non-negative integer for warmup, where `0` disables the inline stage |
 | `early_stopping` | Frozen SR2 validation | Positive integer; default `7`; stop after this many consecutive epochs without a strictly lower validation loss |
 | `factor` | Frozen SR2 validation | Finite number in `(0, 1)`; default `0.95`; multiply the learning rate by this factor when validation loss plateaus |
 | `patience` | Frozen SR2 validation | Non-negative integer; default `2`; ReduceLROnPlateau reduces the rate after more than this many consecutive non-improving epochs |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | LoRA | Number in `[0, 1]`; default `0.125`; minimum joint learning rate as a fraction of `learning_rate` |
-| `lr_decay_base` | Frozen SR2 builds and `warmup` | Finite number at least `1`; default `1.5`; divide the head learning rate by this base each epoch |
+| `build_min_lr` | Frozen SR2 builds and `warmup` | Finite absolute learning rate in `(0, learning_rate]`; defaults to that head stage's `learning_rate / 5`; used by the final epoch when `build_epochs > 1` |
 | `max_grad_norm` | Frozen SR2, LoRA, and `warmup` | Positive number |
 | `lora_rank`, `lora_alpha` | LoRA | Positive integers |
 | `lora_dropout` | LoRA | Number in `[0, 1)` |
 | `lora_target_modules` | LoRA | Nonempty list of unique nonempty strings |
 | `gradient_checkpointing_threshold`, `gradient_checkpointing_budget` | LoRA | Integers at least `0`; each defaults to `0` |
 
-`warmup` additionally requires `epochs` (integer at least `0`),
+`warmup` additionally requires `build_epochs` (integer at least `0`),
 `training_batch_size` (positive integer), `learning_rate` and
 `max_grad_norm` (positive numbers). Fields inside `warmup` have no `warmup_`
-prefix. It does not accept the former prefixed names, `min_lr_ratio`, or `A/B_swap`.
+prefix. Neither frozen SR2 nor `warmup` accepts the old `epochs` or `lr_decay_base`
+fields. Warmup also rejects the former prefixed names, `min_lr_ratio`, and `A/B_swap`.
 
 Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the
 `warmup_*` optimization keys.
@@ -140,15 +142,15 @@ not YAML fields. See [migration](migration.md) for retired keys.
 
 `SR2_Qwen3_4B` trains only the SR2 head with mode-specific learning-rate decay,
 using `training_batch_size` for both optimization groups and head inference.
-It accepts the common model fields above, `epochs`, `early_stopping`, `factor`, `patience`,
-`training_batch_size`, `learning_rate`, `lr_decay_base`, and `max_grad_norm`; it rejects LoRA,
+It accepts the common model fields above, `build_epochs`, `early_stopping`, `factor`, `patience`,
+`training_batch_size`, `learning_rate`, `build_min_lr`, and `max_grad_norm`; it rejects LoRA,
 joint-training, and `warmup_*` controls.
 Its independent section needs neither `warmup` nor `SR2_Qwen3_4B_lora`.
 Shipped values were copied once from each preset's warmup settings; changing
 either section later does not modify the other. Compatible features and build
 training states share the [warmup caches](caching.md#frozen-sr2-head-training).
 
-Frozen SR2 validation ignores `epochs` as a training limit and starts a fresh
+Frozen SR2 validation ignores `build_epochs` as a training limit and starts a fresh
 head at epoch `1`. After each epoch it compares the full holdout's unsmoothed
 log loss with the lowest loss so far, using full precision rather than the
 rounded log value. A strictly lower loss resets the consecutive non-improvement
@@ -157,7 +159,7 @@ best loss with count `0`. Reaching `early_stopping` stops the run and publishes
 the best epoch's predictions and loss, retaining the earliest epoch on a tie.
 There is no fixed epoch cap or minimum improvement threshold. Boolean,
 non-integer, and non-positive `early_stopping` values are rejected. A build requires
-positive `epochs` before input or GPU preparation and does not use early stopping.
+positive `build_epochs` before input or GPU preparation and does not use early stopping.
 
 Validation uses PyTorch `ReduceLROnPlateau` with `mode="min"`, `factor` (default
 `0.95`), `patience` (default `2`), and fixed `threshold=0` and `min_lr=0`.
@@ -171,7 +173,7 @@ early stopping. Other scheduler parameters retain PyTorch defaults, including
 `cooldown=0`, `threshold_mode="rel"`, and `eps=1e-8`; a smaller proposed rate
 change is ignored. Boolean values are rejected for `factor` and `patience`.
 `threshold` and `min_lr` are not YAML fields. Validation does not apply
-`lr_decay_base`; builds do not use `factor` or `patience`.
+`build_epochs` or `build_min_lr`; builds do not use `factor` or `patience`.
 
 Joint training uses `learning_rate` for both adapters and the classifier head.
 One cosine curve spans all joint epochs and reaches
@@ -179,19 +181,24 @@ One cosine curve spans all joint epochs and reaches
 only one update uses the initial rate. `min_lr_ratio: 0` decays to zero, while
 `1` keeps the rate fixed. Omitting the field uses `0.125`.
 
-Frozen SR2 builds use exponential decay controlled by `SR2_Qwen3_4B.lr_decay_base`.
-Standalone and inline head warmup use the independent
-`warmup.lr_decay_base`. Both default to `1.5` and accept finite numbers
-at least `1`; Boolean values and strings are rejected. The scheduler computes
-`decay_rate = ln(base)` and sets `lr = initial_lr * exp(-decay_rate * epoch_index)`
-at each epoch's start. The index starts at `0`, so the first epoch uses the
-initial rate and every update within an epoch uses the same rate. There is no
-minimum-rate floor. A single epoch uses the initial rate throughout.
-Set either head base to `1` for fixed-rate training. Configuration objects,
-effective snapshots, checkpoint training metadata, and cache identities retain
-the original base, rather than its logarithm. See
-[learning-rate decay](lora.md#learning-rate-decay) for formulas and examples, and
-[migration](migration.md) for the removed polynomial settings.
+Frozen SR2 builds derive exponential decay from their independent `build_epochs`
+and `build_min_lr`. Standalone and inline head warmup use the corresponding fields
+from `warmup`. For `N = build_epochs > 1`, initial rate `L`, and minimum rate `M`,
+the scheduler computes `decay_rate = (ln(L) - ln(M)) / (N - 1)` and applies
+`lr = L * exp(-decay_rate * epoch_index)` at each epoch's start. The zero-based
+index spans `0` through `N - 1`. The first and final epochs explicitly use `L`
+and `M`, respectively; every update within an epoch uses the same rate.
+A single epoch uses the initial rate. Setting `build_min_lr` equal to
+`learning_rate` keeps the rate fixed. Disabling inline warmup with
+`warmup.build_epochs: 0` creates no head scheduler.
+
+Omitting `build_min_lr` defaults it to the corresponding head initial rate divided
+by five. Zero, negative, non-finite, Boolean, string, or above-initial values are
+rejected. Inline warmup compares it with `warmup.learning_rate`, independently of
+the joint learning rate. Configuration objects, effective snapshots, checkpoint
+training metadata, and decaying cache identities retain the minimum rate rather
+than a derived coefficient. See [learning-rate decay](lora.md#learning-rate-decay)
+and [migration](migration.md).
 
 ## Label smoothing
 
@@ -217,10 +224,10 @@ SR2 takes exactly these controls from `warmup`:
 
 | `warmup` field | Effect inside a LoRA run |
 | --- | --- |
-| `epochs` | Target head-only epochs; exponential decay reuses only the exact target, while fixed-rate training can continue from a compatible lower epoch; `0` disables warmup and its cache I/O |
+| `build_epochs` | Target head-only epochs; exponential decay reuses only the exact target, while fixed-rate training can continue from a compatible lower epoch; `0` disables warmup and its cache I/O |
 | `training_batch_size` | Head forward batch size during warmup |
 | `learning_rate` | Initial warmup head learning rate |
-| `lr_decay_base` | Divide the head learning rate by this base each epoch; default `1.5`; independent of frozen SR2's base and joint `min_lr_ratio`; `1` keeps the rate fixed |
+| `build_min_lr` | Absolute final-epoch head learning rate; defaults to `warmup.learning_rate / 5`; equal to the initial rate for fixed-rate training; independent of frozen SR2 and joint `min_lr_ratio` |
 | `extraction_budget` | Warmup backbone extraction token budget |
 | `label_smoothing` | Warmup training objective |
 
@@ -229,7 +236,7 @@ Inline LoRA warmup uses the selected LoRA section's own `model_name`,
 The corresponding fields in `warmup` configure **only** `model warmup --build`.
 They do not override SR2's model/head settings.
 
-Standalone warmup requires positive `warmup.epochs` and uses the saved train
+Standalone warmup requires positive `warmup.build_epochs` and uses the saved train
 partition for training, the SR2 comparison head, and original rows only.
 It also reads validation for evaluation. Epoch-end inference reports the full
 training loss with warmup smoothing and validation's unsmoothed log loss;

@@ -119,24 +119,49 @@ class _CosineLearningRateSchedule:
 
 
 class _ExponentialLearningRateSchedule:
-	"""Set a fixed head learning rate for each zero-based epoch."""
+	"""Exponentially connect the initial and final head rates across epochs."""
 
 	def __init__(
 		self,
 		optimizer: AdamW,
 		*,
 		learning_rate: float,
-		decay_base: float,
+		min_lr: float,
+		total_epochs: int,
 	) -> None:
+		if type(total_epochs) is not int or total_epochs <= 0:
+			raise ValueError("Exponential decay requires at least one epoch.")
+		if not (
+			math.isfinite(learning_rate)
+			and math.isfinite(min_lr)
+			and 0.0 < min_lr <= learning_rate
+		):
+			raise ValueError("Exponential decay requires 0 < min_lr <= learning_rate.")
 		self._optimizer = optimizer
 		self._learning_rate = learning_rate
-		self._decay_rate = math.log(decay_base)
+		self._min_lr = min_lr
+		self._total_epochs = total_epochs
+		self._decay_rate = (
+			(math.log(learning_rate) - math.log(min_lr)) / (total_epochs - 1)
+			if total_epochs > 1
+			else 0.0
+		)
 
 	def set_epoch(self, epoch_index: int) -> None:
 		"""Apply the epoch's rate before training, independently of update counts."""
-		if epoch_index < 0:
-			raise ValueError("Exponential decay requires a nonnegative epoch index.")
-		learning_rate = self._learning_rate * math.exp(-self._decay_rate * epoch_index)
+		if not 0 <= epoch_index < self._total_epochs:
+			raise ValueError(
+				"Exponential decay epoch index is outside the planned range."
+			)
+		if epoch_index == 0 or self._min_lr == self._learning_rate:
+			learning_rate = self._learning_rate
+		elif epoch_index == self._total_epochs - 1:
+			learning_rate = self._min_lr
+		else:
+			# Compute in log space so extreme finite rate ratios do not underflow.
+			learning_rate = math.exp(
+				math.log(self._learning_rate) - self._decay_rate * epoch_index
+			)
 		for group in self._optimizer.param_groups:
 			group["lr"] = learning_rate
 
@@ -163,16 +188,20 @@ class LoRATrainer:
 			config = replace(config, ab_swap=profile.ab_swap_override)
 		if not warmup_only and not isinstance(config, LoRAModelConfig):
 			raise TypeError("Joint training requires a LoRAModelConfig.")
-		if config.warmup_epochs is None and (not warmup_only or config_key is None):
+		if config.warmup_build_epochs is None and (
+			not warmup_only or config_key is None
+		):
 			raise ModelExecutionError(
 				"Unbounded head training requires a frozen-head validation profile."
 			)
 		if (
 			warmup_only
-			and config.warmup_epochs is not None
-			and config.warmup_epochs <= 0
+			and config.warmup_build_epochs is not None
+			and config.warmup_build_epochs <= 0
 		):
-			raise ModelExecutionError("Standalone warmup requires warmup_epochs > 0.")
+			raise ModelExecutionError(
+				"Standalone warmup requires warmup.build_epochs > 0."
+			)
 		if warmup_only and profile.quantize_training:
 			raise ValueError("Standalone warmup cannot use a quantized profile.")
 		self._config = config
@@ -425,11 +454,11 @@ class LoRATrainer:
 				raise ModelExecutionError(
 					"plateau_patience must be a non-negative integer."
 				)
-		elif self._config.warmup_epochs is None:
+		elif self._config.warmup_build_epochs is None:
 			raise ModelExecutionError(
 				"Unbounded head training requires early_stopping."
 			)
-		warmup_epochs = self._config.warmup_epochs or 0
+		warmup_epochs = self._config.warmup_build_epochs or 0
 		if self._warmup_only != model.warmup_only:
 			raise ModelExecutionError("Model and trainer warmup_only modes must match.")
 		reference = training.reference
@@ -506,9 +535,10 @@ class LoRATrainer:
 			_ExponentialLearningRateSchedule(
 				optimizer,
 				learning_rate=self._config.warmup_learning_rate,
-				decay_base=self._config.warmup_lr_decay_base,
+				min_lr=self._config.warmup_build_min_lr,
+				total_epochs=warmup_epochs,
 			)
-			if early_stopping is None
+			if early_stopping is None and warmup_epochs
 			else None
 		)
 		plateau_lr_schedule = (
@@ -529,7 +559,7 @@ class LoRATrainer:
 			print(
 				f"{status} {self._model_label} {self._head_stage} ({description}): "
 				f"completed_epochs={completed_warmup_epochs}, "
-				f"target_epochs={self._config.warmup_epochs}, "
+				f"target_epochs={self._config.warmup_build_epochs}, "
 				f"remaining_epochs={remaining_warmup_epochs}; "
 				f"source_precision={entry.state['source_precision']}, "
 				f"source_quantization={entry.state['metadata']['training_quantization']}, "
@@ -541,7 +571,7 @@ class LoRATrainer:
 		elif entry is not None:
 			print(
 				f"Rebuilding {self._model_label} {self._head_stage} ({description}): "
-				f"completed_epochs=0, target_epochs={self._config.warmup_epochs}, "
+				f"completed_epochs=0, target_epochs={self._config.warmup_build_epochs}, "
 				f"remaining_epochs={remaining_warmup_epochs}; "
 				f"precision={self._gpu.precision}; {self._warmup_cache.path(entry)}",
 				flush=True,
@@ -883,7 +913,7 @@ class LoRATrainer:
 		self, context: WarmupCacheContext | None, *, seed: int
 	) -> WarmupCacheEntry | None:
 		"""Leave manually constructed splits and disabled warmup uncached."""
-		if not self._config.warmup_epochs or context is None:
+		if not self._config.warmup_build_epochs or context is None:
 			return None
 		if self._lora_warmup_cache is not None and not self._refresh_cache:
 			entry = self._lora_warmup_cache.prepare(context, seed=seed)
