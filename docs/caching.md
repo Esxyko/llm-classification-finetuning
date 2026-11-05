@@ -258,27 +258,30 @@ saves its independent `head[_TAG].pt` artifact even when the head is fully cache
 
 Frozen SR2, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. All use the
-`swap_equivariant_harmonic_discrepancy_v3` head architecture and warmup schema v5.
-This head packs L/M into one projection for the wins and separately projects
-X/Y with the FP32 parameter difference L-M and a shared zero-initialized B3.
-Undropped X/Y feed harmonic fusion and the discrepancy branch. The correction q
-is computed once for outputs `[r_A + q, r_B + q, s - q + b]`, with one scalar
+`swap_equivariant_penalized_harmonic_v4` head architecture and warmup schema v5.
+This head packs L/M into one projection for subtractive cross-projected wins and
+separately projects X/Y with the FP32 parameter difference L-M and a shared
+zero-initialized B3. Undropped X/Y feed the elementwise FP32 tie feature
+`H = 4 * (X * Y - (X - Y)^2) / (abs(X) + abs(Y) + 1e-8)`.
+Wins share one dropout mask; H has an independent mask. The q branch and its
+projection/readout are removed. Outputs are `[r_A, r_B, s + b]`, with one scalar
 output bias. The architecture marker selects new cache keys within the existing
-namespace; harmonic/discrepancy v1/v2 and earlier tie-from-wins v1/v2 entries
+namespace; harmonic/discrepancy v1/v2/v3 and earlier tie-from-wins v1/v2 entries
 remain on disk and are not reused or migrated. Exact head/optimizer tensor names
-and shapes additionally reject earlier structures without the fused L/M layout
-and B3, even if their metadata is relabeled.
+and shapes additionally reject earlier structures, including the removed
+discrepancy parameters, even if their metadata is relabeled.
 Warmup is regenerated for the new architecture.
 
 SR2 also includes `head_initialization_version` in its warmup metadata, currently
-`scaled_uniform_zero_discrepancy_v1`. The full metadata is hashed with SHA-256
+`scaled_uniform_v2`. The full metadata is hashed with SHA-256
 to form the cache key and must match the selected source exactly when loading. Earlier
-Xavier-initialized SR2 entries lack this field and therefore select different
-keys; they remain on disk without reuse or migration. Initialization versioning
+Xavier-initialized SR2 entries lack this field; harmonic/discrepancy heads use
+`scaled_uniform_zero_discrepancy_v1`. Both select different keys and remain on
+disk without reuse or migration. Initialization versioning
 does not change the head architecture, warmup schema v5, production-checkpoint
-compatibility, or other heads' cache identities. V3 retains this initialization
-version, including zero B3; its architecture marker independently isolates the
-new head. Compatible v3 entries remain shared by standalone and inline SR2 warmup
+compatibility, or other heads' cache identities. V4 retains the previous
+L/M and win/tie readout initialization scales, with zero B1/B3/b and no q branch.
+Compatible v4 entries remain shared by frozen SR2 and standalone/inline SR2 warmup
 when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 

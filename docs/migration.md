@@ -101,7 +101,7 @@ the same weights change. V2 selects new warmup keys and rejects v1 production
 checkpoints through the architecture marker. Rebuild for v2; historical v1
 artifacts are preserved without automatic weight conversion.
 
-The current marker is `swap_equivariant_harmonic_discrepancy_v3`. L/M now occupy
+The subsequent marker was `swap_equivariant_harmonic_discrepancy_v3`. L/M occupy
 contiguous blocks of one bias-free input projection, while X/Y use a separate
 projection of the FP32 parameter difference L-M plus the new shared B3. X/Y have
 no GELU; their undropped values feed harmonic fusion and the discrepancy branch.
@@ -115,6 +115,24 @@ rebuilding; v3 selects new warmup keys and its exact tensor checks reject the
 old layout even with relabeled metadata. Historical artifacts remain intact,
 and token, adapter-free feature, and batch-plan caches retain their existing
 compatibility rules.
+
+The current marker is `swap_equivariant_penalized_harmonic_v4`. Win branches now
+subtract the other input's M projection: `GELU(AL - BM + B1)` and
+`GELU(BL - AM + B1)`. X/Y still use L-M plus shared B3, without GELU. The tie
+feature changes to the elementwise FP32 formula
+`H = 4 * (X * Y - (X - Y)^2) / (abs(X) + abs(Y) + 1e-8)`.
+The q branch, discrepancy projection (N/B2), and discrepancy readout (T) are
+removed. Outputs are `[r_A, r_B, s + b]`; wins share one dropout mask and H uses
+an independent mask. The head now uses four linear calls and has
+`2Dh + 4h + 1` parameters. Frozen SR2, LoRA SR2, standalone warmup, and
+`submit.ipynb` all use this head. Initialization is versioned as
+`scaled_uniform_v2`, retaining the L/M/R/S scales and zero B1/B3/b.
+Adapter/head schema v2, frozen-head schema v1, warmup schema v5, configuration
+fields, and artifact namespaces remain unchanged. Earlier checkpoints require
+rebuilding; architecture/initialization identities select new warmup keys without
+editing historical artifacts. Exact head/optimizer tensor checks also reject the
+removed discrepancy parameters. Token, adapter-free feature, and batch-plan
+caches retain their existing compatibility rules.
 
 `model warmup --build` now uses the SR2 profile and writes
 `SR2_Qwen3_4B_lora_warmup/`. Current presets select

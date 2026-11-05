@@ -41,7 +41,10 @@ Set `MODEL_DIR` in the configuration block **below the startup diagnostics in th
 code cell**. If that path does not exist, `/kaggle/input` is searched for an `adapter.pt`
 beside a `merged/config.json`. The notebook rejects a merged
 backbone whose `export_metadata.json` checksum does not match `adapter.pt`, a head that is
-not `swap_equivariant_harmonic_discrepancy_v3`, and mismatched hidden sizes or base revisions.
+not `swap_equivariant_penalized_harmonic_v4`, and mismatched hidden sizes or base revisions.
+The v4 head uses subtractive cross-projected wins and the FP32 penalized harmonic
+tie formula from the [shared head definition](lora.md#swap-equivariant-head).
+Earlier checkpoints require rebuilding before use with this notebook.
 
 ## Run
 
@@ -125,7 +128,7 @@ When project dependencies change, refresh `RuntimeDiagnostics.LOCKED_VERSIONS` f
 | Backbone | Merged Qwen3 safetensors shards streamed directly to `cuda:0` (embeddings + first half of layers) and `cuda:1` (second half + norm) in FP16 without materializing the 8 GB model in host RAM or installing accelerate hooks |
 | Pipelining | Up to `pipeline_depth` batches are enqueued before the oldest is synchronised, so GPU0 works on batch k+1 while GPU1 finishes batch k. Inputs and pooled outputs use pinned memory |
 | Attention | `use_gqa_in_sdpa` is patched (default `use_gqa="off"`: K/V heads are repeated), only Flash / memory-efficient / cuDNN kernels are allowed and math fallback is disabled. `"auto"` probes native `enable_gqa` and adopts it only if it works and is faster |
-| Pooling and head | Last real token pooled **before** `Qwen3RMSNorm` (avoiding a full-sequence FP32 norm buffer), FP32 features, SR2 v3 head in FP32, temperature scaling followed by softmax in the competition column order |
+| Pooling and head | Last real token pooled **before** `Qwen3RMSNorm` (avoiding a full-sequence FP32 norm buffer), FP32 features, SR2 v4 head in FP32, temperature scaling followed by softmax in the competition column order |
 | Output | `submission.csv` validated against `sample_submission.csv` (columns, ids, order, finite, rows sum to 1) |
 
 All patches are restored when the run ends.
@@ -161,6 +164,6 @@ startup diagnostics in the first code cell.
   main numerical risk of T4 inference.
 - **Very long inputs:** nothing is truncated; Qwen3's trained position limit is 40,960
   tokens, and the longest training branch is 13,866.
-- **Duplicated code:** the notebook copies the SR2 v3 head and the conversation serializer.
+- **Duplicated code:** the notebook copies the SR2 v4 head and the conversation serializer.
   When either changes in the package, change the notebook too.
 

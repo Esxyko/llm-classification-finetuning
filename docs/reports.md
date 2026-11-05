@@ -119,7 +119,8 @@ Partial hits include only the epochs actually executed, with continuous numbers.
 
 | Profile | `head_architecture` | `embedding_combination` |
 | --- | --- | --- |
-| SR2 | `swap_equivariant_harmonic_discrepancy_v3` | `cross_projected_linear_diff_harmonic_abs_diff` |
+| SR2 | `swap_equivariant_penalized_harmonic_v4` | `cross_projected_linear_diff_penalized_harmonic` |
+| Historical SR2 with linear-difference harmonic/discrepancy features | `swap_equivariant_harmonic_discrepancy_v3` | `cross_projected_linear_diff_harmonic_abs_diff` |
 | Historical SR2 with harmonic/discrepancy features from wins | `swap_equivariant_harmonic_discrepancy_v2` | `cross_projected_harmonic_abs_diff` |
 | Historical SR2 with doubled relative correction | `swap_equivariant_harmonic_discrepancy_v1` | `cross_projected_harmonic_abs_diff` |
 | Historical SR2 with readout biases | `swap_equivariant_tie_from_wins_v2` | `sum_signed_diff_abs_diff` |

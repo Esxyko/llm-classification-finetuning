@@ -13,9 +13,9 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_harmonic_discrepancy_v3"
+SR2 = "swap_equivariant_penalized_harmonic_v4"
 # Bump this version whenever the SR2 initialization policy changes.
-SR2_INITIALIZATION_VERSION = "scaled_uniform_zero_discrepancy_v1"
+SR2_INITIALIZATION_VERSION = "scaled_uniform_v2"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -161,11 +161,11 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 		return logits.float() + self.readout_bias[[0, 0, 1]]
 
 
-class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
-	"""Combine cross-projected wins with independently projected tie features."""
+class SwapEquivariantPenalizedHarmonicClassificationHead(nn.Module):
+	"""Combine subtractive cross-projected wins with penalized harmonic ties."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_linear_diff_harmonic_abs_diff"
+	EMBEDDING_COMBINATION = "cross_projected_linear_diff_penalized_harmonic"
 	EPSILON = 1e-8
 
 	def __init__(
@@ -188,11 +188,9 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 		self.tie_projection_bias = nn.Parameter(
 			torch.zeros(hidden_size, dtype=torch.float32)
 		)
-		# N carries B2; R, S, and T have no output biases.
-		self.discrepancy_projection = nn.Linear(hidden_size, hidden_size, bias=True)
+		# R and S have no output biases; only the tie has a scalar output bias.
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
 		self.tie_readout = nn.Linear(hidden_size, 1, bias=False)
-		self.discrepancy_readout = nn.Linear(hidden_size, 1, bias=False)
 		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
 		self.activation = nn.GELU()
 		self.dropout = nn.Dropout(dropout)
@@ -201,17 +199,12 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 				self.input_projection,
 				math.sqrt(3.0 / (2 * self.input_projection.in_features)),
 			),
-			(
-				self.discrepancy_projection,
-				math.sqrt(3.0 / self.discrepancy_projection.in_features),
-			),
 			(self.win_readout, 0.1 * math.sqrt(3.0 / self.win_readout.in_features)),
 			(self.tie_readout, 0.1 * math.sqrt(3.0 / self.tie_readout.in_features)),
 		):
 			nn.init.uniform_(layer.weight, -bound, bound)
 			if layer.bias is not None:
 				nn.init.zeros_(layer.bias)
-		nn.init.zeros_(self.discrepancy_readout.weight)
 		nn.init.zeros_(self.tie_bias)
 
 	@classmethod
@@ -220,7 +213,7 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
-		"""Return FP32 logits with one discrepancy correction shared by all outputs."""
+		"""Return FP32 A-win, B-win, and tie logits with shared win dropout."""
 		if h_a.shape != h_b.shape or h_a.ndim != 2:
 			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
 		with torch.autocast(
@@ -235,7 +228,7 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 			)
 			wins = self.activation(
 				self_features
-				+ cross_features.flip(1)
+				- cross_features.flip(1)
 				+ self.win_projection_bias.to(dtype=self_features.dtype)
 			)
 			with torch.autocast(device_type=h_a.device.type, enabled=False):
@@ -246,24 +239,19 @@ class SwapEquivariantHarmonicDiscrepancyClassificationHead(nn.Module):
 			tie_features = F.linear(
 				branches, difference_weight, self.tie_projection_bias
 			)
-			x, y = tie_features.unbind(dim=1)
 			with torch.autocast(device_type=h_a.device.type, enabled=False):
 				x_fp32, y_fp32 = tie_features.float().unbind(dim=1)
 				denominator = x_fp32.abs() + y_fp32.abs() + self.EPSILON
-				fused = 2 * x_fp32 * y_fp32 / denominator
-			discrepancy = self.activation(self.discrepancy_projection((x - y).abs()))
+				fused = 4 * (x_fp32 * y_fp32 - (x_fp32 - y_fp32).square()) / denominator
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
-			# Separate dropout calls draw independent fusion and discrepancy masks.
+			# The tie mask is independent of the shared win mask and stays FP32.
 			fused = self.dropout(fused)
-			discrepancy = self.dropout(discrepancy)
 			win_logits = self.win_readout(wins).squeeze(-1).float()
-			s = self.tie_readout(fused).float()
-			q = self.discrepancy_readout(discrepancy).float()
-		win_logits = win_logits + q
-		tie = s - q + self.tie_bias
+			tie_logits = self.tie_readout(fused).float()
+		tie = tie_logits + self.tie_bias
 		return torch.cat((win_logits, tie), dim=-1)
 
 
@@ -298,7 +286,7 @@ def create_classification_head(
 			compute_dtype=compute_dtype,
 		)
 	if head_architecture == SR2:
-		return SwapEquivariantHarmonicDiscrepancyClassificationHead(
+		return SwapEquivariantPenalizedHarmonicClassificationHead(
 			backbone_hidden_size,
 			hidden_size,
 			dropout,

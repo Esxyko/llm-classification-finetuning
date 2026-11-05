@@ -82,7 +82,7 @@ retaining the runtime if copying fails. Their behavior belongs in
 T4 x2, Python 3.13+, offline inference after upload-time dependency setup). It sits
 outside the package and the `model` CLI: it reads the build's
 `adapter.pt` head and `merged/` backbone and writes `submission.csv`. It duplicates the
-SR2 v3 head and the conversation serializer, so changes to
+SR2 v4 head and the conversation serializer, so changes to
 `models/SR2_Qwen3_4B_lora/heads.py` or `models/common/data.py` must be mirrored there.
 Behavior belongs in [Kaggle submission](docs/kaggle-submission.md).
 
@@ -168,7 +168,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, warmup identity context, and explicit frozen-head config/full-data preparation |
-| `heads.py` | Head factory, precision wrapper, fused L/M win projections with linear-difference harmonic/discrepancy tie features, and retained legacy head definitions |
+| `heads.py` | Head factory, precision wrapper, fused subtractive L/M win projections with FP32 linear-difference penalized harmonic tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, config-only head initialization with lazy frozen-backbone loading on feature misses and CPU/CUDA RNG preservation, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup or joint validation, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
 | `trainer.py` | CPU token preparation, epoch-based exponential head/warmup and independent update-based cosine joint learning-rate curves, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
@@ -233,26 +233,26 @@ present in a fresh checkout.
    Encode with the same tokenizer and `add_special_tokens=False`. Predictions
    use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/data-preparation.md#conversation-serialization).
-3. **Profile objectives:** SR2 uses fused shared L/M cross projections for wins
+3. **Profile objectives:** SR2 uses fused shared L/M subtractive cross projections for wins
    and separately projects X/Y with L-M plus shared B3, on original rows only.
    Compute L-M from FP32 parameter blocks before projection; X/Y have no GELU.
-   Derive harmonic fusion and discrepancy features from undropped X/Y; share one
-   win mask and use independent fusion and discrepancy masks. Compute q once and
-   reuse it for all three outputs. Architecture
-   `swap_equivariant_harmonic_discrepancy_v3` uses zero-mean uniform weights with
-   standard deviations `1/sqrt(2D)` for L/M weight blocks, `1/sqrt(h)` for
-   the discrepancy projection, and `0.1/sqrt(h)` for win/tie readouts, derived
-   from actual layer dimensions. The discrepancy readout, B1/B2/B3 biases, and
-   sole FP32 scalar tie bias start at zero. Harmonic fusion (epsilon `1e-8`)
-   and final logit arithmetic stay FP32.
+   From undropped X/Y compute the elementwise FP32 feature
+   `H = 4 * (X * Y - (X - Y)^2) / (abs(X) + abs(Y) + 1e-8)`.
+   Share one win dropout mask and use an independent H mask. There is no q branch
+   or discrepancy projection/readout. Architecture
+   `swap_equivariant_penalized_harmonic_v4` uses zero-mean uniform weights with
+   standard deviations `1/sqrt(2D)` for L/M weight blocks and `0.1/sqrt(h)` for
+   win/tie readouts, derived from actual layer dimensions. B1/B3 and the sole
+   FP32 scalar tie bias start at zero. The entire H formula and final logit
+   arithmetic stay FP32.
    Batch A/B inputs once, use one packed L/M projection, one L-M projection,
-   and one shared win readout, for six linear calls in total. Outputs are
-   `[r_A + q, r_B + q, s - q + b]`, with FP32 readout additions/subtractions.
-   The v3 marker and exact fused parameter structure isolate warmup caches and
-   reject harmonic/discrepancy v1/v2 and earlier tie-from-wins checkpoints.
+   one shared win readout, and one tie readout, for four linear calls in total.
+   Outputs are `[r_A, r_B, s + b]`, with the tie bias added in FP32.
+   The v4 marker and exact parameter structure isolate warmup caches and
+   reject harmonic/discrepancy v1/v2/v3 and earlier tie-from-wins checkpoints.
    SR2 warmup additionally versions initialization as
-   `scaled_uniform_zero_discrepancy_v1`, isolating earlier Xavier-initialized
-   states without changing production-checkpoint compatibility.
+   `scaled_uniform_v2`, isolating earlier initialization states without changing
+   storage schemas.
    Frozen SR2 uses this same head and initialization, freezing the backbone and
    training only the head with the shared warmup epoch-based exponential-decay
    algorithm and its independent initial rate/decay base, without adapters.
