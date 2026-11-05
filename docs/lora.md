@@ -479,7 +479,11 @@ See [shared progress behavior](models.md#training-progress) and
 `TrainingProgress` to `LoRATrainer.fit()`; it is reset at each stage boundary.
 Otherwise an initially inactive counter is created for that call. The shared
 counter supports `start_stage(stage=..., total_steps=..., milestone_percent=...)`
-and `finish_stage(description)`. Existing construction with `total_steps` retains
+and `finish_stage(description)`. The optional `update_interval_seconds` argument
+on `start_stage` selects time-based updates with millisecond precision instead of
+percentage milestones. `finish_stage(description, emit=False)` verifies all work
+completed without printing, allowing frozen SR2 validation to emit one combined
+epoch summary. Existing construction with `total_steps` retains
 the legacy 5% logging interval and automatic completion.
 
 ## Memory tuning

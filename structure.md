@@ -101,7 +101,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `cli_config.py` | Shared `--config` argument |
 | `cli_output.py` | Shared download/split summaries |
 | `errors.py` | Expected domain-error hierarchy |
-| `timing.py` | Unbounded `HH:MM:SS` duration formatting |
+| `timing.py` | Unbounded `HH:MM:SS` duration formatting with optional millisecond precision for fast validation logs |
 | `pipeline.py` | `PrepareDataPipeline`: download/preprocessing orchestration and optional download-progress callback |
 | `data/downloader.py` | Missing Kaggle training CSV download and single-file ZIP normalization |
 | `preprocess/splits.py` | Labels/prompt hashes, grouped class quotas, balance orchestration, integrity summaries, and processed publication |
@@ -155,7 +155,7 @@ with the current SR2 head and warmup feature identities, rather than legacy MLP 
 | `loss.py` | Label smoothing on logits or averaged log probabilities; training reductions |
 | `trainer.py` | Legacy holdout/full-data frozen-head training, shared epoch/final cached-head evaluation summaries, and optional training/validation memory intervals |
 | `checkpoint.py` | Atomic legacy frozen head persistence and compatibility metadata |
-| `progress.py` | CPU work counters, independent stage timers/completion and configurable progress milestones, retaining legacy weighted counters |
+| `progress.py` | CPU work counters, independent stage timers/completion, configurable percentage or timed updates, and optional silent completion for combined epoch summaries, retaining legacy weighted counters |
 | `publishers.py` | Staged validation publication, effective YAML snapshots, and successful-run timing/peak updates |
 | `pipeline.py` | Frozen validation/build orchestration |
 
@@ -345,8 +345,10 @@ present in a fresh checkout.
     Publish matching current-only YAML sections; never rewrite historical snapshots. Successful
     complete-run timing/global peaks and cross-epoch training/validation peaks are
     appended atomically for holdout runs and include epochs after the selected best
-    epoch. Frozen SR2 validation uses per-epoch progress without a fixed total epoch
-    count; its configuration snapshot records effective patience. Builds and standalone warmup report the
+    epoch. Frozen SR2 validation uses one millisecond-precision summary per epoch,
+    with intermediate progress at five-second intervals for slow epochs and no
+    fixed total epoch count; its configuration snapshot records effective patience.
+    Builds and standalone warmup report the
     same peak scopes in the terminal; monitoring starts after full-data build CPU
     preparation and write preflights. Progress remains CPU-only
     and covers executed weighted work, not extraction/publication. See

@@ -1,0 +1,1451 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261105-174944-691734.log
+Running holdout validation for 1.yaml: SR2-Qwen3-4B
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 655,873 trainable parameters.
+SR2-Qwen3-4B warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 60.4% work: 122.0/202.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 80.2% work: 162.0/202.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 100.0% work: 202.0/202.0 time: 00:00:01/00:00:01
+Validation run head training epoch 1: train_loss=0.993494 validation_loss=0.989609 best_validation_loss=0.989609 best_epoch=1 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 2: train_loss=0.951172 validation_loss=0.949218 best_validation_loss=0.949218 best_epoch=2 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 3: train_loss=0.937837 validation_loss=0.937235 best_validation_loss=0.937235 best_epoch=3 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 4: train_loss=0.950872 validation_loss=0.951595 best_validation_loss=0.937235 best_epoch=3 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 5: train_loss=0.928098 validation_loss=0.931203 best_validation_loss=0.931203 best_epoch=5 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 6: train_loss=0.922773 validation_loss=0.925433 best_validation_loss=0.925433 best_epoch=6 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 7: train_loss=0.949684 validation_loss=0.952940 best_validation_loss=0.925433 best_epoch=6 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 8: train_loss=0.922046 validation_loss=0.927647 best_validation_loss=0.925433 best_epoch=6 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 9: train_loss=0.918154 validation_loss=0.925532 best_validation_loss=0.925433 best_epoch=6 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 10: train_loss=0.919999 validation_loss=0.926302 best_validation_loss=0.925433 best_epoch=6 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 11: train_loss=0.918638 validation_loss=0.923449 best_validation_loss=0.923449 best_epoch=11 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 12: train_loss=0.915839 validation_loss=0.923779 best_validation_loss=0.923449 best_epoch=11 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 13: train_loss=0.908463 validation_loss=0.918295 best_validation_loss=0.918295 best_epoch=13 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 14: train_loss=0.919007 validation_loss=0.929614 best_validation_loss=0.918295 best_epoch=13 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 15: train_loss=0.936155 validation_loss=0.948735 best_validation_loss=0.918295 best_epoch=13 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 16: train_loss=0.916697 validation_loss=0.928324 best_validation_loss=0.918295 best_epoch=13 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 17: train_loss=0.903896 validation_loss=0.915913 best_validation_loss=0.915913 best_epoch=17 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 18: train_loss=0.922217 validation_loss=0.932658 best_validation_loss=0.915913 best_epoch=17 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 19: train_loss=0.898800 validation_loss=0.914322 best_validation_loss=0.914322 best_epoch=19 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 20: train_loss=0.907067 validation_loss=0.921573 best_validation_loss=0.914322 best_epoch=19 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 21: train_loss=0.938931 validation_loss=0.955733 best_validation_loss=0.914322 best_epoch=19 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 22: train_loss=0.948182 validation_loss=0.965869 best_validation_loss=0.914322 best_epoch=19 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 23:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 23:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 23: train_loss=0.896870 validation_loss=0.915391 best_validation_loss=0.914322 best_epoch=19 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 24:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 24:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 24: train_loss=0.896103 validation_loss=0.914113 best_validation_loss=0.914113 best_epoch=24 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 25:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 25:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 25: train_loss=0.909646 validation_loss=0.927704 best_validation_loss=0.914113 best_epoch=24 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 26:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 26:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 26: train_loss=0.893172 validation_loss=0.912446 best_validation_loss=0.912446 best_epoch=26 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 27:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 27:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 27: train_loss=0.897386 validation_loss=0.918220 best_validation_loss=0.912446 best_epoch=26 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 28:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 28:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 28:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 28:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 28:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 28: train_loss=0.892258 validation_loss=0.911322 best_validation_loss=0.911322 best_epoch=28 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 29:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 29:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 29:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 29:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 29:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 29: train_loss=0.893198 validation_loss=0.916249 best_validation_loss=0.911322 best_epoch=28 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 30:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 30:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 30:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 30:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 30:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 30: train_loss=0.892690 validation_loss=0.917302 best_validation_loss=0.911322 best_epoch=28 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 31:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 31:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 31:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 31:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 31:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 31: train_loss=0.885215 validation_loss=0.910971 best_validation_loss=0.910971 best_epoch=31 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 32:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 32:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 32:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 32:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 32:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 32: train_loss=0.887856 validation_loss=0.913450 best_validation_loss=0.910971 best_epoch=31 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 33:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 33:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 33:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 33:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 33:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 33: train_loss=0.903700 validation_loss=0.931468 best_validation_loss=0.910971 best_epoch=31 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 34:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 34:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 34:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 34:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 34:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 34: train_loss=0.882428 validation_loss=0.911528 best_validation_loss=0.910971 best_epoch=31 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 35:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 35:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 35:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 35:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 35:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 35: train_loss=0.880875 validation_loss=0.912863 best_validation_loss=0.910971 best_epoch=31 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 36:
+progress: 20.3% work: 41.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 36:
+progress: 40.1% work: 81.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 36:
+progress: 60.4% work: 122.0/202.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 36:
+progress: 80.2% work: 162.0/202.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 36:
+progress: 100.0% work: 202.0/202.0 time: 00:00:00/00:00:00
+Validation run head training epoch 36: train_loss=0.880433 validation_loss=0.912834 best_validation_loss=0.910971 best_epoch=31 unimproved_epochs=5/5
+Early stopping SR2-Qwen3-4B (Validation run): stopped_epoch=36; best_epoch=31; best_validation_loss=0.910971
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175100
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.09 GiB reserved=0.10 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, validation): allocated=0.08 GiB reserved=0.10 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.09 GiB reserved=0.10 GiB
+Model total time (SR2-Qwen3-4B): 00:01:05
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.910971
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175100
+Running holdout validation for 2.yaml: SR2-Qwen3-4B
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 655,873 trainable parameters.
+SR2-Qwen3-4B warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 60.4% work: 61.0/101.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 80.2% work: 81.0/101.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 100.0% work: 101.0/101.0 time: 00:00:01/00:00:01
+Validation run head training epoch 1: train_loss=1.094864 validation_loss=1.090425 best_validation_loss=1.090425 best_epoch=1 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 2: train_loss=0.983410 validation_loss=0.979991 best_validation_loss=0.979991 best_epoch=2 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 100.0% work: 101.0/101.0 time: 00:00:01/00:00:01
+Validation run head training epoch 3: train_loss=0.982555 validation_loss=0.981893 best_validation_loss=0.979991 best_epoch=2 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 4: train_loss=0.935339 validation_loss=0.934821 best_validation_loss=0.934821 best_epoch=4 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 5: train_loss=0.941787 validation_loss=0.942956 best_validation_loss=0.934821 best_epoch=4 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 6: train_loss=0.931678 validation_loss=0.932964 best_validation_loss=0.932964 best_epoch=6 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 7: train_loss=0.929712 validation_loss=0.931400 best_validation_loss=0.931400 best_epoch=7 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 8: train_loss=0.926421 validation_loss=0.929227 best_validation_loss=0.929227 best_epoch=8 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 9: train_loss=0.927744 validation_loss=0.932645 best_validation_loss=0.929227 best_epoch=8 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 10: train_loss=0.919042 validation_loss=0.922658 best_validation_loss=0.922658 best_epoch=10 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 60.4% work: 61.0/101.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 80.2% work: 81.0/101.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 100.0% work: 101.0/101.0 time: 00:00:01/00:00:01
+Validation run head training epoch 11: train_loss=0.929284 validation_loss=0.935698 best_validation_loss=0.922658 best_epoch=10 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 12: train_loss=0.920629 validation_loss=0.926067 best_validation_loss=0.922658 best_epoch=10 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 13: train_loss=0.923402 validation_loss=0.930135 best_validation_loss=0.922658 best_epoch=10 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 14: train_loss=0.916154 validation_loss=0.922121 best_validation_loss=0.922121 best_epoch=14 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 15: train_loss=0.911057 validation_loss=0.919004 best_validation_loss=0.919004 best_epoch=15 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 16: train_loss=0.935213 validation_loss=0.944456 best_validation_loss=0.919004 best_epoch=15 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 17: train_loss=0.909643 validation_loss=0.918110 best_validation_loss=0.918110 best_epoch=17 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 80.2% work: 81.0/101.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 100.0% work: 101.0/101.0 time: 00:00:01/00:00:01
+Validation run head training epoch 18: train_loss=0.909488 validation_loss=0.918407 best_validation_loss=0.918110 best_epoch=17 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 19: train_loss=0.914602 validation_loss=0.925306 best_validation_loss=0.918110 best_epoch=17 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 20: train_loss=0.907636 validation_loss=0.919699 best_validation_loss=0.918110 best_epoch=17 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 21: train_loss=0.905331 validation_loss=0.918666 best_validation_loss=0.918110 best_epoch=17 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 20.8% work: 21.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 40.6% work: 41.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 60.4% work: 61.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 80.2% work: 81.0/101.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 100.0% work: 101.0/101.0 time: 00:00:00/00:00:00
+Validation run head training epoch 22: train_loss=0.904911 validation_loss=0.918217 best_validation_loss=0.918110 best_epoch=17 unimproved_epochs=5/5
+Early stopping SR2-Qwen3-4B (Validation run): stopped_epoch=22; best_epoch=17; best_validation_loss=0.918110
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175133
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.10 GiB reserved=0.11 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, validation): allocated=0.10 GiB reserved=0.11 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.10 GiB reserved=0.11 GiB
+Model total time (SR2-Qwen3-4B): 00:00:28
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.918110
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175133
+Running holdout validation for 3.yaml: SR2-Qwen3-4B
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 655,873 trainable parameters.
+SR2-Qwen3-4B warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 60.8% work: 31.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 1: train_loss=1.009371 validation_loss=1.007581 best_validation_loss=1.007581 best_epoch=1 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 2: train_loss=0.992394 validation_loss=0.987660 best_validation_loss=0.987660 best_epoch=2 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 3: train_loss=0.970468 validation_loss=0.965469 best_validation_loss=0.965469 best_epoch=3 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 4: train_loss=0.953107 validation_loss=0.950485 best_validation_loss=0.950485 best_epoch=4 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 5: train_loss=0.945769 validation_loss=0.944588 best_validation_loss=0.944588 best_epoch=5 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 6: train_loss=0.990622 validation_loss=0.988995 best_validation_loss=0.944588 best_epoch=5 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 7: train_loss=0.936433 validation_loss=0.936509 best_validation_loss=0.936509 best_epoch=7 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 8: train_loss=0.973052 validation_loss=0.976078 best_validation_loss=0.936509 best_epoch=7 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 9: train_loss=0.927104 validation_loss=0.929880 best_validation_loss=0.929880 best_epoch=9 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 10: train_loss=0.930125 validation_loss=0.932755 best_validation_loss=0.929880 best_epoch=9 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 11: train_loss=0.932903 validation_loss=0.936441 best_validation_loss=0.929880 best_epoch=9 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 12: train_loss=0.956118 validation_loss=0.958757 best_validation_loss=0.929880 best_epoch=9 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 13: train_loss=0.923601 validation_loss=0.927441 best_validation_loss=0.927441 best_epoch=13 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 14: train_loss=0.924308 validation_loss=0.929370 best_validation_loss=0.927441 best_epoch=13 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 15: train_loss=0.929749 validation_loss=0.935434 best_validation_loss=0.927441 best_epoch=13 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 16: train_loss=0.937843 validation_loss=0.944006 best_validation_loss=0.927441 best_epoch=13 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 17: train_loss=0.921167 validation_loss=0.926122 best_validation_loss=0.926122 best_epoch=17 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 18: train_loss=0.931499 validation_loss=0.937358 best_validation_loss=0.926122 best_epoch=17 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 19: train_loss=0.928357 validation_loss=0.936396 best_validation_loss=0.926122 best_epoch=17 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 20: train_loss=0.935582 validation_loss=0.942523 best_validation_loss=0.926122 best_epoch=17 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 21: train_loss=0.936949 validation_loss=0.943568 best_validation_loss=0.926122 best_epoch=17 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 22: train_loss=0.909431 validation_loss=0.918096 best_validation_loss=0.918096 best_epoch=22 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 23:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 23:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 23: train_loss=0.914389 validation_loss=0.922162 best_validation_loss=0.918096 best_epoch=22 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 24:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 24:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 24: train_loss=0.912777 validation_loss=0.923165 best_validation_loss=0.918096 best_epoch=22 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 25:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 25:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 25: train_loss=0.906624 validation_loss=0.918031 best_validation_loss=0.918031 best_epoch=25 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 26:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 26:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 26: train_loss=0.907701 validation_loss=0.917057 best_validation_loss=0.917057 best_epoch=26 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 27:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 27:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 27: train_loss=0.905635 validation_loss=0.917135 best_validation_loss=0.917057 best_epoch=26 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 28:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 28:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 28:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 28:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 28:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 28: train_loss=0.902481 validation_loss=0.915172 best_validation_loss=0.915172 best_epoch=28 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 29:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 29:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 29:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 29:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 29:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 29: train_loss=0.950582 validation_loss=0.964723 best_validation_loss=0.915172 best_epoch=28 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 30:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 30:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 30:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 30:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 30:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 30: train_loss=0.905202 validation_loss=0.917202 best_validation_loss=0.915172 best_epoch=28 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 31:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 31:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 31:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 31:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 31:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 31: train_loss=0.901685 validation_loss=0.916735 best_validation_loss=0.915172 best_epoch=28 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 32:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 32:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 32:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 32:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 32:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 32: train_loss=0.898020 validation_loss=0.914460 best_validation_loss=0.914460 best_epoch=32 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 33:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 33:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 33:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 33:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 33:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 33: train_loss=0.904370 validation_loss=0.919803 best_validation_loss=0.914460 best_epoch=32 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 34:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 34:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 34:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 34:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 34:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 34: train_loss=0.898950 validation_loss=0.915146 best_validation_loss=0.914460 best_epoch=32 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 35:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 35:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 35:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 35:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 35:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 35: train_loss=0.899281 validation_loss=0.916285 best_validation_loss=0.914460 best_epoch=32 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 36:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 36:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 36:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 36:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 36:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 36: train_loss=0.919418 validation_loss=0.937574 best_validation_loss=0.914460 best_epoch=32 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 37:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 37:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 37:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 37:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 37:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 37: train_loss=0.895068 validation_loss=0.912672 best_validation_loss=0.912672 best_epoch=37 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 38:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 38:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 38:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 38:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 38:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 38: train_loss=0.894121 validation_loss=0.912817 best_validation_loss=0.912672 best_epoch=37 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 39:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 39:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 39:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 39:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 39:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 39: train_loss=0.893899 validation_loss=0.913297 best_validation_loss=0.912672 best_epoch=37 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 40:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 40:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 40:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 40:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 40:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 40: train_loss=0.897320 validation_loss=0.917955 best_validation_loss=0.912672 best_epoch=37 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 41:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 41:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 41:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 41:
+progress: 80.4% work: 41.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 41:
+progress: 100.0% work: 51.0/51.0 time: 00:00:00/00:00:00
+Validation run head training epoch 41: train_loss=0.892295 validation_loss=0.912711 best_validation_loss=0.912672 best_epoch=37 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 42:
+progress: 21.6% work: 11.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 42:
+progress: 41.2% work: 21.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 42:
+progress: 60.8% work: 31.0/51.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 42:
+progress: 80.4% work: 41.0/51.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 42:
+progress: 100.0% work: 51.0/51.0 time: 00:00:01/00:00:01
+Validation run head training epoch 42: train_loss=0.904790 validation_loss=0.926657 best_validation_loss=0.912672 best_epoch=37 unimproved_epochs=5/5
+Early stopping SR2-Qwen3-4B (Validation run): stopped_epoch=42; best_epoch=37; best_validation_loss=0.912672
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175213
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.12 GiB reserved=0.15 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, validation): allocated=0.12 GiB reserved=0.15 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.12 GiB reserved=0.15 GiB
+Model total time (SR2-Qwen3-4B): 00:00:35
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.912672
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175213
+Running holdout validation for 4.yaml: SR2-Qwen3-4B
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 655,873 trainable parameters.
+SR2-Qwen3-4B warmup feature cache: reused=113,936, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:02
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 61.5% work: 16.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 1:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 1:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 1: train_loss=1.656887 validation_loss=1.653267 best_validation_loss=1.653267 best_epoch=1 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 2:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 2:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 2: train_loss=1.004224 validation_loss=1.000940 best_validation_loss=1.000940 best_epoch=2 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 3:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 3:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 3: train_loss=0.994570 validation_loss=0.991513 best_validation_loss=0.991513 best_epoch=3 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 4:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 4:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 4: train_loss=1.220939 validation_loss=1.213334 best_validation_loss=0.991513 best_epoch=3 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 5:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 5:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 5: train_loss=0.978487 validation_loss=0.974325 best_validation_loss=0.974325 best_epoch=5 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 6:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 6:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 6: train_loss=0.997962 validation_loss=0.994654 best_validation_loss=0.974325 best_epoch=5 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 7:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 7:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 7: train_loss=1.113702 validation_loss=1.107107 best_validation_loss=0.974325 best_epoch=5 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 8:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 8:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 8: train_loss=1.062272 validation_loss=1.061370 best_validation_loss=0.974325 best_epoch=5 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 9:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 9:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 9: train_loss=0.949694 validation_loss=0.947098 best_validation_loss=0.947098 best_epoch=9 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 10:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 10:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 10: train_loss=0.993065 validation_loss=0.990429 best_validation_loss=0.947098 best_epoch=9 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 11:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 11:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 11: train_loss=1.023396 validation_loss=1.020311 best_validation_loss=0.947098 best_epoch=9 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 12:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 12:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 12: train_loss=0.939139 validation_loss=0.937708 best_validation_loss=0.937708 best_epoch=12 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 13:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 13:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 13: train_loss=0.939677 validation_loss=0.940873 best_validation_loss=0.937708 best_epoch=12 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 14:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 14:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 14: train_loss=0.935222 validation_loss=0.935494 best_validation_loss=0.935494 best_epoch=14 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 15:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 15:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 15: train_loss=0.948022 validation_loss=0.949526 best_validation_loss=0.935494 best_epoch=14 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 16:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 16:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 16: train_loss=0.931765 validation_loss=0.934366 best_validation_loss=0.934366 best_epoch=16 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 17:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 17:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 17: train_loss=0.938582 validation_loss=0.941728 best_validation_loss=0.934366 best_epoch=16 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 18:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 18:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 18: train_loss=0.953979 validation_loss=0.956902 best_validation_loss=0.934366 best_epoch=16 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 19:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 19:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 19: train_loss=0.936957 validation_loss=0.939313 best_validation_loss=0.934366 best_epoch=16 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 20:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 20:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 20: train_loss=0.923252 validation_loss=0.926869 best_validation_loss=0.926869 best_epoch=20 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 21:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 21:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 21: train_loss=0.920187 validation_loss=0.924163 best_validation_loss=0.924163 best_epoch=21 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 22:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 22:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 22: train_loss=0.920010 validation_loss=0.923598 best_validation_loss=0.923598 best_epoch=22 unimproved_epochs=0/5
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 23:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 23:
+progress: 80.8% work: 21.0/26.0 time: 00:00:01/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 23:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 23: train_loss=0.921959 validation_loss=0.927214 best_validation_loss=0.923598 best_epoch=22 unimproved_epochs=1/5
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 24:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 24:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 24:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 24: train_loss=0.930845 validation_loss=0.935371 best_validation_loss=0.923598 best_epoch=22 unimproved_epochs=2/5
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 25:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 25:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 25:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 25: train_loss=0.924082 validation_loss=0.930852 best_validation_loss=0.923598 best_epoch=22 unimproved_epochs=3/5
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 26:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 26:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 26:
+progress: 100.0% work: 26.0/26.0 time: 00:00:01/00:00:01
+Validation run head training epoch 26: train_loss=0.929692 validation_loss=0.936326 best_validation_loss=0.923598 best_epoch=22 unimproved_epochs=4/5
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 23.1% work: 6.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 42.3% work: 11.0/26.0 time: 00:00:00/00:00:01
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 27:
+progress: 61.5% work: 16.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training (head training training evaluation) Validation run epoch 27:
+progress: 80.8% work: 21.0/26.0 time: 00:00:00/00:00:00
+SR2_Qwen3_4B validation Head training Validation run epoch 27:
+progress: 100.0% work: 26.0/26.0 time: 00:00:00/00:00:00
+Validation run head training epoch 27: train_loss=0.919799 validation_loss=0.926785 best_validation_loss=0.923598 best_epoch=22 unimproved_epochs=5/5
+Early stopping SR2-Qwen3-4B (Validation run): stopped_epoch=27; best_epoch=22; best_validation_loss=0.923598
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175250
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.18 GiB reserved=0.18 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, validation): allocated=0.17 GiB reserved=0.18 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.18 GiB reserved=0.18 GiB
+Model total time (SR2-Qwen3-4B): 00:00:33
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.923598
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261105-175250
+Completed 4/4 tasks.

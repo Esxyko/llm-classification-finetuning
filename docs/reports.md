@@ -138,6 +138,11 @@ original values. Combination markers are metrics, not additional YAML options.
 Times are elapsed wall-clock durations formatted as `HH:MM:SS`, rounded to whole
 seconds, with unbounded hours. GPU phase timing waits for queued GPU work.
 
+Frozen SR2 early-stopping terminal logs use millisecond precision for each epoch
+and its intermediate progress. Their `optimization_time` and
+`training_evaluation_time` separate the two parts of the metrics' combined
+`training_time`; serialized metrics keep the whole-second format below.
+
 | Field / scope | Includes |
 | --- | --- |
 | Epoch `training_time` | That epoch's training phase, including full-training-set inference at the end of warmup epochs |

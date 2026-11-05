@@ -22,6 +22,7 @@ from transformers import set_seed
 
 from ...config import GPUConfig, LoRAModelConfig, WarmupModelConfig
 from ...errors import ModelExecutionError
+from ...timing import format_duration
 from ..common import (
 	ABSwapAverager,
 	ClassificationLoss,
@@ -619,13 +620,17 @@ class LoRATrainer:
 				)
 			)
 			if early_stopping is not None:
-				progress.start_stage(
-					stage=self._head_stage.capitalize(),
-					total_steps=OptimizerGroupLayout(
+				epoch_steps = (
+					OptimizerGroupLayout(
 						len(reference), self._config.warmup_training_batch_size
 					).update_count
 					+ training_evaluation_steps
-					+ validation_steps,
+					+ validation_steps
+				)
+				progress.start_stage(
+					stage=self._head_stage.capitalize(),
+					total_steps=epoch_steps,
+					update_interval_seconds=5.0,
 				)
 			if head_only:
 				head_lr_schedule.set_epoch(stage_epoch - 1)
@@ -687,7 +692,10 @@ class LoRATrainer:
 					lr_schedule=lr_schedule,
 					progress=progress,
 					description=epoch_description,
+					progress_stage="training" if early_stopping is not None else None,
 				)
+				if early_stopping is not None:
+					optimization_finished = self._timestamp()
 				loss = epoch_losses.training_loss
 				last_step_training_loss = (
 					None if head_only else epoch_losses.last_step_training_loss
@@ -700,7 +708,9 @@ class LoRATrainer:
 						feature_loader=warmup_training,
 						head_only=True,
 						criterion=self._warmup_criterion,
-						stage=f"{self._head_stage} training evaluation",
+						stage="training evaluation"
+						if early_stopping is not None
+						else f"{self._head_stage} training evaluation",
 						progress=progress,
 						description=epoch_description,
 					)
@@ -715,6 +725,7 @@ class LoRATrainer:
 						feature_loader=warmup_validation,
 						extraction_loader=joint_validation_loader,
 						head_only=head_only,
+						stage="validation" if early_stopping is not None else None,
 						progress=progress,
 						description=epoch_description,
 					)
@@ -746,10 +757,13 @@ class LoRATrainer:
 			else:
 				executed_joint_epochs += 1
 			if early_stopping is not None or stage_epoch == stage_epochs:
-				self._timestamp()
-				progress.finish_stage(epoch_description)
+				epoch_finished = self._timestamp()
+				progress.finish_stage(epoch_description, emit=early_stopping is None)
 			message = (
-				f"{description} {stage} epoch {stage_epoch}: train_loss={loss:.6f}"
+				f"{self._model_key} {mode} {stage.capitalize()} {epoch_description}: "
+				f"progress=100.0% work={epoch_steps}/{epoch_steps} "
+				f"time={format_duration(epoch_finished - epoch_started, milliseconds=True)} "
+				f"train_loss={loss:.6f}"
 				if early_stopping is not None
 				else (
 					f"{description} {stage} epoch {stage_epoch}/{stage_epochs} "
@@ -761,10 +775,22 @@ class LoRATrainer:
 			if validation is not None:
 				message += f" validation_loss={validation_loss:.6f}"
 			if early_stopping is not None:
+				optimization_time = format_duration(
+					optimization_finished - training_started, milliseconds=True
+				)
+				training_evaluation_time = format_duration(
+					training_finished - optimization_finished, milliseconds=True
+				)
+				validation_time = format_duration(
+					validation_finished - training_finished, milliseconds=True
+				)
 				message += (
 					f" best_validation_loss={best_validation_loss:.6f}"
 					f" best_epoch={best_epoch}"
 					f" unimproved_epochs={unimproved_epochs}/{early_stopping}"
+					f" optimization_time={optimization_time}"
+					f" training_evaluation_time={training_evaluation_time}"
+					f" validation_time={validation_time}"
 				)
 			print(message, flush=True)
 			if early_stopping is not None and unimproved_epochs >= early_stopping:
@@ -836,6 +862,7 @@ class LoRATrainer:
 		lr_schedule: _CosineLearningRateSchedule | None = None,
 		progress: TrainingProgress | None = None,
 		description: str = "Build",
+		progress_stage: str | None = None,
 	) -> _EpochTrainingLosses:
 		"""Optimize one epoch and report its average and last optimizer-group loss."""
 		criterion = self._warmup_criterion if head_only else self._criterion
@@ -922,7 +949,8 @@ class LoRATrainer:
 					# A consumed group advances progress even if FP16 skips its update.
 					progress.advance(
 						description,
-						stage=self._head_stage if head_only else "joint training",
+						stage=progress_stage
+						or (self._head_stage if head_only else "joint training"),
 					)
 		if (
 			group_processed
