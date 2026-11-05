@@ -432,7 +432,7 @@ def _load_warmup_fields(
 	warmup_learning_rate = _require_learning_rate(
 		section.get("warmup_learning_rate"), field("warmup_learning_rate")
 	)
-	warmup_build_min_lr = _require_float(
+	warmup_build_min_lr = _require_learning_rate(
 		section.get("warmup_build_min_lr", warmup_learning_rate / 5.0),
 		field("warmup_build_min_lr"),
 	)

@@ -123,7 +123,7 @@ The following names apply independently inside each relevant section.
 | `patience` | Frozen SR2 validation | Non-negative integer; default `2`; ReduceLROnPlateau reduces the rate after more than this many consecutive non-improving epochs |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | LoRA | Number in `[0, 1]`; default `0.125`; minimum joint learning rate as a fraction of `learning_rate` |
-| `build_min_lr` | Frozen SR2 builds and `warmup` | Finite absolute learning rate in `(0, learning_rate]`; defaults to that head stage's `learning_rate / 5`; used by the final epoch when `build_epochs > 1` |
+| `build_min_lr` | Frozen SR2 builds and `warmup` | Finite absolute learning rate in `(0, learning_rate]`, supplied as a number or string power expression; defaults to that head stage's `learning_rate / 5`; used by the final epoch when `build_epochs > 1` |
 | `max_grad_norm` | Frozen SR2, LoRA, and `warmup` | Positive number |
 | `lora_rank`, `lora_alpha` | LoRA | Positive integers |
 | `lora_dropout` | LoRA | Number in `[0, 1)` |
@@ -136,9 +136,10 @@ The following names apply independently inside each relevant section.
 prefix. Neither frozen SR2 nor `warmup` accepts the old `epochs` or `lr_decay_base`
 fields. Warmup also rejects the former prefixed names, `min_lr_ratio`, and `A/B_swap`.
 
-`learning_rate` accepts ordinary YAML numbers and strings containing real numeric
-literals (integers, decimals, or scientific notation), unary `+`/`-`, parentheses,
-and `**`. For example, these are independent valid field values:
+`learning_rate` and `build_min_lr` accept ordinary YAML numbers and strings
+containing real numeric literals (integers, decimals, or scientific notation),
+unary `+`/`-`, parentheses, and `**`. For example, these are independent valid
+field values:
 
 ```yaml
 learning_rate: 0.0001
@@ -165,9 +166,15 @@ configuration errors naming the affected section and field.
 
 The parser evaluates literals and intermediate results as floats without `eval`.
 Validated config objects, effective YAML snapshots, cache identities, and checkpoint
-metadata use the calculated numeric value. An omitted `build_min_lr` defaults to
-that value divided by five. Expression support applies only to `learning_rate`;
-other numeric fields, including `build_min_lr`, retain their existing input rules.
+metadata use the calculated numeric values. An omitted `build_min_lr` defaults to
+the calculated initial learning rate divided by five. Other numeric fields retain
+their existing input rules. Both rate fields can use expressions in the same
+frozen SR2 or `warmup` section:
+
+```yaml
+learning_rate: "10 ** -3"
+build_min_lr: "10 ** -4"
+```
 
 Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the
 `warmup_*` optimization keys.
@@ -227,9 +234,10 @@ A single epoch uses the initial rate. Setting `build_min_lr` equal to
 `warmup.build_epochs: 0` creates no head scheduler.
 
 Omitting `build_min_lr` defaults it to the corresponding head initial rate divided
-by five. Zero, negative, non-finite, Boolean, string, or above-initial values are
-rejected. Inline warmup compares it with `warmup.learning_rate`, independently of
-the joint learning rate. Configuration objects, effective snapshots, checkpoint
+by five. Invalid expressions and zero, negative, non-finite, Boolean, or
+above-initial values are rejected. Inline warmup compares the calculated value
+with `warmup.learning_rate`, independently of the joint learning rate.
+Configuration objects, effective snapshots, checkpoint
 training metadata, and decaying cache identities retain the minimum rate rather
 than a derived coefficient. See [learning-rate decay](lora.md#learning-rate-decay)
 and [migration](migration.md).

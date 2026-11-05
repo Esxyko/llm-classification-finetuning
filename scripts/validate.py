@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 CONFIG_DIR = "configs"
 MODEL_CONFIGS: dict[str, list[str]] = {
 	# "SR2-Qwen3-4B": ["1.yaml"],
-	"SR2-Qwen3-4B": ["4.yaml", "5.yaml"],
+	"SR2_Qwen3_4B_lora": ["1.yaml"],
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
