@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import math
 import os
 from collections.abc import Mapping
@@ -428,7 +429,9 @@ def _load_warmup_fields(
 		warmup_epochs = _require_integer(warmup_epochs, field("warmup_build_epochs"))
 	if warmup_epochs is not None and warmup_epochs < 0:
 		raise ConfigurationError(f"{field('warmup_build_epochs')} cannot be negative.")
-	warmup_learning_rate = positive_float("warmup_learning_rate")
+	warmup_learning_rate = _require_learning_rate(
+		section.get("warmup_learning_rate"), field("warmup_learning_rate")
+	)
 	warmup_build_min_lr = _require_float(
 		section.get("warmup_build_min_lr", warmup_learning_rate / 5.0),
 		field("warmup_build_min_lr"),
@@ -492,12 +495,6 @@ def _load_lora_model_config(
 	def positive_integer(name: str) -> int:
 		return _require_positive_integer(section.get(name), field(name))
 
-	def positive_float(name: str) -> float:
-		value = _require_float(section.get(name), field(name))
-		if value <= 0.0:
-			raise ConfigurationError(f"{field(name)} must be greater than 0.")
-		return value
-
 	def fraction(name: str) -> float:
 		value = _require_float(section.get(name), field(name))
 		if not 0.0 <= value < 1.0:
@@ -551,7 +548,9 @@ def _load_lora_model_config(
 		head_inference_batch_size=positive_integer("head_inference_batch_size"),
 		gradient_accumulation_steps=positive_integer("gradient_accumulation_steps"),
 		epochs=positive_integer("epochs"),
-		learning_rate=positive_float("learning_rate"),
+		learning_rate=_require_learning_rate(
+			section.get("learning_rate"), field("learning_rate")
+		),
 		min_lr_ratio=min_lr_ratio,
 		lora_rank=positive_integer("lora_rank"),
 		lora_alpha=positive_integer("lora_alpha"),
@@ -587,9 +586,9 @@ def _load_model_config(root: Mapping[str, Any], section_name: str) -> ModelConfi
 	dropout = _require_float(section.get("dropout"), field("dropout"))
 	if not 0.0 <= dropout < 1.0:
 		raise ConfigurationError(f"{field('dropout')} must be in [0, 1).")
-	learning_rate = _require_float(section.get("learning_rate"), field("learning_rate"))
-	if learning_rate <= 0.0:
-		raise ConfigurationError(f"{field('learning_rate')} must be greater than 0.")
+	learning_rate = _require_learning_rate(
+		section.get("learning_rate"), field("learning_rate")
+	)
 	weight_decay = _require_float(section.get("weight_decay"), field("weight_decay"))
 	if weight_decay < 0.0:
 		raise ConfigurationError(f"{field('weight_decay')} cannot be negative.")
@@ -679,6 +678,39 @@ def _require_float(value: Any, field_name: str) -> float:
 	number = float(value)
 	if not math.isfinite(number):
 		raise ConfigurationError(f"{field_name} must be finite.")
+	return number
+
+
+def _require_learning_rate(value: Any, field_name: str) -> float:
+	"""Resolve a positive rate from a number or a restricted power expression."""
+
+	def evaluate(node: ast.AST) -> float:
+		if isinstance(node, ast.Constant):
+			return _require_float(node.value, field_name)
+		if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+			operand = evaluate(node.operand)
+			number = operand if isinstance(node.op, ast.UAdd) else -operand
+		elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+			number = math.pow(evaluate(node.left), evaluate(node.right))
+		else:
+			raise ConfigurationError(
+				f"{field_name} must contain only real numbers, unary +/-, "
+				"parentheses, and **."
+			)
+		return _require_float(number, field_name)
+
+	try:
+		if isinstance(value, str):
+			number = evaluate(ast.parse(value.strip(), mode="eval").body)
+		else:
+			number = _require_float(value, field_name)
+	except (SyntaxError, ValueError, OverflowError, RecursionError) as error:
+		raise ConfigurationError(
+			f"{field_name} must be a finite real number or a valid power "
+			"expression with finite real values."
+		) from error
+	if number <= 0.0:
+		raise ConfigurationError(f"{field_name} must be greater than 0.")
 	return number
 
 

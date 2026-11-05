@@ -114,7 +114,8 @@ The following names apply independently inside each relevant section.
 | `random_state` | All model sections and `warmup` | Integer |
 | `dataloader_workers` | All model sections and `warmup` | Integer at least `0` |
 | `label_smoothing` | All model sections and `warmup` | Number in `[0, 1]`; default `0.0` |
-| `training_batch_size`, `learning_rate` | Frozen SR2 and LoRA | Positive integer for batches; positive number for rate |
+| `training_batch_size` | Frozen SR2, LoRA, and `warmup` | Positive integer |
+| `learning_rate` | Frozen SR2, LoRA, and `warmup` | Positive finite number or a string power expression resolving to one; see below |
 | `epochs` | LoRA joint training | Required positive integer |
 | `build_epochs` | Frozen SR2 and `warmup` | Positive integer for frozen SR2 builds; optional or `null` for frozen SR2 validation; required non-negative integer for warmup, where `0` disables the inline stage |
 | `early_stopping` | Frozen SR2 validation | Positive integer; default `7`; stop after this many consecutive epochs without a strictly lower validation loss |
@@ -130,10 +131,43 @@ The following names apply independently inside each relevant section.
 | `gradient_checkpointing_threshold`, `gradient_checkpointing_budget` | LoRA | Integers at least `0`; each defaults to `0` |
 
 `warmup` additionally requires `build_epochs` (integer at least `0`),
-`training_batch_size` (positive integer), `learning_rate` and
-`max_grad_norm` (positive numbers). Fields inside `warmup` have no `warmup_`
+`training_batch_size` (positive integer), `learning_rate` (as above), and
+`max_grad_norm` (positive number). Fields inside `warmup` have no `warmup_`
 prefix. Neither frozen SR2 nor `warmup` accepts the old `epochs` or `lr_decay_base`
 fields. Warmup also rejects the former prefixed names, `min_lr_ratio`, and `A/B_swap`.
+
+`learning_rate` accepts ordinary YAML numbers and strings containing real numeric
+literals (integers, decimals, or scientific notation), unary `+`/`-`, parentheses,
+and `**`. For example, these are independent valid field values:
+
+```yaml
+learning_rate: 0.0001
+```
+
+```yaml
+learning_rate: "1e-4"
+```
+
+```yaml
+learning_rate: "10 ** -4.5"
+```
+
+```yaml
+learning_rate: "10 ** (-2 ** 2)"
+```
+
+Expressions follow Python's power precedence and right associativity:
+`"10 ** -2 ** 2"` means `10 ** (-(2 ** 2))` and resolves to `0.0001`.
+Other operators, including binary addition/subtraction, variables, function
+calls, Booleans, and complex values are rejected. Empty or malformed expressions,
+overflow, non-finite intermediate values, and final values at or below zero are
+configuration errors naming the affected section and field.
+
+The parser evaluates literals and intermediate results as floats without `eval`.
+Validated config objects, effective YAML snapshots, cache identities, and checkpoint
+metadata use the calculated numeric value. An omitted `build_min_lr` defaults to
+that value divided by five. Expression support applies only to `learning_rate`;
+other numeric fields, including `build_min_lr`, retain their existing input rules.
 
 Both SR2 sections reject `head_learning_rate`, `A/B_swap`, and the
 `warmup_*` optimization keys.
