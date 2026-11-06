@@ -25,9 +25,9 @@ SR2_Qwen3_4B:
   random_state: 42
   dataloader_workers: 0
   label_smoothing: 0.0
-  build_epochs: 31
+  build_epochs: 42
   max_grad_norm: 1.0
-  build_min_lr: 0.0001
-  factor: 0.75
+  build_min_lr: 5.220062500000002e-05
+  factor: 0.9
   patience: 2
   early_stopping: 7
