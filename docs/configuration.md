@@ -294,8 +294,8 @@ settings and training IDs do not affect this feature cache; see
 [warmup features](caching.md#warmup-features).
 
 Matching shared controls is insufficient for cache reuse: model/head settings
-and training IDs must also match. The current root preset and seven experiment
-presets align standalone model/head settings with their SR2 validation settings.
+and training IDs/labels must also match. The current root preset and seven
+experiment presets align standalone model/head settings with their SR2 validation settings.
 If editing either section, keep those settings aligned when reuse is intended.
 A train-partition cache differs from the normal full-data build's training ID set.
 See [complete compatibility rules](caching.md#lora-head-warmup).

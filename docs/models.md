@@ -104,7 +104,8 @@ plan on CPU, then probes both output destinations before configuring CUDA
 or loading model weights. Every original ID from both partitions contributes
 one training row; there is no holdout evaluation during a build. Compatible token, batch,
 and frozen-feature caches are reused. The full-data head-warmup cache is keyed
-by all training IDs, so a train-partition-only head cache is not a complete hit.
+by all original IDs and their labels, so a train-partition-only head cache is not
+a complete hit.
 Exact warmup hits skip that stage. With `warmup.build_min_lr = warmup.learning_rate`, compatible
 lower-epoch hits execute only the remaining warmup epochs before joint training;
 exponential decay requires an exact target-epoch hit or a complete new run.

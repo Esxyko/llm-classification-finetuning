@@ -32,7 +32,7 @@ differ between presets; read their actual values.
 
 SR2 and the standalone `warmup` command use the same SR2 cache namespace.
 The shipped presets select Skywork for both; reuse additionally requires
-matching training IDs and effective model/head settings.
+matching training IDs, labels, and effective model/head settings.
 
 ## Swap-equivariant head
 

@@ -104,7 +104,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `timing.py` | Unbounded `HH:MM:SS` duration formatting with optional millisecond precision for fast validation logs |
 | `pipeline.py` | `PrepareDataPipeline`: download/preprocessing orchestration and optional download-progress callback |
 | `data/downloader.py` | Missing Kaggle training CSV download and single-file ZIP normalization |
-| `preprocess/splits.py` | Labels/prompt hashes, grouped class quotas, balance orchestration, integrity summaries, and processed publication |
+| `preprocess/splits.py` | Exact-response tie correction before labels/prompt hashes, grouped class quotas, balance orchestration, integrity summaries, and processed publication |
 | `preprocess/token_balance.py` | Canonical token counting and deterministic equal-class whole-group exchanges |
 | `preprocess/augmentation.py` | One swapped counterpart per original row |
 
@@ -171,7 +171,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | Module | Owns |
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
-| `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, warmup identity context, and explicit frozen-head config/full-data preparation |
+| `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, warmup training-ID/label identity context, and explicit frozen-head config/full-data preparation |
 | `heads.py` | Head factory, precision wrapper, fused subtractive L/M win projections with FP32 linear-difference penalized harmonic tie features, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, config-only head initialization with lazy frozen-backbone loading on feature misses and CPU/CUDA RNG preservation, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup or joint validation, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
@@ -330,8 +330,10 @@ present in a fresh checkout.
    do not traverse the model to change that policy. Evaluation disables gradient
    checkpointing. See [precision](docs/lora.md#hardware-and-input-limits).
 9. **Warmup state:** publish only completed compatible head/optimizer/scaler/RNG
-   states, validate them before restoration, and retain current training-ID
-   semantics. Each executed warmup epoch evaluates its complete training set with
+   states and validate them before restoration. Cache identity includes original
+   training IDs and their labels, sorted by ID; holdout/standalone warmup exclude
+   validation-only labels, while full-data builds include both partitions. Each
+   executed warmup epoch evaluates its complete training set with
    final weights, dropout disabled, and warmup smoothing; validation remains
    unsmoothed. Publish head state only after these evaluations succeed.
    Warmup caches retain optimizer state for warmup continuation. On entry to the

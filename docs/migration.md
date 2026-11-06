@@ -140,8 +140,8 @@ caches retain their existing compatibility rules.
 model/head settings with their SR2 validation settings. Update custom standalone
 settings when switching from the original Qwen backbone. Old
 `qwen3_4b_lora_EXPT2_warmup/` entries stay in place and are not read or relabeled
-as SR2 caches. Matching original training IDs and effective model/head settings
-remain required; full-data builds use both partitions and therefore a different
+as SR2 caches. Matching original training IDs, labels, and effective model/head
+settings remain required; full-data builds use both partitions and therefore a different
 warmup entry. See [warmup configuration](configuration.md#standalone-warmup).
 
 ## SR2 chat-template inputs

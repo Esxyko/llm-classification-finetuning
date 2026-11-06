@@ -29,9 +29,10 @@ from .heads import (
 
 @dataclass(frozen=True, slots=True)
 class WarmupCacheContext:
-	"""Training IDs and immutable encoding identities supplied by batch preparation."""
+	"""Training IDs, labels, and immutable encoding identities from batch preparation."""
 
 	training_ids_sha256: str
+	training_labels_sha256: str
 	serializer_version: str
 	base_revision: str | None
 	local_weights_sha256: str | None

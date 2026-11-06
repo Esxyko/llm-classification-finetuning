@@ -18,10 +18,17 @@ when comparing model experiments.
 
 ## One shared train/validation split
 
-Preparation starts from the complete raw training table, derives labels and
-canonical prompt hashes, and assigns whole prompt groups to train or validation.
-The root preset uses validation fraction `0.2` and seed `42`. Classes retain their
-original proportions; they are not resampled to equal sizes.
+Preparation starts from the complete raw training table and validates its IDs
+and one-hot winner fields. Exactly matching `response_a` and `response_b` fields
+are then corrected to tie: `winner_model_a=0`, `winner_model_b=0`, and
+`winner_tie=1`. Comparison uses the complete stored fields without trimming,
+case folding, or fuzzy matching; whitespace, newline, and case differences remain
+significant. The raw CSV is not modified.
+
+Preparation derives labels and canonical prompt hashes from the corrected table,
+then assigns whole prompt groups to train or validation. The root preset uses
+validation fraction `0.2` and seed `42`. Classes retain their corrected
+proportions; they are not resampled to equal sizes.
 
 Original-class quotas use the nearest total validation row count and largest
 fractional remainders. Multirow prompt groups are selected deterministically,
@@ -69,7 +76,8 @@ volumes together. Corrupt multipart data is archived and requires preprocessing
 again. See [shared storage](caching.md#shared-storage-and-multipart-files) for
 locking, publication, and temporary disk-space requirements.
 
-Source columns are retained, with these additions:
+Source columns are retained, including the corrected one-hot winner fields,
+with these additions:
 
 | Column | Meaning |
 | --- | --- |
@@ -129,12 +137,36 @@ saved split, two original IDs moved to validation and two moved to training.
 
 The validation row share is 19.999304% and token share is 20.097288%. Their
 relative deviations from the 20% target are 0.003480% and 0.486438%, respectively,
-both strictly below 0.5%. The reconstructed Parquet SHA-256 is
+both strictly below 0.5%. Before the tie correction below, the reconstructed
+Parquet SHA-256 was
 `2b06417150aea3d9320b0d40032feae154b6f072164fca09b05f58f64faf8f90`.
 The previous artifact's SHA-256 was
 `f2e9efb77dd2888609fb49c64b8b6884fd0deb05418e951151386667a64ab787`.
 See [measured lengths](lora.md#measured-input-lengths) for the matching tokenizer
 statistics and current preset ceiling.
+
+#### Identical-response tie correction (2026-11-06)
+
+The saved artifact was corrected in place for 27 original IDs whose complete
+`response_a` and `response_b` fields match but whose labels were not tie: 22 train
+IDs (10 A wins, 12 B wins) and five validation IDs (two A wins, three B wins).
+Both orientations were corrected, changing 54 rows to `label=2` and one-hot
+winner fields `(0, 0, 1)`.
+
+The correction preserves all 114,954 rows, 57,477 original IDs, 51,734 prompt
+groups, row order, column types, and train/validation membership. The row/token
+statistics above remain unchanged. The raw CSV and historical model results are
+unchanged. Full preprocessing now applies the correction before stratification,
+so a future rebuild can assign different groups to the two partitions.
+
+| Label | Augmented rows after correction |
+| --- | ---: |
+| `0` (A wins) | 39,689 |
+| `1` (B wins) | 39,689 |
+| `2` (tie) | 35,576 |
+
+The current reconstructed Parquet SHA-256 is
+`f5273191b6b442e24d559835fe51e73e0fe5caeddf27700f9e04ab57ec643922`.
 
 ## Migration from five folds
 

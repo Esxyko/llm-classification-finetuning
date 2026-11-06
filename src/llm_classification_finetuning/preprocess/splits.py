@@ -78,6 +78,8 @@ class SplitPreprocessor:
 			raise DataPreparationError(
 				"Training data needs unique, nonmissing IDs and exactly one winner per row."
 			)
+		self._correct_identical_responses(data)
+		target_values = data.loc[:, list(self.TARGET_COLUMNS)]
 		data["label"] = (
 			target_values.idxmax(axis="columns").map(self.LABEL_MAPPING).astype("int8")
 		)
@@ -109,6 +111,11 @@ class SplitPreprocessor:
 			raise DataPreparationError(
 				f"Could not read training data from {train_path}: {error}"
 			) from error
+
+	def _correct_identical_responses(self, data: pd.DataFrame) -> None:
+		"""Set exactly matching response fields to a one-hot tie target."""
+		identical = data["response_a"].eq(data["response_b"]) & data["winner_tie"].ne(1)
+		data.loc[identical, list(self.TARGET_COLUMNS)] = (0, 0, 1)
 
 	def _create_group_ids(self, data: pd.DataFrame) -> list[str]:
 		return [self._hash_prompt(prompt) for prompt in data["prompt"]]

@@ -541,7 +541,7 @@ class LoRATrainingBatchRepository:
 			warmup_only or config.warmup_build_epochs
 		) and backbone_hidden_size is not None:
 			self._warmup_ids = data.reference.loc[
-				~data.reference["is_swapped"], ["id", "split"]
+				~data.reference["is_swapped"], ["id", "split", "label"]
 			].sort_values("id")
 		self._cache = cache
 		self.token_cache = token_cache
@@ -721,20 +721,19 @@ class LoRATrainingBatchRepository:
 		return plan
 
 	def warmup_context(self, *, full_data: bool = False) -> WarmupCacheContext | None:
-		"""Identify actual training IDs, independently of validation membership."""
+		"""Identify actual training IDs and labels, excluding validation-only changes."""
 		if (
 			self._warmup_ids is None
 			or self._backbone_hidden_size is None
 			or (self.base_revision is None and self._local_weights_sha256 is None)
 		):
 			return None
-		originals = self._warmup_ids
-		if full_data:
-			training_ids = originals["id"]
-		else:
-			training_ids = originals.loc[originals["split"].eq("train"), "id"]
+		training = self._warmup_ids
+		if not full_data:
+			training = training.loc[training["split"].eq("train")]
 		return WarmupCacheContext(
-			training_ids_sha256=self._ids_key(training_ids),
+			training_ids_sha256=self._ids_key(training["id"]),
+			training_labels_sha256=self._labels_key(training),
 			serializer_version=self.serializer_version,
 			base_revision=self.base_revision,
 			local_weights_sha256=self._local_weights_sha256,
@@ -746,6 +745,14 @@ class LoRATrainingBatchRepository:
 	def _ids_key(ids: pd.Series) -> str:
 		"""Hash an already sorted original-ID set in a stable binary representation."""
 		values = np.ascontiguousarray(ids.to_numpy(dtype="<i8"))
+		return hashlib.sha256(memoryview(values)).hexdigest()
+
+	@staticmethod
+	def _labels_key(training: pd.DataFrame) -> str:
+		"""Hash sorted original (ID, label) pairs as contiguous little-endian int64."""
+		values = np.ascontiguousarray(
+			training.loc[:, ["id", "label"]].to_numpy(dtype="<i8")
+		)
 		return hashlib.sha256(memoryview(values)).hexdigest()
 
 	def get_training(self, *, full_data: bool = False) -> PreparedTrainingSplit:

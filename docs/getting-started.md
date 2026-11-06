@@ -89,7 +89,7 @@ and use the stage-specific [memory controls](lora.md#memory-tuning) as needed.
 Optional `uv run model warmup --build` trains only the SR2 head on the saved train
 partition, using Skywork in the shipped presets and the SR2 warmup namespace.
 It is not required before a normal LoRA run. Reuse requires matching
-model/head settings and training IDs; see
+model/head settings and training IDs/labels; see
 [standalone warmup](configuration.md#standalone-warmup).
 
 ## Hugging Face downloads

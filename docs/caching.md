@@ -14,7 +14,7 @@ Production checkpoints under `models/` are separate artifacts.
 | `token_cache/` | Text, tokenizer content/implementation, encoding options, library/schema versions | IDs, labels, split, source path, model weights, training settings |
 | `embedding_cache/` (frozen SR2, SR2 warmup, and historical frozen model) | Effective branch token IDs, exact backbone identity, hidden size, precision, pooling/storage/extraction version | IDs, labels, split, head/training settings, attention implementation, TF32, extraction budget |
 | `adapter_batches/plans/` | Selected sample identities/orientations and A/B lengths, checkpointing threshold, update-group size, algorithm version | Labels, source order, token content beyond lengths, second-pass budget |
-| `SR2_Qwen3_4B_lora_warmup/` | Original training ID set and effective SR2 warmup identity | Text/labels, validation IDs, precision, joint-training settings |
+| `SR2_Qwen3_4B_lora_warmup/` | Original training IDs and labels, effective SR2 warmup identity | Training text, validation-only IDs/labels, precision, joint-training settings |
 
 Retired profiles' caches, including `qwen3_4b_lora_EXPT2_warmup/`, remain
 historical artifacts. SR2 and standalone warmup do not read that namespace.
@@ -308,19 +308,19 @@ disk without migration. A single-epoch target with a lower configured minimum
 also uses this exact-match identity, although its sole epoch uses the initial rate.
 
 With `warmup.build_min_lr = warmup.learning_rate`, both extra schedule fields
-are omitted, preserving old fixed-rate identities. Lookup first checks the
+are omitted from the fixed-rate identity. Lookup first checks the
 exact `N`-epoch key, then checks `N-1` down to `1`, changing only the persistent
 `warmup_epochs` field. The first fully validated state is selected. Missing,
 corrupt, or incompatible candidates are skipped; higher-epoch states are never
 used for a smaller target. Lookup computes existing keys directly and supports
 both single-file and multipart caches. Schema v5 and the saved-state layout
-remain unchanged; existing fixed-rate entries need no migration.
+remain unchanged; reuse requires the training-label digest described below.
 
 ### Identity
 
 | Included in compatibility | Excluded from compatibility |
 | --- | --- |
-| Sorted original training ID set | Validation IDs, holdout/build label, source path/Parquet bytes, row order, training text and labels |
+| Sorted original training ID set and corresponding labels | Validation-only IDs/labels, holdout/build label, source path/Parquet bytes, row order, training text |
 | Exact Hub model/revision or local weight/configuration content, hidden dimensions, tokenizer content, serializer, head architecture, SR2 initialization version, quantization, schema | Local path spelling when contents match |
 | Head dropout, A/B objective, warmup build epochs/batch size/initial rate, exponential schedule version and absolute minimum rate when decay is enabled, seed, weight decay, clipping, nonzero warmup label smoothing | Compute precision, attention, TF32, extraction budget, context ceiling |
 | Non-quantized training identity for active profiles | LoRA rank/alpha/dropout/targets; joint learning rates, epochs, batch size, accumulation, and token controls |
@@ -329,15 +329,25 @@ Warmup epochs remain part of each stored key. A lower-epoch entry is compatible
 as a continuation source only for fixed-rate training and when every other
 identity field matches.
 
-**Editing training text or labels while keeping the same IDs can reuse stale
+The required `WarmupCacheContext.training_labels_sha256` hashes original
+`(id, label)` pairs in ascending ID order as a contiguous two-column little-endian
+`int64` array. The existing `training_ids_sha256` remains a separate field. Both
+enter metadata and the cache key. Changing a training label therefore selects
+a new head-state entry while token, embedding, and batch-plan caches remain
+reusable. Entries without the label digest stay on disk and are not fallback
+candidates, including for fixed-rate continuation; schema v5 and state payload
+layout are unchanged.
+
+**Editing training text while keeping the same IDs and labels can reuse stale
 warmup state. Use `--refresh-cache` when that state must be retrained.** Tokens
 and input-length checks still follow current content. Changing only validation
-IDs preserves warmup-state reuse because fixed-epoch warmup validation neither
-updates the head nor selects an early-stopping checkpoint. Frozen SR2 validation
+IDs or labels preserves holdout warmup-state reuse because fixed-epoch warmup
+validation neither updates the head nor selects an early-stopping checkpoint. Frozen SR2 validation
 selects its best epoch but does not use this state cache.
 
-Normal holdout and standalone warmup use train-partition IDs; full-data builds
-use all original IDs. These normally select different cache keys. Checkpoint tags
+Normal holdout and standalone warmup use train-partition IDs and labels;
+full-data builds use all original IDs and labels, including the validation
+partition. These normally select different cache keys. Checkpoint tags
 do not enter the identity. Context limits are excluded because inputs are never
 truncated and are independently validated.
 
@@ -380,8 +390,9 @@ target is saved, not each intermediate epoch.
 
 Fresh and resumed warmup also clear optimizer state once when entering joint
 training, after saving the completed warmup cache. The cache retains AdamW state
-for future warmup continuation; its format and keys are unchanged. Subsequent
-joint epochs retain the optimizer state accumulated during joint training.
+for future warmup continuation; clearing joint optimizer state does not change
+the saved format or key. Subsequent joint epochs retain the optimizer state
+accumulated during joint training.
 
 Only FP16-to-FP16 reuse restores the gradient scaler; other precision
 transitions initialize a scaler for the current mode. Across changed precision
@@ -401,7 +412,7 @@ remain uncached; repository-prepared splits supply it.
 ### Standalone warmup build
 
 `model warmup --build` prepares tokens for train and validation and checks the
-same non-quantized SR2 identity, still based only on training IDs. A head miss loads
+same non-quantized SR2 identity, based on training IDs and labels. A head miss loads
 compatible frozen features and extracts missing branches without adapters for
 both partitions, then trains only the head on original train rows. Each epoch
 ends with full-training-set inference
@@ -420,7 +431,7 @@ no historical loss values are reused. This evaluation does
 not change the existing cache identity or schema v5. There is no joint plan,
 production checkpoint, or result report.
 
-Reuse in inline SR2 requires matching both training IDs and effective model/head
+Reuse in inline SR2 requires matching training IDs, labels, and effective model/head
 settings, not merely using the same cache directory. See
 [standalone configuration](configuration.md#standalone-warmup). Fresh standalone
 and inline runs can differ because standalone skips adapter-initialization RNG

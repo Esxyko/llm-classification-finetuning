@@ -40,8 +40,8 @@ imported those libraries. A Hub authorization failure can still require valid
 
 | Symptom | Check / action |
 | --- | --- |
-| Warmup repeats after standalone warmup | Compare effective model/head settings and original training IDs, not just shared optimization fields; see [standalone warmup](configuration.md#standalone-warmup) |
-| Warmup state survives edited training content | Warmup keys exclude text/labels when IDs are unchanged; use `--refresh-cache` to retrain |
+| Warmup repeats after standalone warmup | Compare effective model/head settings and original training IDs/labels, not just shared optimization fields; see [standalone warmup](configuration.md#standalone-warmup) |
+| Warmup state survives edited training text | Warmup keys include training IDs/labels but exclude training text; use `--refresh-cache` to retrain after text edits |
 | Cache lock timeout | Another process may hold the artifact session; finish that operation before retrying |
 | Checkpoint not found after validation | Validation does not save a production checkpoint; run `--build`, using the intended tag |
 | Checkpoint incompatible | Match architecture/model/input identity or rebuild. LoRA also checks head dropout, adapter settings, and quantization; see [checkpoint rules](lora.md#checkpoints) |
