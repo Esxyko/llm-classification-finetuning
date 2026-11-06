@@ -711,6 +711,8 @@ class LoRATrainer:
 				warmup_training = None
 				warmup_validation = None
 				loader = training.loader
+				# Joint training starts with fresh AdamW moments and step counters.
+				optimizer.state.clear()
 				for group in optimizer.param_groups:
 					group["lr"] = self._config.learning_rate
 				joint_layout = OptimizerGroupLayout(

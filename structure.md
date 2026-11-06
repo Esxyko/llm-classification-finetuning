@@ -334,6 +334,11 @@ present in a fresh checkout.
    semantics. Each executed warmup epoch evaluates its complete training set with
    final weights, dropout disabled, and warmup smoothing; validation remains
    unsmoothed. Publish head state only after these evaluations succeed.
+   Warmup caches retain optimizer state for warmup continuation. On entry to the
+   first joint epoch, clear AdamW moments and step counters once, including after
+   complete cache hits and partial-cache continuation. Preserve trained weights,
+   parameter groups, GradScaler, and RNG state; subsequent joint epochs retain
+   their accumulated optimizer state.
    Adapter-free warmup features persist separately by complete branch token content,
    immutable backbone identity, compute precision, exact storage dtype, and extraction
    policy. Frozen SR2 and head-only warmup initialize only the head on complete

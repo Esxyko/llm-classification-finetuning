@@ -209,7 +209,7 @@ offsets/metadata. Current training inputs are checked independently.
 | Head warmup, cache miss | Load cached frozen features and extract missing branches with adapter forwards disabled; train only the head with epoch-based exponential decay from `warmup.learning_rate` to `warmup.build_min_lr` across `warmup.build_epochs`, keeping the rate fixed within each epoch | Evaluate the full training set and, for holdout runs, validation after each epoch using shared features; save completed head/optimizer/RNG state |
 | Head warmup, complete cache hit | Restore compatible head and training state | Inline LoRA skips all warmup work; standalone warmup loads cached features, extracts missing branches, and recomputes both losses without training |
 | Head warmup, lower-epoch cache hit (fixed rate only) | Load/extract frozen features, reconstruct shuffle state, and restore compatible head/optimizer/RNG state; train only remaining epochs | Evaluate after each remaining epoch and save a separate target-epoch cache, preserving the source |
-| Joint training | Train adapters and head with one shared cosine-decayed `learning_rate`; retain the head's AdamW state | Fresh backbone extraction and head validation after each joint epoch |
+| Joint training | Clear AdamW moments and step counters once at entry, then train adapters and head with one shared cosine-decayed `learning_rate` | Fresh backbone extraction and head validation after each joint epoch |
 | Full-data build | Same training stages on all original IDs from both partitions | No validation; save adapters/head after the final epoch |
 
 The shared warmup section supplies build epochs, head batch size, initial and
@@ -220,6 +220,12 @@ and cache I/O. See [standalone versus inline settings](configuration.md#standalo
 Exponential decay reuses only an exact target-epoch cache. Fixed-rate warmup
 (`warmup.build_min_lr` equal to `warmup.learning_rate`) can also continue from the largest compatible lower
 epoch; all other cache identity fields must match.
+
+Every path into joint training clears the optimizer state before its first update,
+including fresh warmup, complete cache hits, and partial-cache continuation.
+The trained head weights, optimizer parameter groups, GradScaler, and RNG state
+are preserved at this transition. Subsequent joint epochs retain their accumulated
+AdamW state. Warmup caches still save optimizer state for warmup continuation.
 
 Adapter-free warmup features are persisted by branch token content and reused
 across standalone/inline runs and head configurations. Only missing unique

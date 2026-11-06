@@ -358,7 +358,9 @@ are not reused.
 
 A complete hit in inline LoRA restores the head/optimizer/RNG state, skips all warmup
 feature extraction, training, and evaluation, and starts joint training with fresh
-adapters and the configured joint schedule.
+adapters and the configured joint schedule. Before the first joint update, AdamW
+moments and step counters are cleared while the restored head weights,
+GradScaler, and RNG state are preserved.
 
 A fixed-rate partial hit at epoch `K < N` loads compatible frozen features and
 extracts any missing branches, restores the head/optimizer/RNG state after
@@ -375,6 +377,11 @@ After the target epoch's train and any validation evaluation succeed, the resume
 state is atomically saved under the target `N`-epoch key. The source cache is
 preserved; a failed continuation does not publish the target. Only the configured
 target is saved, not each intermediate epoch.
+
+Fresh and resumed warmup also clear optimizer state once when entering joint
+training, after saving the completed warmup cache. The cache retains AdamW state
+for future warmup continuation; its format and keys are unchanged. Subsequent
+joint epochs retain the optimizer state accumulated during joint training.
 
 Only FP16-to-FP16 reuse restores the gradient scaler; other precision
 transitions initialize a scaler for the current mode. Across changed precision
