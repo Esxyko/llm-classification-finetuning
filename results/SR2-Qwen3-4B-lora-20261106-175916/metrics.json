@@ -1,0 +1,65 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_penalized_harmonic",
+  "epochs": [
+    {
+      "epoch": 11,
+      "last_step_training_loss": 0.9654999448546404,
+      "total_time": "01:12:44",
+      "training_loss": 1.027886488460039,
+      "training_time": "01:04:59",
+      "validation_loss": 0.932885128915595,
+      "validation_time": "00:07:43"
+    },
+    {
+      "epoch": 12,
+      "last_step_training_loss": 0.9386586307797884,
+      "total_time": "01:12:39",
+      "training_loss": 0.9009200775653394,
+      "training_time": "01:04:56",
+      "validation_loss": 0.9114427245456584,
+      "validation_time": "00:07:43"
+    },
+    {
+      "epoch": 13,
+      "last_step_training_loss": 0.8621937621431206,
+      "total_time": "01:12:39",
+      "training_loss": 0.8672368172431801,
+      "training_time": "01:04:57",
+      "validation_loss": 0.9051092372660328,
+      "validation_time": "00:07:43"
+    }
+  ],
+  "generated_at": "2026-11-06T17:59:16+00:00",
+  "head_architecture": "swap_equivariant_penalized_harmonic_v4",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-lora-20261106-175916",
+  "source_training_rows": 45982,
+  "total_time": "03:39:38",
+  "training_rows": 45982,
+  "training_time": "03:14:52",
+  "validation_fraction": 0.1999930406945387,
+  "validation_loss": 0.9051092372660328,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:23:08",
+  "config_total_time": "03:39:38",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 99223393280,
+    "peak_reserved_bytes": 101256790016,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 99223393280,
+        "peak_reserved_bytes": 100382277632
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 81527615488,
+        "peak_reserved_bytes": 101256790016
+      }
+    }
+  }
+}
