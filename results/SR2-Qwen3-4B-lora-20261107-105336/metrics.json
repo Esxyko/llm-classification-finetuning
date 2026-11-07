@@ -1,0 +1,65 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_penalized_harmonic",
+  "epochs": [
+    {
+      "epoch": 16,
+      "last_step_training_loss": 0.9111920363585408,
+      "total_time": "01:12:31",
+      "training_loss": 0.9225973000656512,
+      "training_time": "01:04:40",
+      "validation_loss": 0.8902603063553739,
+      "validation_time": "00:07:48"
+    },
+    {
+      "epoch": 17,
+      "last_step_training_loss": 0.8375454793707076,
+      "total_time": "01:12:30",
+      "training_loss": 0.8513441547481256,
+      "training_time": "01:04:42",
+      "validation_loss": 0.8882369322331074,
+      "validation_time": "00:07:48"
+    },
+    {
+      "epoch": 18,
+      "last_step_training_loss": 0.7852458549177884,
+      "total_time": "01:12:30",
+      "training_loss": 0.8014143328716054,
+      "training_time": "01:04:42",
+      "validation_loss": 0.8888413812187683,
+      "validation_time": "00:07:48"
+    }
+  ],
+  "generated_at": "2026-11-07T10:53:36+00:00",
+  "head_architecture": "swap_equivariant_penalized_harmonic_v4",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11907,
+  "run_name": "SR2-Qwen3-4B-lora-20261107-105336",
+  "source_training_rows": 47626,
+  "total_time": "03:39:49",
+  "training_rows": 47626,
+  "training_time": "03:14:05",
+  "validation_fraction": 0.20000671896259217,
+  "validation_loss": 0.8888413812187683,
+  "validation_rows": 11907,
+  "validation_strategy": "holdout",
+  "validation_time": "00:23:24",
+  "config_total_time": "03:39:49",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 99534617088,
+    "peak_reserved_bytes": 100382277632,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 99534617088,
+        "peak_reserved_bytes": 100382277632
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 85086237184,
+        "peak_reserved_bytes": 100382277632
+      }
+    }
+  }
+}
