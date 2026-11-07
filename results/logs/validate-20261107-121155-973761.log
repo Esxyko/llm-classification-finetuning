@@ -1,2 +1,8 @@
 Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261107-121155-973761.log
 Running holdout validation for 1.yaml: SR2-Qwen3-4B-lora
+Token cache: 113,936 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (holdout): 47,626 rows, 46 updates, 3,324 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/362c983e679111673fa3d59e01f347d8a92bf668fbf64cccb9cde53a241967f7.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:45).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 17,170,945 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=15, target_epochs=15, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/5e5c5d6723f34840f743a8ddd32911f1b1cb9acbbfa9291beb772f1384c1f103.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/5e5c5d6723f34840f743a8ddd32911f1b1cb9acbbfa9291beb772f1384c1f103.pt
