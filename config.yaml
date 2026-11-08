@@ -1,10 +1,15 @@
+# Read the prebuilt LMSYS33K dataset with model commands.
+# Do not run init/preprocess with this consumption config: construction first
+# splits the 57,477 Kaggle rows at 0.2, freezes validation IDs, then appends LMSYS
+# to train. The fraction below is the resulting full-table validation share.
+# Build parameters and checksums: data/processed/lmsys33k/summary.json
 data:
   competition: llm-classification-finetuning
   raw_dir: data/raw
-  processed_path: data/processed/train_validation.parquet
+  processed_path: data/processed/lmsys33k/train_validation.parquet
 
 validation:
-  validation_fraction: 0.2
+  validation_fraction: 0.14827092496807565
   random_state: 42
   tokenizer_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   tokenizer_revision: fd958fef475f323f4e6b195930e3dd918485c668
@@ -17,7 +22,7 @@ gpu:
   allow_tf32: false
 
 SR2_Qwen3_4B:
-  factor: 0.85
+  factor: 0.95
   patience: 2
   early_stopping: 7
   label_smoothing: 0.0
@@ -25,11 +30,11 @@ SR2_Qwen3_4B:
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  build_epochs: 42
+  build_epochs: 50
   extraction_budget: 1081344
   training_batch_size: 1024
   learning_rate: 0.0001
-  build_min_lr: 0.085 ** 4
+  build_min_lr: 0.095 ** 8
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
@@ -41,11 +46,11 @@ warmup:
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  build_epochs: 14
+  build_epochs: 15
   extraction_budget: 1081344
   training_batch_size: 1024
   learning_rate: 0.0001
-  build_min_lr: (0.00085 ** 4) ** (3 ** -1)
+  build_min_lr: 0.0001
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
@@ -55,22 +60,22 @@ SR2_Qwen3_4B_lora:
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866
-  gradient_checkpointing_threshold: 12288
+  gradient_checkpointing_threshold: 12544
   gradient_checkpointing_budget: 147456
   training_batch_size: 1
   head_inference_batch_size: 1024
-  gradient_accumulation_steps: 2048
-  epochs: 2
-  extraction_budget: 737280
+  gradient_accumulation_steps: 1024
+  epochs: 3
+  extraction_budget: 778240
   learning_rate: 0.0001
   min_lr_ratio: 0.0
   hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1
   max_grad_norm: 1.0
-  lora_dropout: 0.05
-  lora_rank: 32
-  lora_alpha: 64
+  lora_dropout: 0.1
+  lora_rank: 8
+  lora_alpha: 16
   lora_target_modules:
     - q_proj
     - k_proj
