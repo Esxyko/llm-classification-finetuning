@@ -1,0 +1,26 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261108-205630-462670.log
+Preparing processed data for 5.yaml: SR2-Qwen3-4B (/content/llm-classification-finetuning/configs/5.yaml): /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet
+Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000001-7b3f074894069b956e90fb17aa47b25bcea3485a10a2097ccf337c705c8fe4ec.part -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000001-7b3f074894069b956e90fb17aa47b25bcea3485a10a2097ccf337c705c8fe4ec.part
+Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000002-88e8cadf8cf5d1accfcb1813fd9aab4212ce3022d2b10f0bf954ac982257c8a4.part -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000002-88e8cadf8cf5d1accfcb1813fd9aab4212ce3022d2b10f0bf954ac982257c8a4.part
+Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json
+Processed data ready: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet; copied 3 files.
+Running holdout validation for 5.yaml: SR2-Qwen3-4B
+Token cache: 153,983 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Initialized SR2-Qwen3-4B Skywork/Skywork-Reward-V2-Qwen3-4B with 1,311,489 trainable parameters.
+SR2-Qwen3-4B warmup feature cache: reused=153,983, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+SR2_Qwen3_4B validation Head training Validation run epoch 7: progress=100.0% work=141/141 time=00:00:00.471 train_loss=0.875423 validation_loss=0.906901 best_validation_loss=0.906901 best_epoch=7 unimproved_epochs=0/7 optimization_time=00:00:00.260 training_evaluation_time=00:00:00.179 validation_time=00:00:00.032
+SR2_Qwen3_4B validation Head training Validation run epoch 14: progress=100.0% work=141/141 time=00:00:00.468 train_loss=0.862215 validation_loss=0.903167 best_validation_loss=0.902071 best_epoch=12 unimproved_epochs=2/7 optimization_time=00:00:00.258 training_evaluation_time=00:00:00.178 validation_time=00:00:00.032
+SR2_Qwen3_4B validation Head training Validation run epoch 21: progress=100.0% work=141/141 time=00:00:00.473 train_loss=0.859797 validation_loss=0.908463 best_validation_loss=0.898113 best_epoch=19 unimproved_epochs=2/7 optimization_time=00:00:00.258 training_evaluation_time=00:00:00.183 validation_time=00:00:00.032
+SR2_Qwen3_4B validation Head training Validation run epoch 28: progress=100.0% work=141/141 time=00:00:00.470 train_loss=0.843877 validation_loss=0.899006 best_validation_loss=0.897740 best_epoch=27 unimproved_epochs=1/7 optimization_time=00:00:00.259 training_evaluation_time=00:00:00.179 validation_time=00:00:00.032
+SR2_Qwen3_4B validation Head training Validation run epoch 35: progress=100.0% work=141/141 time=00:00:00.478 train_loss=0.854169 validation_loss=0.912461 best_validation_loss=0.895170 best_epoch=32 unimproved_epochs=3/7 optimization_time=00:00:00.267 training_evaluation_time=00:00:00.179 validation_time=00:00:00.032
+SR2_Qwen3_4B validation Head training Validation run epoch 42: progress=100.0% work=141/141 time=00:00:00.468 train_loss=0.834706 validation_loss=0.904478 best_validation_loss=0.894101 best_epoch=37 unimproved_epochs=5/7 optimization_time=00:00:00.257 training_evaluation_time=00:00:00.178 validation_time=00:00:00.032
+Early stopping SR2_Qwen3_4B validation Head training Validation run epoch 44: progress=100.0% work=141/141 time=00:00:00.485 train_loss=0.829856 validation_loss=0.898561 best_validation_loss=0.894101 best_epoch=37 unimproved_epochs=7/7 optimization_time=00:00:00.272 training_evaluation_time=00:00:00.180 validation_time=00:00:00.033 stopped_epoch=44
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261108-205839
+GPU memory peak (SR2-Qwen3-4B, cuda:0, training): allocated=0.13 GiB reserved=0.16 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, validation): allocated=0.13 GiB reserved=0.16 GiB
+GPU memory peak (SR2-Qwen3-4B, cuda:0, global): allocated=0.13 GiB reserved=0.16 GiB
+Model total time (SR2-Qwen3-4B): 00:01:44
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.894101
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-20261108-205839
+Completed 1/1 tasks.
