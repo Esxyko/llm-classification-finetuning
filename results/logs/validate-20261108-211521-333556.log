@@ -5,3 +5,41 @@ Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/dat
 Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json
 Processed data ready: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet; copied 3 files.
 Running holdout validation for 2.yaml: SR2-Qwen3-4B-lora
+Token cache: 153,983 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (holdout): 66,032 rows, 64 updates, 4,166 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/f261d74dc122a70e45d9aaaa3d5329b2545c1b9eec2b54bb2e0cb892df76a589.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:28).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 17,170,817 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=15, target_epochs=15, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/3fabc96f749f5ccbb0e35389baa87f33e3818792397e867bf6da482c2efd28c9.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/3fabc96f749f5ccbb0e35389baa87f33e3818792397e867bf6da482c2efd28c9.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 16/17):
+progress: 10.0% work: 18.0/180.0 time: 00:22:34/03:45:37
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/2 (total 16/17):
+progress: 20.0% work: 36.0/180.0 time: 00:43:32/03:37:40
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 110, in _validate
+    for line in process.stdout:
+                ^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 156, in main
+    return _validate(parsed_arguments.data_source_root)
+  File "/content/llm-classification-finetuning/scripts/validate.py", line 97, in _validate
+    with subprocess.Popen(
+         ~~~~~~~~~~~~~~~~^
+    	command,
+     ^^^^^^^^
+    ...<8 lines>...
+    	| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as process:
+    ^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 1124, in __exit__
+    self._wait(timeout=self._sigint_wait_secs)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.14.10-linux-x86_64-gnu/lib/python3.14/subprocess.py", line 2078, in _wait
+    time.sleep(delay)
+    ~~~~~~~~~~^^^^^^^
+KeyboardInterrupt

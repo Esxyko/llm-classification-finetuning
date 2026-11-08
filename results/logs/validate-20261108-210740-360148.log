@@ -5,3 +5,38 @@ Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/dat
 Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json
 Processed data ready: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet; copied 3 files.
 Running holdout validation for 1.yaml: SR2-Qwen3-4B-lora
+Token cache: 153,983 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (holdout): 66,032 rows, 64 updates, 4,166 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/f261d74dc122a70e45d9aaaa3d5329b2545c1b9eec2b54bb2e0cb892df76a589.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:41).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 17,170,817 trainable parameters.
+Rebuilding LoRA head warmup (Validation run): completed_epochs=0, target_epochs=15, remaining_epochs=15; precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/3fabc96f749f5ccbb0e35389baa87f33e3818792397e867bf6da482c2efd28c9.pt
+LoRA warmup feature cache: reused=153,983, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+Validation run head warmup epoch 1/15 (total 1/18): train_loss=0.921838 validation_loss=0.942823
+Validation run head warmup epoch 2/15 (total 2/18): train_loss=0.906441 validation_loss=0.928928
+SR2_Qwen3_4B_lora validation Head warmup (head warmup validation) Validation run epoch 3/15 (total 3/18):
+progress: 20.0% work: 423.0/2,115.0 time: 00:00:02/00:00:09
+Validation run head warmup epoch 3/15 (total 3/18): train_loss=0.899081 validation_loss=0.924432
+Validation run head warmup epoch 4/15 (total 4/18): train_loss=0.896186 validation_loss=0.922064
+Validation run head warmup epoch 5/15 (total 5/18): train_loss=0.889503 validation_loss=0.914834
+SR2_Qwen3_4B_lora validation Head warmup (head warmup validation) Validation run epoch 6/15 (total 6/18):
+progress: 40.0% work: 846.0/2,115.0 time: 00:00:03/00:00:08
+Validation run head warmup epoch 6/15 (total 6/18): train_loss=0.883901 validation_loss=0.912202
+Validation run head warmup epoch 7/15 (total 7/18): train_loss=0.889894 validation_loss=0.918251
+Validation run head warmup epoch 8/15 (total 8/18): train_loss=0.880935 validation_loss=0.911298
+SR2_Qwen3_4B_lora validation Head warmup (head warmup validation) Validation run epoch 9/15 (total 9/18):
+progress: 60.0% work: 1,269.0/2,115.0 time: 00:00:05/00:00:09
+Validation run head warmup epoch 9/15 (total 9/18): train_loss=0.877772 validation_loss=0.910134
+Validation run head warmup epoch 10/15 (total 10/18): train_loss=0.875130 validation_loss=0.906963
+Validation run head warmup epoch 11/15 (total 11/18): train_loss=0.872950 validation_loss=0.906669
+SR2_Qwen3_4B_lora validation Head warmup (head warmup validation) Validation run epoch 12/15 (total 12/18):
+progress: 80.0% work: 1,692.0/2,115.0 time: 00:00:07/00:00:08
+Validation run head warmup epoch 12/15 (total 12/18): train_loss=0.875303 validation_loss=0.910785
+Validation run head warmup epoch 13/15 (total 13/18): train_loss=0.869356 validation_loss=0.904017
+Validation run head warmup epoch 14/15 (total 14/18): train_loss=0.867656 validation_loss=0.904342
+SR2_Qwen3_4B_lora validation Head warmup Validation run epoch 15/15 (total 15/18):
+progress: 100.0% work: 2,115.0/2,115.0 time: 00:00:09/00:00:09
+Validation run head warmup epoch 15/15 (total 15/18): train_loss=0.867275 validation_loss=0.904329
+Saved LoRA head warmup (Validation run): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/3fabc96f749f5ccbb0e35389baa87f33e3818792397e867bf6da482c2efd28c9.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/3 (total 16/18):
+progress: 10.0% work: 27.0/270.0 time: 00:34:01/05:40:10
