@@ -1,0 +1,7 @@
+Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261108-211521-333556.log
+Preparing processed data for 2.yaml: SR2-Qwen3-4B-lora (/content/llm-classification-finetuning/configs/2.yaml): /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet
+Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000001-7b3f074894069b956e90fb17aa47b25bcea3485a10a2097ccf337c705c8fe4ec.part -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000001-7b3f074894069b956e90fb17aa47b25bcea3485a10a2097ccf337c705c8fe4ec.part
+Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000002-88e8cadf8cf5d1accfcb1813fd9aab4212ce3022d2b10f0bf954ac982257c8a4.part -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.parts/000002-88e8cadf8cf5d1accfcb1813fd9aab4212ce3022d2b10f0bf954ac982257c8a4.part
+Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json
+Processed data ready: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet; copied 3 files.
+Running holdout validation for 2.yaml: SR2-Qwen3-4B-lora

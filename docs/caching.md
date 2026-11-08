@@ -267,11 +267,11 @@ feature, and head entries. Existing cache files and schema v5 are preserved.
 
 Frozen SR2 builds, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. All use the
-`swap_equivariant_abs_diff_v6` head architecture and warmup schema v5.
+`swap_equivariant_abs_diff_v7` head architecture and warmup schema v5.
 This head packs L/M into one projection for subtractive cross-projected wins and
-forms A-B and L-M in FP32 before one bias-free mixed-precision tie projection.
+forms A-B and L+M in FP32 before one bias-free mixed-precision tie projection.
 The projected difference is converted to FP32 before elementwise absolute values
-form `d = abs((A-B)(L-M))`. Training and inference read d with
+form `d = abs((A-B)(L+M))`. Training and inference read d with
 `w_tie = -softplus(raw_w_tie)` and add `b_tie = softplus(raw_b_tie)`.
 Both effective parameters are computed in FP32 with autocast disabled; readout
 follows the head mixed-precision policy before the FP32 bias addition.
@@ -291,12 +291,12 @@ Xavier-initialized SR2 entries lack this field; harmonic/discrepancy heads use
 `scaled_uniform_zero_discrepancy_v1`. Both select different keys and remain on
 disk without reuse or migration. Initialization versioning
 does not change the head architecture, warmup schema v5, production-checkpoint
-compatibility, or other heads' cache identities. V6 retains the previous
-L/M and win readout initialization scales and zero win projection bias. Effective
+compatibility, or other heads' cache identities. V7 uses scaled uniform weights
+for L/M and the win readout and initializes the win projection bias to zero. Effective
 tie weights start at the negative absolute values of the previous uniform
 readout distribution (floored in magnitude at FP32 epsilon), and the effective
 tie bias starts at `1e-4`; inverse softplus gives both raw initial values.
-Compatible v6 entries remain shared by frozen SR2 builds and
+Compatible v7 entries are shared by frozen SR2 builds and
 standalone/inline SR2 warmup when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 

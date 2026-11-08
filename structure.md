@@ -89,7 +89,7 @@ to the batch script; complete local processed data bypasses that source.
 T4 x2, Python 3.13+, offline inference after upload-time dependency setup). It sits
 outside the package and the `model` CLI: it reads the build's
 `adapter.pt` head and `merged/` backbone and writes `submission.csv`. It duplicates the
-SR2 v6 head and the conversation serializer, so changes to
+SR2 v7 head and the conversation serializer, so changes to
 `models/SR2_Qwen3_4B_lora/heads.py` or `models/common/data.py` must be mirrored there.
 Behavior belongs in [Kaggle submission](docs/kaggle-submission.md).
 
@@ -245,25 +245,25 @@ present in a fresh checkout.
    use the fixed competition column order with finite
    normalized probabilities. See [inputs](docs/data-preparation.md#conversation-serialization).
 3. **Profile objectives:** SR2 uses fused shared L/M subtractive cross projections for wins,
-   on original rows only. Compute A-B and L-M in FP32 with autocast disabled,
+   on original rows only. Compute A-B and L+M in FP32 with autocast disabled,
    then use one bias-free mixed-precision projection and FP32 elementwise
-   absolute values for `d = abs((A-B)(L-M))`. Read d with
+   absolute values for `d = abs((A-B)(L+M))`. Read d with
    `w_tie = -softplus(raw_w_tie)` and add `b_tie = softplus(raw_b_tie)` in FP32
    in training and inference. Compute both effective parameters in FP32 with
    autocast disabled, retaining gradients; save only their raw parameters.
    There is no tie projection bias, GELU, or dropout; only wins share a dropout mask. Architecture
-   `swap_equivariant_abs_diff_v6` uses zero-mean uniform weights with
+   `swap_equivariant_abs_diff_v7` uses zero-mean uniform weights with
    standard deviations `1/sqrt(2D)` for L/M weight blocks and `0.1/sqrt(h)` for
    the win readout, derived from actual layer dimensions. Effective tie weights
    start at the negative absolute values of the same uniform readout distribution,
    with magnitudes floored at FP32 epsilon; the effective tie bias starts at `1e-4`.
    Use stable inverse softplus `x + log(-expm1(-x))` for both raw initial values.
    B1 starts at zero; the head has `2Dh + 3h + 1` parameters.
-   Batch A/B inputs once, use one packed L/M projection, one L-M projection on A-B,
+   Batch A/B inputs once, use one packed L/M projection, one L+M projection on A-B,
    one shared win readout, and one tie readout, for four linear calls in total.
    Outputs are FP32 `[r_A, r_B, z_tie]`.
-   The v6 marker and exact parameter structure isolate warmup caches and
-   reject earlier checkpoints, including unconstrained v5 and penalized harmonic v4.
+   The v7 marker isolates warmup caches and requires v7 checkpoints. Tensor
+   checks enforce the parameter structure.
    SR2 warmup additionally versions initialization as
    `scaled_uniform_softplus_tie_v3`, isolating earlier initialization states
    without changing storage schemas.

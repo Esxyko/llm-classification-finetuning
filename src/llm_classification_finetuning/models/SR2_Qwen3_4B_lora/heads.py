@@ -13,7 +13,7 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_abs_diff_v6"
+SR2 = "swap_equivariant_abs_diff_v7"
 # Bump this version whenever the SR2 initialization policy changes.
 SR2_INITIALIZATION_VERSION = "scaled_uniform_softplus_tie_v3"
 
@@ -242,13 +242,13 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 			)
 			with torch.autocast(device_type=h_a.device.type, enabled=False):
 				l_weight, m_weight = self.input_projection.weight.chunk(2, dim=0)
-				# Form both differences in FP32 before the mixed-precision projection.
-				difference_weight = l_weight.float() - m_weight.float()
+				# Form the weight sum and input difference in FP32 before projection.
+				weight_sum = l_weight.float() + m_weight.float()
 				input_difference = h_a.float() - h_b.float()
 				w_tie = -F.softplus(self.raw_w_tie)
 				b_tie = F.softplus(self.raw_b_tie)
-			# |(A-B)(L-M)| needs one projection and feeds the tie readout directly.
-			tie_features = F.linear(input_difference, difference_weight).float().abs()
+			# |(A-B)(L+M)| is the absolute difference of the win preactivations.
+			tie_features = F.linear(input_difference, weight_sum).float().abs()
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))

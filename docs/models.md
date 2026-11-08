@@ -163,17 +163,16 @@ See [checkpoint flags](commands.md#model-selection-and-execution-modes),
 ## Checkpoint compatibility
 
 SR2 retains adapter/head schema v2 and uses the
-`swap_equivariant_abs_diff_v6` architecture with fused subtractive L/M win
-projections and `d = abs((A-B)(L-M))` read with
+`swap_equivariant_abs_diff_v7` architecture with fused subtractive L/M win
+projections and `d = abs((A-B)(L+M))` read with
 `w_tie = -softplus(raw_w_tie)`, followed by `b_tie = softplus(raw_b_tie)`.
 Checkpoints store these raw parameters. The effective tie weights start at small
 random negative values with the existing readout scale, and the effective bias
 starts at `1e-4`, both encoded through inverse softplus. The tie has no projection
 bias, GELU, or dropout.
 Frozen SR2 uses the same head. Artifact paths remain unchanged. The architecture
-marker rejects earlier checkpoints, including unconstrained v5 and penalized
-harmonic v4; exact head tensor checks additionally enforce the current parameter
-structure. Rebuild earlier checkpoints with the matching configuration. Existing
+marker requires v7 checkpoints. Exact head tensor checks enforce the current
+parameter structure. Rebuild earlier checkpoints with the matching configuration. Existing
 warmup files are preserved; the new architecture selects new cache keys and
 regenerates warmup.
 See [adapter/head checks](lora.md#checkpoints) for the enforced fields and pinned

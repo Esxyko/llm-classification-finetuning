@@ -25,7 +25,7 @@ and [configuration](configuration.md) for the complete fields and parser default
 
 SR2 loads Skywork's Transformer through `AutoModel`, omitting its scalar reward
 head. Its comparison head shares L/M projections across wins and a tie readout
-of the elementwise absolute difference `abs((A-B)(L-M))`.
+of the elementwise absolute difference `abs((A-B)(L+M))`.
 The implementation and public Python APIs now live in
 `models/SR2_Qwen3_4B_lora/`. Head size, rank, smoothing, rates, and epochs may
 differ between presets; read their actual values.
@@ -42,7 +42,7 @@ $$
 \begin{aligned}
 P_A &= \operatorname{GELU}(AL-BM+B_1),\\
 P_B &= \operatorname{GELU}(BL-AM+B_1),\\
-d &= |A(L-M)-B(L-M)| = |(A-B)(L-M)|,\\
+d &= |(AL+AM)-(BL+BM)| = |(A-B)(L+M)|,\\
 z_A &= (P_A\odot m_P)R,\\
 z_B &= (P_B\odot m_P)R,\\
 w_{\mathrm{tie}} &= -\operatorname{softplus}(\mathrm{raw\_w\_tie}),\\
@@ -75,7 +75,8 @@ There is no tie projection bias.
 The head has $2Dh+3h+1$ trainable parameters.
 Raw tie parameters and the win bias use the existing head learning rate and weight decay.
 
-Absolute values and win mask multiplication act elementwise.
+The tie feature $d$ is the elementwise absolute difference of the win
+preactivations. Win mask multiplication also acts elementwise.
 Each sample's win branches share the standard dropout mask $m_P$ with
 $1/(1-p)$ scaling during training; evaluation disables it.
 Training and inference both read $d$ with the effective negative weights, without
@@ -90,16 +91,17 @@ projections for both inputs; M's branch axis is reversed before subtraction. $B_
 is added in the projection output dtype. GELU, shared-mask multiplication, and
 the R readout operate on both win branches together.
 
-Every forward computes $L-M$ from the FP32 parameter blocks and $A-B$ from
+Every forward computes $L+M$ from the FP32 parameter blocks and $A-B$ from
 FP32 inputs with autocast disabled. One bias-free `F.linear` then projects
 the input difference using the existing head mixed-precision policy. Its output
 is converted to FP32 before elementwise absolute values form $d$. Gradients
-remain connected to both weight blocks and both inputs; the differences are
-neither independent parameters nor cached across forwards.
+flow through the weight sum and input difference to both weight blocks and
+both inputs.
 This algebraic simplification halves the tie projection's input rows compared
 with projecting A/B separately, with possible floating-point rounding differences.
-The head uses four linear calls: packed L/M, L-M on A-B, shared win readout,
-and tie readout. Weight views avoid concatenating full L/M weights per call.
+The four linear calls compute the packed L/M projection, the L+M projection of
+A-B, the shared win readout, and the tie readout. Weight views avoid concatenating
+full L/M weights per call.
 
 Every forward computes both effective tie parameters in FP32 with autocast
 disabled, retaining gradients to the raw parameters. Both readouts follow the
@@ -110,7 +112,7 @@ $d$; identical inputs give a tie logit of $b_{\mathrm{tie}}$.
 
 L/M/R and the win bias are trained directly; the tie readout trains and saves
 `raw_w_tie` and `raw_b_tie`. The architecture marker is
-`swap_equivariant_abs_diff_v6`, with embedding combination
+`swap_equivariant_abs_diff_v7`, with embedding combination
 `cross_projected_linear_abs_diff`; adapter/head checkpoint schema is v2,
 frozen-head schema is v1, and warmup schema is v5. The marker selects different
 warmup cache keys and rejects earlier checkpoints without converting their

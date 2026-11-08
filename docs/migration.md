@@ -198,11 +198,11 @@ checks also reject the removed tie projection bias, even with relabeled metadata
 Token, adapter-free feature, and batch-plan caches retain their existing reuse
 rules. See the [current head definition](lora.md#swap-equivariant-head).
 
-### Current SR2 v6 head
+### Archived SR2 v6 head (2026-11-09)
 
-The current marker is `swap_equivariant_abs_diff_v6`, retaining embedding
-combination `cross_projected_linear_abs_diff`. The win branches and absolute
-difference features are unchanged from v5. The tie readout now uses
+The v6 marker was `swap_equivariant_abs_diff_v6`, with embedding combination
+`cross_projected_linear_abs_diff`. It used the v5 win branches and tie feature
+`d = abs((A-B)(L-M))`. The tie readout used
 `w_tie = -softplus(raw_w_tie)`, `b_tie = softplus(raw_b_tie)`, and
 `z_tie = d @ w_tie + b_tie` (with the readout weight stored transposed).
 Effective tie parameters are computed in FP32 with autocast disabled; the
@@ -216,13 +216,18 @@ epsilon, and the effective bias starts at `1e-4`. Stable inverse softplus
 `x + log(-expm1(-x))` encodes these initial values in the raw parameters.
 
 Frozen SR2, LoRA SR2, standalone/inline warmup, and the FP32 submission notebook
-all use v6. Checkpoints save `raw_w_tie` (`[1, h]`) and `raw_b_tie` (scalar)
-instead of `tie_readout.weight` and `tie_bias`. Architecture and exact tensor
-checks reject v5 and earlier layouts, even if old metadata is relabeled.
-Rebuild checkpoints and regenerate head warmup; old artifacts remain intact.
-Adapter/head schema v2, frozen-head schema v1, warmup schema v5, configuration
-fields, artifact namespaces, and token/feature/batch-plan reuse rules remain
-unchanged. Compatible v6 head states are shared by the existing SR2 workflows.
+used v6. Checkpoints saved `raw_w_tie` (`[1, h]`) and `raw_b_tie` (scalar).
+Architecture and exact tensor checks rejected v5 and earlier layouts.
+
+### Current SR2 v7 head
+
+`swap_equivariant_abs_diff_v7` computes `d = abs((A-B)(L+M))`, the elementwise
+absolute difference of the two win preactivations. Both SR2 profiles, warmup,
+and `submit.ipynb` use the [v7 head](lora.md#swap-equivariant-head).
+
+The v7 marker selects fresh head warmup keys. Rebuild v6 and earlier
+checkpoints for v7. Token, adapter-free feature, and batch-plan caches follow
+their own compatibility rules.
 
 ### Standalone SR2 warmup profile
 
