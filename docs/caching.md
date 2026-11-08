@@ -267,33 +267,36 @@ feature, and head entries. Existing cache files and schema v5 are preserved.
 
 Frozen SR2 builds, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. All use the
-`swap_equivariant_abs_diff_v5` head architecture and warmup schema v5.
+`swap_equivariant_abs_diff_v6` head architecture and warmup schema v5.
 This head packs L/M into one projection for subtractive cross-projected wins and
 forms A-B and L-M in FP32 before one bias-free mixed-precision tie projection.
 The projected difference is converted to FP32 before elementwise absolute values
-form `d = abs((A-B)(L-M))`. Training and inference pass d directly into
-`tie_readout`. A shared biased `tie_product_projection` also maps both inputs
-to h features; its outputs are multiplied elementwise in FP32, then passed
-directly into the bias-free `tie_product_readout`. The two readout outputs and
-scalar `tie_bias` are added in FP32. Only wins use dropout, with one shared mask;
-neither tie branch has an activation or dropout. The absolute-difference branch
-has no projection bias; the product branch has the shared bias b2. Exact
-head/optimizer tensor names and shapes reject earlier structures, including v5
-without the product branch and v4's removed tie projection bias, even if their
-metadata is relabeled. Earlier entries remain on disk without reuse or migration.
+form `d = abs((A-B)(L-M))`. Training and inference read d with
+`w_tie = -softplus(raw_w_tie)` and add `b_tie = softplus(raw_b_tie)`.
+Both effective parameters are computed in FP32 with autocast disabled; readout
+follows the head mixed-precision policy before the FP32 bias addition.
+Only wins use dropout, with
+one shared mask. There is no tie projection bias. The architecture marker selects
+new cache keys within the existing namespace; earlier entries remain on disk and
+are not reused or migrated. Exact head/optimizer tensor names and shapes
+additionally reject earlier structures, including v5's unconstrained
+`tie_readout.weight`/`tie_bias` and v4's removed tie projection bias, even if
+their metadata is relabeled. Saved head and optimizer states use the raw parameter names.
+Warmup is regenerated for the new architecture.
 
 SR2 also includes `head_initialization_version` in its warmup metadata, currently
-`scaled_uniform_zero_product_v3`. The full metadata is hashed with SHA-256
+`scaled_uniform_softplus_tie_v3`. The full metadata is hashed with SHA-256
 to form the cache key and must match the selected source exactly when loading. Earlier
 Xavier-initialized SR2 entries lack this field; harmonic/discrepancy heads use
-`scaled_uniform_zero_discrepancy_v1`, and v5 before the product branch used
-`scaled_uniform_v2`. These select different keys without changing the architecture
-marker, warmup schema v5, or other heads' cache identities. The added parameters
-independently make earlier production checkpoints incompatible; they require
-rebuilding. V5 retains the previous L/M and win/tie readout initialization scales,
-with zero win projection bias and scalar tie bias. N uses L/M's uniform scale
-with standard deviation `1/sqrt(2D)`; b2 and the product readout weight start
-at zero. New product-aware entries remain shared by frozen SR2 builds and
+`scaled_uniform_zero_discrepancy_v1`. Both select different keys and remain on
+disk without reuse or migration. Initialization versioning
+does not change the head architecture, warmup schema v5, production-checkpoint
+compatibility, or other heads' cache identities. V6 retains the previous
+L/M and win readout initialization scales and zero win projection bias. Effective
+tie weights start at the negative absolute values of the previous uniform
+readout distribution (floored in magnitude at FP32 epsilon), and the effective
+tie bias starts at `1e-4`; inverse softplus gives both raw initial values.
+Compatible v6 entries remain shared by frozen SR2 builds and
 standalone/inline SR2 warmup when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 

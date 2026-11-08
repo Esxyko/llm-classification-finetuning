@@ -60,8 +60,8 @@ class ModelResultPublisher:
 			"generated_at": generated_at.isoformat(timespec="seconds"),
 			"model_name": model_config.model_name,
 			"head_architecture": profile.head_architecture,
-			"embedding_combination": "cross_projected_linear_abs_diff_product"
-			if profile.head_architecture == "swap_equivariant_abs_diff_v5"
+			"embedding_combination": "cross_projected_linear_abs_diff"
+			if profile.head_architecture == "swap_equivariant_abs_diff_v6"
 			else "cross_projected_linear_diff_harmonic_abs_diff"
 			if profile.head_architecture == "swap_equivariant_harmonic_discrepancy_v3"
 			else "cross_projected_harmonic_abs_diff"

@@ -13,9 +13,9 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_abs_diff_v5"
+SR2 = "swap_equivariant_abs_diff_v6"
 # Bump this version whenever the SR2 initialization policy changes.
-SR2_INITIALIZATION_VERSION = "scaled_uniform_zero_product_v3"
+SR2_INITIALIZATION_VERSION = "scaled_uniform_softplus_tie_v3"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -162,10 +162,10 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 
 
 class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
-	"""Combine cross-projected wins with absolute-difference and product ties."""
+	"""Combine cross-projected wins with sign-constrained absolute-difference ties."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_linear_abs_diff_product"
+	EMBEDDING_COMBINATION = "cross_projected_linear_abs_diff"
 
 	def __init__(
 		self,
@@ -184,10 +184,12 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 		self.win_projection_bias = nn.Parameter(
 			torch.zeros(hidden_size, dtype=torch.float32)
 		)
-		# Readouts are bias-free; only the tie has a scalar output bias.
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
-		self.tie_readout = nn.Linear(hidden_size, 1, bias=False)
-		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
+		# Softplus constrains the effective tie weights and scalar bias each forward.
+		self.raw_w_tie = nn.Parameter(
+			torch.empty((1, hidden_size), dtype=torch.float32)
+		)
+		self.raw_b_tie = nn.Parameter(torch.empty((), dtype=torch.float32))
 		self.activation = nn.GELU()
 		self.dropout = nn.Dropout(dropout)
 		for layer, bound in (
@@ -196,27 +198,27 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 				math.sqrt(3.0 / (2 * self.input_projection.in_features)),
 			),
 			(self.win_readout, 0.1 * math.sqrt(3.0 / self.win_readout.in_features)),
-			(self.tie_readout, 0.1 * math.sqrt(3.0 / self.tie_readout.in_features)),
 		):
 			nn.init.uniform_(layer.weight, -bound, bound)
 			if layer.bias is not None:
 				nn.init.zeros_(layer.bias)
-		nn.init.zeros_(self.tie_bias)
-		# Create the product branch last to preserve existing seeded initialization.
-		self.tie_product_projection = nn.Linear(
-			backbone_hidden_size, hidden_size, bias=True
-		)
-		self.tie_product_readout = nn.Linear(hidden_size, 1, bias=False)
-		product_bound = math.sqrt(3.0 / (2 * self.tie_product_projection.in_features))
-		nn.init.uniform_(
-			self.tie_product_projection.weight, -product_bound, product_bound
-		)
-		nn.init.zeros_(self.tie_product_projection.bias)
-		nn.init.zeros_(self.tie_product_readout.weight)
+		tie_bound = 0.1 * math.sqrt(3.0 / hidden_size)
+		with torch.no_grad():
+			nn.init.uniform_(self.raw_w_tie, -tie_bound, tie_bound)
+			tie_magnitude = self.raw_w_tie.abs().clamp_min(
+				torch.finfo(torch.float32).eps
+			)
+			tie_bias = self.raw_b_tie.new_full((), 1e-4)
+			for raw_parameter, value in (
+				(self.raw_w_tie, tie_magnitude),
+				(self.raw_b_tie, tie_bias),
+			):
+				# Stable inverse softplus, including small effective initial values.
+				raw_parameter.copy_(value + torch.log(-torch.expm1(-value)))
 
 	@classmethod
 	def embedding_combination(cls) -> str:
-		"""Return the marker for cross-projected wins and difference/product ties."""
+		"""Return the marker for cross-projected wins and absolute-difference ties."""
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -243,18 +245,17 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 				# Form both differences in FP32 before the mixed-precision projection.
 				difference_weight = l_weight.float() - m_weight.float()
 				input_difference = h_a.float() - h_b.float()
+				w_tie = -F.softplus(self.raw_w_tie)
+				b_tie = F.softplus(self.raw_b_tie)
 			# |(A-B)(L-M)| needs one projection and feeds the tie readout directly.
 			tie_features = F.linear(input_difference, difference_weight).float().abs()
-			product_branches = self.tie_product_projection(branches).float()
-			product_features = product_branches[:, 0] * product_branches[:, 1]
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
 			win_logits = self.win_readout(wins).squeeze(-1).float()
-			tie_logits = self.tie_readout(tie_features).float()
-			tie_product_logits = self.tie_product_readout(product_features).float()
-		tie = tie_logits + tie_product_logits + self.tie_bias
+			tie_logits = F.linear(tie_features, w_tie).float()
+		tie = tie_logits + b_tie
 		return torch.cat((win_logits, tie), dim=-1)
 
 

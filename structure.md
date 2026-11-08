@@ -89,7 +89,7 @@ to the batch script; complete local processed data bypasses that source.
 T4 x2, Python 3.13+, offline inference after upload-time dependency setup). It sits
 outside the package and the `model` CLI: it reads the build's
 `adapter.pt` head and `merged/` backbone and writes `submission.csv`. It duplicates the
-SR2 v5 head and the conversation serializer, so changes to
+SR2 v6 head and the conversation serializer, so changes to
 `models/SR2_Qwen3_4B_lora/heads.py` or `models/common/data.py` must be mirrored there.
 Behavior belongs in [Kaggle submission](docs/kaggle-submission.md).
 
@@ -179,7 +179,7 @@ default to SR2. Retained legacy quantization/head branches are not active profil
 | --- | --- |
 | `data.py` | Canonical token/feature views, branch flattening, independent right padding, and CPU pooling positions |
 | `batching.py` | CPU loader preparation, shared tokens, global base plans, merged optimizer groups, epoch repacking, warmup training-ID/label identity context, and explicit frozen-head config/full-data preparation |
-| `heads.py` | Head factory, precision wrapper, fused subtractive L/M win projections with absolute-difference and symmetric-product tie readouts, and retained legacy head definitions |
+| `heads.py` | Head factory, precision wrapper, fused subtractive L/M win projections with direct absolute-difference tie readout, and retained legacy head definitions |
 | `model.py` | Differentiable shared backbone/adapters, config-only head initialization with lazy frozen-backbone loading on feature misses and CPU/CUDA RNG preservation, direct device loading, pooling/dtypes, head calls, and per-joint-batch checkpointing |
 | `extractor.py` | No-gradient CPU features for warmup or joint validation, optionally filling only missing branches into a shared tensor, with branch-batch progress callbacks |
 | `trainer.py` | CPU token preparation, plateau-scheduled frozen-head validation, epoch-based exponential build/warmup and independent update-based cosine joint learning-rate curves, frozen-head validation early stopping with best-epoch predictions and per-epoch progress, both branch graphs and one backward pass, optimizer/scaler state, fixed-rate lower-epoch warmup continuation and shuffle replay, epoch-end warmup train/validation inference on shared features, independent extraction/warmup/joint progress and executed epoch counts, standalone cached-head evaluation, and optional training/validation memory intervals |
@@ -247,29 +247,26 @@ present in a fresh checkout.
 3. **Profile objectives:** SR2 uses fused shared L/M subtractive cross projections for wins,
    on original rows only. Compute A-B and L-M in FP32 with autocast disabled,
    then use one bias-free mixed-precision projection and FP32 elementwise
-   absolute values for `d = abs((A-B)(L-M))`. Pass d directly to `tie_readout`
-   in training and inference. Add `((A @ N + b2) * (B @ N + b2)) @ w_tie_2`
-   using one shared biased `Linear(D, h)` and one bias-free `Linear(h, 1)`;
-   multiply the projected features in FP32. Sum both readouts and `tie_bias`
-   in FP32. The absolute-difference projection has no bias; neither tie branch
-   has an activation or dropout. Only wins share a dropout mask. Architecture
-   `swap_equivariant_abs_diff_v5` uses zero-mean uniform weights with
-   standard deviations `1/sqrt(2D)` for L/M/N and `0.1/sqrt(h)` for the original
-   win/tie readouts, derived from actual layer dimensions. B1, b2, w_tie_2, and
-   the sole FP32 scalar tie bias start at zero; the head has `3Dh + 5h + 1`
-   parameters. Initialize the product layers after the original parameters to
-   preserve their seeded initial values. The product contribution starts at zero;
-   trained identical inputs can contribute squared product features to the tie.
+   absolute values for `d = abs((A-B)(L-M))`. Read d with
+   `w_tie = -softplus(raw_w_tie)` and add `b_tie = softplus(raw_b_tie)` in FP32
+   in training and inference. Compute both effective parameters in FP32 with
+   autocast disabled, retaining gradients; save only their raw parameters.
+   There is no tie projection bias, GELU, or dropout; only wins share a dropout mask. Architecture
+   `swap_equivariant_abs_diff_v6` uses zero-mean uniform weights with
+   standard deviations `1/sqrt(2D)` for L/M weight blocks and `0.1/sqrt(h)` for
+   the win readout, derived from actual layer dimensions. Effective tie weights
+   start at the negative absolute values of the same uniform readout distribution,
+   with magnitudes floored at FP32 epsilon; the effective tie bias starts at `1e-4`.
+   Use stable inverse softplus `x + log(-expm1(-x))` for both raw initial values.
+   B1 starts at zero; the head has `2Dh + 3h + 1` parameters.
    Batch A/B inputs once, use one packed L/M projection, one L-M projection on A-B,
-   one shared N projection, one shared win readout, and two tie readouts, for six
-   linear calls in total.
+   one shared win readout, and one tie readout, for four linear calls in total.
    Outputs are FP32 `[r_A, r_B, z_tie]`.
-   Exact parameter structure rejects earlier v5 checkpoints without the product
-   branch; the v5 marker rejects earlier architectures, including penalized harmonic v4.
+   The v6 marker and exact parameter structure isolate warmup caches and
+   reject earlier checkpoints, including unconstrained v5 and penalized harmonic v4.
    SR2 warmup additionally versions initialization as
-   `scaled_uniform_zero_product_v3`, isolating earlier v5 head states without
-   changing architecture or storage schemas. The embedding-combination marker
-   is `cross_projected_linear_abs_diff_product`.
+   `scaled_uniform_softplus_tie_v3`, isolating earlier initialization states
+   without changing storage schemas.
    Frozen SR2 uses this same head and initialization, freezing the backbone and
    training only the head without adapters. Validation uses ReduceLROnPlateau;
    builds use the shared warmup epoch-based exponential-decay algorithm with

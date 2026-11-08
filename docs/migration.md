@@ -173,36 +173,56 @@ architecture. Its storage schemas were adapter/head v2, frozen-head v1, and
 warmup v5. This is a documentation-only archive of v4; historical artifacts
 remain intact.
 
-### Current SR2 v5 head
+### Archived SR2 v5 head (2026-11-09)
 
-The current marker is `swap_equivariant_abs_diff_v5`, with embedding combination
-`cross_projected_linear_abs_diff_product`. Wins retain the v4 branches and shared
-dropout mask. The tie uses `d = abs((A-B)(L-M))` and
-`z_tie = tie_readout(d) + ((A @ N + b2) * (B @ N + b2)) @ w_tie_2 + tie_bias`
-directly in both training and inference, without activation or dropout in either
-tie branch. The absolute-difference projection is bias-free; the added product
-projection is shared and biased. The head has `3Dh + 5h + 1` parameters.
+The v5 marker was `swap_equivariant_abs_diff_v5`, with embedding combination
+`cross_projected_linear_abs_diff`. Wins retained the v4 branches and shared dropout
+mask. The tie used `d = abs((A-B)(L-M))` and
+`z_tie = tie_readout(d) + tie_bias` directly in both training and inference,
+without tie GELU or dropout. Removing `tie_projection_bias` and the harmonic formula
+reduced the head to `2Dh + 3h + 1` parameters.
 
 The implementation forms A-B and L-M in FP32 with autocast disabled, then uses
 one bias-free mixed-precision projection and FP32 elementwise absolute values.
-This halves the absolute-difference projection's input rows while retaining
-gradients. A second shared projection computes AN+b2 and BN+b2 in one call;
-their FP32 elementwise product feeds a bias-free readout, for six linear calls
-overall. Algebraically equivalent separate projections may round differently.
-Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb` all use v5;
-the notebook computes the head entirely in FP32.
+This halves the tie projection's input rows, while retaining gradients and four
+linear calls overall. Algebraically equivalent separate projections may round
+differently. Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb`
+all used v5; the notebook computed the head entirely in FP32.
 
-Initialization is now `scaled_uniform_zero_product_v3`. Original parameters
-retain their scales and seeded initial values, with zero B1/tie bias. N uses
-L/M's zero-mean uniform scale with standard deviation `1/sqrt(2D)`; b2 and
-w_tie_2 start at zero, so the added term initially vanishes. Adapter/head schema
-v2, frozen-head schema v1, warmup schema v5, configuration fields, architecture
-marker, and artifact namespaces remain unchanged. Earlier checkpoints, including
-v5 without the product branch, require rebuilding; the initialization version
-selects fresh warmup keys without editing or migrating historical artifacts.
-Exact head/optimizer tensor checks reject earlier layouts even with relabeled metadata.
+Initialization used `scaled_uniform_v2` for the remaining weights and zero
+B1/tie bias. Adapter/head schema v2, frozen-head schema v1, warmup schema v5,
+configuration fields, and artifact namespaces remain unchanged. Earlier
+checkpoints require rebuilding; the new architecture selects fresh warmup keys
+without editing or migrating historical artifacts. Exact head/optimizer tensor
+checks also reject the removed tie projection bias, even with relabeled metadata.
 Token, adapter-free feature, and batch-plan caches retain their existing reuse
 rules. See the [current head definition](lora.md#swap-equivariant-head).
+
+### Current SR2 v6 head
+
+The current marker is `swap_equivariant_abs_diff_v6`, retaining embedding
+combination `cross_projected_linear_abs_diff`. The win branches and absolute
+difference features are unchanged from v5. The tie readout now uses
+`w_tie = -softplus(raw_w_tie)`, `b_tie = softplus(raw_b_tie)`, and
+`z_tie = d @ w_tie + b_tie` (with the readout weight stored transposed).
+Effective tie parameters are computed in FP32 with autocast disabled; the
+readout follows the head mixed-precision policy before adding the FP32 bias.
+The head retains four linear calls and `2Dh + 3h + 1` trainable parameters.
+
+Initialization version `scaled_uniform_softplus_tie_v3` retains the L/M/R
+uniform scales and zero B1. Effective tie weights start at the negative absolute
+values of `U(-0.1*sqrt(3/h), 0.1*sqrt(3/h))`, floored in magnitude at FP32
+epsilon, and the effective bias starts at `1e-4`. Stable inverse softplus
+`x + log(-expm1(-x))` encodes these initial values in the raw parameters.
+
+Frozen SR2, LoRA SR2, standalone/inline warmup, and the FP32 submission notebook
+all use v6. Checkpoints save `raw_w_tie` (`[1, h]`) and `raw_b_tie` (scalar)
+instead of `tie_readout.weight` and `tie_bias`. Architecture and exact tensor
+checks reject v5 and earlier layouts, even if old metadata is relabeled.
+Rebuild checkpoints and regenerate head warmup; old artifacts remain intact.
+Adapter/head schema v2, frozen-head schema v1, warmup schema v5, configuration
+fields, artifact namespaces, and token/feature/batch-plan reuse rules remain
+unchanged. Compatible v6 head states are shared by the existing SR2 workflows.
 
 ### Standalone SR2 warmup profile
 
