@@ -10,7 +10,7 @@ import re
 import shutil
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,6 +69,113 @@ class CacheStorage:
 	def exists(self) -> bool:
 		"""Report logical presence; actual integrity is checked under the read lock."""
 		return self.manifest_path.is_file() or self.path.is_file()
+
+	def missing_components(self) -> tuple[Path, ...]:
+		"""List absent or wrong-sized files without reconstructing or archiving data."""
+		with self._lock():
+			return tuple(
+				path
+				for path, size in self._components(self._component_manifest())
+				if not self._matches_component(path, size)
+			)
+
+	def copy_missing_from(
+		self,
+		source: CacheStorage,
+		*,
+		on_copy: Callable[[Path, Path], None] | None = None,
+	) -> tuple[Path, ...]:
+		"""Fill incomplete components, publishing a new manifest after its volumes.
+
+		A local manifest remains authoritative. Source components already available
+		locally are not required. Checksums remain the responsibility of ``open``.
+		The optional callback receives source and destination before each copy.
+		"""
+		with self._lock():
+			manifest = self._component_manifest()
+			if manifest is None and self.path.is_file():
+				return ()
+			publish_manifest = False
+			if manifest is None:
+				manifest = source._component_manifest()
+				publish_manifest = manifest is not None
+			copies = [
+				(
+					target,
+					source.parts_path / target.name if manifest else source.path,
+					size,
+				)
+				for target, size in self._components(manifest)
+				if not self._matches_component(target, size)
+			]
+			if not copies and not publish_manifest:
+				return ()
+			unavailable = [
+				f"{target} <- {origin}"
+				+ (f" (expected {size} bytes)" if size is not None else "")
+				for target, origin, size in copies
+				if not self._matches_component(origin, size)
+			]
+			if unavailable:
+				raise FileNotFoundError(
+					"Missing or wrong-sized artifact components (local <- source):\n"
+					+ "\n".join(unavailable)
+					+ f"\nSource artifact: {source.path} or {source.manifest_path}"
+				)
+			copied: list[Path] = []
+			with tempfile.TemporaryDirectory(dir=self._work_root) as temporary:
+				staged: list[tuple[Path, Path]] = []
+				for index, (target, origin, size) in enumerate(copies):
+					if on_copy is not None:
+						on_copy(origin, target)
+					working = Path(temporary) / str(index)
+					try:
+						expected_size = origin.stat().st_size if size is None else size
+						shutil.copyfile(origin, working)
+						if working.stat().st_size != expected_size:
+							raise OSError(f"Expected {expected_size} copied bytes.")
+						staged.append((working, target))
+					except OSError as error:
+						raise OSError(
+							f"Could not copy {origin} to {target}: {error}"
+						) from error
+				if publish_manifest:
+					if on_copy is not None:
+						on_copy(source.manifest_path, self.manifest_path)
+					working_manifest = Path(temporary) / "manifest.json"
+					working_manifest.write_text(
+						json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+						encoding="utf-8",
+					)
+					if working_manifest.stat().st_size >= self.SPLIT_THRESHOLD:
+						raise OSError("Cache manifest exceeds the file size limit.")
+					staged.append((working_manifest, self.manifest_path))
+				for working, target in staged:
+					target.parent.mkdir(parents=True, exist_ok=True)
+					os.replace(working, target)
+					copied.append(target)
+			return tuple(copied)
+
+	def _component_manifest(self) -> dict | None:
+		if not self.manifest_path.is_file():
+			return None
+		try:
+			return self._read_manifest()
+		except (ValueError, KeyError, TypeError, RecursionError) as error:
+			raise CacheCorruptionError(
+				f"Invalid multipart manifest {self.manifest_path}: {error}"
+			) from error
+
+	def _components(self, manifest: dict | None) -> tuple[tuple[Path, int | None], ...]:
+		if manifest is None:
+			return ((self.path, None),)
+		return tuple(
+			(self.parts_path / part["name"], part["size"]) for part in manifest["parts"]
+		)
+
+	@staticmethod
+	def _matches_component(path: Path, size: int | None) -> bool:
+		return path.is_file() and (size is None or path.stat().st_size == size)
 
 	@contextmanager
 	def open(self, mode: Literal["r", "rw", "w"] = "r") -> Iterator[CacheFileSession]:

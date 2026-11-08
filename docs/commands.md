@@ -100,6 +100,40 @@ follows the selected YAML.
 
 Validation logs use `<RESULT_PATH>/logs/validate-*.log`.
 
+Before each task starts, the script loads its YAML through `AppConfig` and checks
+the resolved `data.processed_path` from the project root. Complete local data is
+used directly. The same batch can mix repository-backed configurations and
+`lmsys33k.yaml`, whose prebuilt data is not included in Git. The script does not
+download raw data or run preprocessing.
+
+To fill missing processed-data files from a mounted Drive or another project
+mirror, pass an optional source root:
+
+```bash
+uv run python scripts/validate.py --data-source-root /content/drive/MyDrive/llm-classification-finetuning
+```
+
+The mirror preserves project-relative paths: `data/processed/lmsys33k/` is looked
+up beneath that root. Relative source roots resolve from the project root; `~`
+is expanded. Without this argument, only local data is checked. A complete local
+artifact does not access the source root. An absolute processed path outside the
+project can be used locally, but missing files there cannot be mapped to the
+mirror.
+
+For multipart data, a local manifest remains authoritative; otherwise, a local
+single Parquet is used before looking at the source. When both local entrypoints
+are absent, a source manifest takes precedence over a source single file. The
+script checks manifest metadata, referenced files, and volume sizes, copying only
+missing or wrong-sized volumes. Correct local volumes need not also exist in the
+source. New manifests publish after all their volumes are ready. SHA-256 and
+table validation remain in the model loader; malformed existing manifests fail
+without being replaced. Successfully prepared paths are reused within the batch.
+
+Data-preparation failures skip that task and continue the batch. The log includes
+the YAML/model and missing local/source paths, and the final status is nonzero if
+any task fails. Preparation and copying use the same streamed validation log as
+the child model commands.
+
 ## Batch builds
 
 [scripts/build.py](../scripts/build.py) runs full-data builds and standalone
@@ -126,8 +160,9 @@ model CLI directly with tags when separate checkpoints are needed.
 ### Shared batch behavior
 
 Each script selects work independently through its top-level `CONFIG_DIR` and
-`MODEL_CONFIGS` constants. Both currently select `SR2-Qwen3-4B-lora` with
-`1.yaml` from `configs/`, with an optional commented frozen-SR2 selection. Edit these constants to choose other combinations;
+`MODEL_CONFIGS` constants. Validation currently selects frozen `SR2-Qwen3-4B`
+with `lmsys33k.yaml`; builds select frozen and LoRA SR2 with `1.yaml` from
+`configs/`. Edit these constants to choose other combinations;
 there are no script CLI selection flags. Dictionary keys are registered model
 selectors, with `warmup` additionally supported by the build script. Each list
 contains filenames relative to `CONFIG_DIR`, resolved from the script's project

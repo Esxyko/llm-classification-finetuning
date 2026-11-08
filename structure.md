@@ -71,12 +71,19 @@ Both own independent explicit model/config selection, sequential subprocesses,
 terminal/log streaming, and failure summaries. Usage belongs in
 [batch validation](docs/commands.md#batch-validation) and
 [batch builds](docs/commands.md#batch-builds).
+Validation additionally loads each selected config from the project-root cwd
+and ensures its processed data before launching the model child, optionally
+filling missing components from a project mirror via `--data-source-root`.
+Successful data preparations are shared by resolved path within the batch;
+preparation failures use the existing task log and failure summary.
 
 The ignored local `!validate.ipynb` and `!build.ipynb` provide Colab setup and
 their corresponding batch workflows. The build notebook additionally copies
 current SR2 outputs to timestamped Drive backups before runtime release,
 retaining the runtime if copying fails. Their behavior belongs in
 [Colab](docs/colab.md#local-notebook-behavior).
+The validation notebook passes its configurable `DRIVE_DATA_ROOT` project mirror
+to the batch script; complete local processed data bypasses that source.
 
 [submit.ipynb](submit.ipynb) is the tracked, self-contained Kaggle inference notebook (GPU
 T4 x2, Python 3.13+, offline inference after upload-time dependency setup). It sits
@@ -102,7 +109,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `cli_output.py` | Shared download/split summaries |
 | `errors.py` | Expected domain-error hierarchy |
 | `timing.py` | Unbounded `HH:MM:SS` duration formatting with optional millisecond precision for fast validation logs |
-| `pipeline.py` | `PrepareDataPipeline`: download/preprocessing orchestration and optional download-progress callback |
+| `pipeline.py` | `PrepareDataPipeline`: download/preprocessing orchestration and optional download-progress callback; `EnsureProcessedDataPipeline`: local processed-data checks and optional project-mirror restoration without preprocessing |
 | `data/downloader.py` | Missing Kaggle training CSV download and single-file ZIP normalization |
 | `preprocess/splits.py` | Exact-response tie correction before labels/prompt hashes, grouped class quotas, balance orchestration, integrity summaries, and processed publication |
 | `preprocess/token_balance.py` | Canonical token counting and deterministic equal-class whole-group exchanges |
@@ -148,7 +155,7 @@ with the current SR2 head and warmup feature identities, rather than legacy MLP 
 | `hardware.py` | CUDA/precision validation, single-GPU placement, isolated phase intervals with cross-epoch allocator maxima, and reset-safe global peaks |
 | `backbone.py` | Local weight/configuration content fingerprints for caches |
 | `compatibility.py` | Frozen embedding and head-checkpoint compatibility construction |
-| `cache_storage.py` | Locked file sessions, atomic/multipart publication, checksums, and corruption archives |
+| `cache_storage.py` | Locked file sessions, atomic/multipart publication, checksums, corruption archives, non-destructive component/size checks, and staged missing-component copies preserving authoritative manifests |
 | `token_cache.py` | Content-addressed text encodings, compact CPU views, canonical pair tokens, and context validation |
 | `cache.py` | Per-branch SQLite frozen/warmup embeddings, lossless FP16/BF16/FP32 storage, and rebinding to current rows |
 | `extraction_batching.py` | Deterministic branch extraction plans comparing contiguous DP with best-fit by batch count, then padded tokens; stable length/iteration behavior |

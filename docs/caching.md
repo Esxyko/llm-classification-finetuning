@@ -518,6 +518,18 @@ root in application code. `open("w")` publishes on successful exit;
 publishes. Close SQLite connections and other handles before leaving the session.
 
 `exists()` checks logical presence; `archive()` quarantines an artifact, and
-`session.archive()` does so under an existing lock. Missing reads raise
+`session.archive()` does so under an existing lock. Missing `open()` reads raise
 `FileNotFoundError`; malformed multipart files raise `CacheCorruptionError`
 after archival. Each caller owns its recovery policy.
+
+`missing_components()` checks manifest metadata and referenced file sizes under
+the artifact lock without reconstructing, hashing, or archiving data. It returns
+missing or wrong-sized paths; with no local entrypoint, it returns the logical
+file path. Malformed manifests raise `CacheCorruptionError` without archival.
+`copy_missing_from(source, on_copy=...)` fills only incomplete components from
+another `CacheStorage`, preserving a local manifest when present. The source need
+not contain components already complete locally. Copies are staged and replaced
+atomically, with a newly introduced manifest published last. The callback receives
+source/destination paths before each copy; the return value lists published local
+paths. The model loader still owns checksum and table validation. See
+[batch validation](commands.md#batch-validation) for project-mirror routing.
