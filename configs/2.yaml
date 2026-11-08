@@ -22,7 +22,7 @@ gpu:
   allow_tf32: false
 
 SR2_Qwen3_4B:
-  factor: 0.85
+  factor: 0.9
   patience: 2
   early_stopping: 7
   label_smoothing: 0.0
@@ -65,7 +65,7 @@ SR2_Qwen3_4B_lora:
   training_batch_size: 1
   head_inference_batch_size: 1024
   gradient_accumulation_steps: 1024
-  epochs: 3
+  epochs: 2
   extraction_budget: 778240
   learning_rate: 0.0001
   min_lr_ratio: 0.0
