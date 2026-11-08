@@ -1,0 +1,65 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_penalized_harmonic",
+  "epochs": [
+    {
+      "epoch": 16,
+      "last_step_training_loss": 0.9215769963061864,
+      "total_time": "01:12:40",
+      "training_loss": 0.9191417383000412,
+      "training_time": "01:04:49",
+      "validation_loss": 0.9035071420000774,
+      "validation_time": "00:07:47"
+    },
+    {
+      "epoch": 17,
+      "last_step_training_loss": 0.8554600375387601,
+      "total_time": "01:12:35",
+      "training_loss": 0.8801144564741978,
+      "training_time": "01:04:48",
+      "validation_loss": 0.884799348884519,
+      "validation_time": "00:07:47"
+    },
+    {
+      "epoch": 18,
+      "last_step_training_loss": 0.8328867512471965,
+      "total_time": "01:12:37",
+      "training_loss": 0.8457811572311105,
+      "training_time": "01:04:49",
+      "validation_loss": 0.8844747327883218,
+      "validation_time": "00:07:48"
+    }
+  ],
+  "generated_at": "2026-11-08T10:40:59+00:00",
+  "head_architecture": "swap_equivariant_penalized_harmonic_v4",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11907,
+  "run_name": "SR2-Qwen3-4B-lora-20261108-104059",
+  "source_training_rows": 47626,
+  "total_time": "03:39:49",
+  "training_rows": 47626,
+  "training_time": "03:14:27",
+  "validation_fraction": 0.20000671896259217,
+  "validation_loss": 0.8844747327883218,
+  "validation_rows": 11907,
+  "validation_strategy": "holdout",
+  "validation_time": "00:23:23",
+  "config_total_time": "03:39:49",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 99654708736,
+    "peak_reserved_bytes": 100415832064,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 99654708736,
+        "peak_reserved_bytes": 100415832064
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 84855222784,
+        "peak_reserved_bytes": 100415832064
+      }
+    }
+  }
+}
