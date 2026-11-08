@@ -165,12 +165,15 @@ See [checkpoint flags](commands.md#model-selection-and-execution-modes),
 SR2 retains adapter/head schema v2 and uses the
 `swap_equivariant_abs_diff_v5` architecture with fused subtractive L/M win
 projections and `d = abs((A-B)(L-M))` passed directly to `tie_readout`, followed
-by one scalar tie bias. The tie has no projection bias, GELU, or dropout.
-Frozen SR2 uses the same head. Artifact paths remain unchanged. The architecture
-marker rejects earlier checkpoints, including penalized harmonic v4; exact head
-tensor checks additionally enforce the current parameter structure. Rebuild earlier
-checkpoints with the matching configuration. Existing warmup files are preserved; the new architecture selects
-new cache keys and regenerates warmup.
+by the symmetric term `((A @ N + b2) * (B @ N + b2)) @ w_tie_2` and one scalar
+tie bias. The product uses a shared biased projection and a bias-free readout;
+the absolute-difference projection remains bias-free. Neither tie branch uses
+activation or dropout. Frozen SR2 uses the same head. Artifact paths remain
+unchanged. The architecture marker rejects earlier architectures, including
+penalized harmonic v4; exact head tensor checks additionally reject v5 checkpoints
+without the product parameters. Rebuild earlier checkpoints with the matching
+configuration. Existing warmup files are preserved; initialization version
+`scaled_uniform_zero_product_v3` selects new cache keys and regenerates warmup.
 See [adapter/head checks](lora.md#checkpoints) for the enforced fields and pinned
 Hub revision. Historical Qwen checkpoints are not converted into SR2 checkpoints.
 

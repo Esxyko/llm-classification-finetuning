@@ -272,24 +272,28 @@ This head packs L/M into one projection for subtractive cross-projected wins and
 forms A-B and L-M in FP32 before one bias-free mixed-precision tie projection.
 The projected difference is converted to FP32 before elementwise absolute values
 form `d = abs((A-B)(L-M))`. Training and inference pass d directly into
-`tie_readout`, then add the FP32 scalar `tie_bias`. Only wins use dropout, with
-one shared mask. There is no tie projection bias. The architecture marker selects
-new cache keys within the existing namespace; earlier entries remain on disk and
-are not reused or migrated. Exact head/optimizer tensor names and shapes
-additionally reject earlier structures, including v4's removed tie projection
-bias, even if their metadata is relabeled.
-Warmup is regenerated for the new architecture.
+`tie_readout`. A shared biased `tie_product_projection` also maps both inputs
+to h features; its outputs are multiplied elementwise in FP32, then passed
+directly into the bias-free `tie_product_readout`. The two readout outputs and
+scalar `tie_bias` are added in FP32. Only wins use dropout, with one shared mask;
+neither tie branch has an activation or dropout. The absolute-difference branch
+has no projection bias; the product branch has the shared bias b2. Exact
+head/optimizer tensor names and shapes reject earlier structures, including v5
+without the product branch and v4's removed tie projection bias, even if their
+metadata is relabeled. Earlier entries remain on disk without reuse or migration.
 
 SR2 also includes `head_initialization_version` in its warmup metadata, currently
-`scaled_uniform_v2`. The full metadata is hashed with SHA-256
+`scaled_uniform_zero_product_v3`. The full metadata is hashed with SHA-256
 to form the cache key and must match the selected source exactly when loading. Earlier
 Xavier-initialized SR2 entries lack this field; harmonic/discrepancy heads use
-`scaled_uniform_zero_discrepancy_v1`. Both select different keys and remain on
-disk without reuse or migration. Initialization versioning
-does not change the head architecture, warmup schema v5, production-checkpoint
-compatibility, or other heads' cache identities. V5 retains the previous
-L/M and win/tie readout initialization scales, with zero win projection bias and
-scalar tie bias. Compatible v5 entries remain shared by frozen SR2 builds and
+`scaled_uniform_zero_discrepancy_v1`, and v5 before the product branch used
+`scaled_uniform_v2`. These select different keys without changing the architecture
+marker, warmup schema v5, or other heads' cache identities. The added parameters
+independently make earlier production checkpoints incompatible; they require
+rebuilding. V5 retains the previous L/M and win/tie readout initialization scales,
+with zero win projection bias and scalar tie bias. N uses L/M's uniform scale
+with standard deviation `1/sqrt(2D)`; b2 and the product readout weight start
+at zero. New product-aware entries remain shared by frozen SR2 builds and
 standalone/inline SR2 warmup when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 

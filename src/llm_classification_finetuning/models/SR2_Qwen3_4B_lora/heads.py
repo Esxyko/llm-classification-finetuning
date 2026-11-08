@@ -15,7 +15,7 @@ EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
 SR2 = "swap_equivariant_abs_diff_v5"
 # Bump this version whenever the SR2 initialization policy changes.
-SR2_INITIALIZATION_VERSION = "scaled_uniform_v2"
+SR2_INITIALIZATION_VERSION = "scaled_uniform_zero_product_v3"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -162,10 +162,10 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 
 
 class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
-	"""Combine subtractive cross-projected wins with absolute-difference ties."""
+	"""Combine cross-projected wins with absolute-difference and product ties."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_linear_abs_diff"
+	EMBEDDING_COMBINATION = "cross_projected_linear_abs_diff_product"
 
 	def __init__(
 		self,
@@ -184,7 +184,7 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 		self.win_projection_bias = nn.Parameter(
 			torch.zeros(hidden_size, dtype=torch.float32)
 		)
-		# Both readouts are bias-free; only the tie has a scalar output bias.
+		# Readouts are bias-free; only the tie has a scalar output bias.
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
 		self.tie_readout = nn.Linear(hidden_size, 1, bias=False)
 		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
@@ -202,10 +202,21 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 			if layer.bias is not None:
 				nn.init.zeros_(layer.bias)
 		nn.init.zeros_(self.tie_bias)
+		# Create the product branch last to preserve existing seeded initialization.
+		self.tie_product_projection = nn.Linear(
+			backbone_hidden_size, hidden_size, bias=True
+		)
+		self.tie_product_readout = nn.Linear(hidden_size, 1, bias=False)
+		product_bound = math.sqrt(3.0 / (2 * self.tie_product_projection.in_features))
+		nn.init.uniform_(
+			self.tie_product_projection.weight, -product_bound, product_bound
+		)
+		nn.init.zeros_(self.tie_product_projection.bias)
+		nn.init.zeros_(self.tie_product_readout.weight)
 
 	@classmethod
 	def embedding_combination(cls) -> str:
-		"""Return the marker for cross-projected wins and absolute-difference ties."""
+		"""Return the marker for cross-projected wins and difference/product ties."""
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -234,13 +245,16 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 				input_difference = h_a.float() - h_b.float()
 			# |(A-B)(L-M)| needs one projection and feeds the tie readout directly.
 			tie_features = F.linear(input_difference, difference_weight).float().abs()
+			product_branches = self.tie_product_projection(branches).float()
+			product_features = product_branches[:, 0] * product_branches[:, 1]
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
 			win_logits = self.win_readout(wins).squeeze(-1).float()
 			tie_logits = self.tie_readout(tie_features).float()
-		tie = tie_logits + self.tie_bias
+			tie_product_logits = self.tie_product_readout(product_features).float()
+		tie = tie_logits + tie_product_logits + self.tie_bias
 		return torch.cat((win_logits, tie), dim=-1)
 
 

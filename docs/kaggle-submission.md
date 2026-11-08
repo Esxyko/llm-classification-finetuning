@@ -44,8 +44,11 @@ backbone whose `export_metadata.json` checksum does not match `adapter.pt`, a he
 not `swap_equivariant_abs_diff_v5`, and mismatched hidden sizes or base revisions.
 The v5 head uses subtractive cross-projected wins and the FP32 absolute-difference
 tie formula `d = abs((A-B)(L-M))`, read directly by `tie_readout` plus `tie_bias`,
-from the [shared head definition](lora.md#swap-equivariant-head).
-Earlier checkpoints require rebuilding before use with this notebook.
+with the added symmetric term `((A @ N + b2) * (B @ N + b2)) @ w_tie_2` from the
+[shared head definition](lora.md#swap-equivariant-head). The product uses one shared
+biased projection and a bias-free readout, without activation or dropout.
+The notebook computes the entire head in FP32. Strict parameter loading rejects
+earlier v5 checkpoints without the product branch; rebuild them before use.
 
 ## Run
 

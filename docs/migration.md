@@ -176,25 +176,31 @@ remain intact.
 ### Current SR2 v5 head
 
 The current marker is `swap_equivariant_abs_diff_v5`, with embedding combination
-`cross_projected_linear_abs_diff`. Wins retain the v4 branches and shared dropout
-mask. The tie now uses `d = abs((A-B)(L-M))` and
-`z_tie = tie_readout(d) + tie_bias` directly in both training and inference,
-without tie GELU or dropout. `tie_projection_bias` and the harmonic formula are
-removed, reducing the head to `2Dh + 3h + 1` parameters.
+`cross_projected_linear_abs_diff_product`. Wins retain the v4 branches and shared
+dropout mask. The tie uses `d = abs((A-B)(L-M))` and
+`z_tie = tie_readout(d) + ((A @ N + b2) * (B @ N + b2)) @ w_tie_2 + tie_bias`
+directly in both training and inference, without activation or dropout in either
+tie branch. The absolute-difference projection is bias-free; the added product
+projection is shared and biased. The head has `3Dh + 5h + 1` parameters.
 
 The implementation forms A-B and L-M in FP32 with autocast disabled, then uses
 one bias-free mixed-precision projection and FP32 elementwise absolute values.
-This halves the tie projection's input rows, while retaining gradients and four
-linear calls overall. Algebraically equivalent separate projections may round
-differently. Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb`
-all use v5; the notebook computes the head entirely in FP32.
+This halves the absolute-difference projection's input rows while retaining
+gradients. A second shared projection computes AN+b2 and BN+b2 in one call;
+their FP32 elementwise product feeds a bias-free readout, for six linear calls
+overall. Algebraically equivalent separate projections may round differently.
+Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb` all use v5;
+the notebook computes the head entirely in FP32.
 
-Initialization remains `scaled_uniform_v2` for the remaining weights and zero
-B1/tie bias. Adapter/head schema v2, frozen-head schema v1, warmup schema v5,
-configuration fields, and artifact namespaces remain unchanged. Earlier
-checkpoints require rebuilding; the new architecture selects fresh warmup keys
-without editing or migrating historical artifacts. Exact head/optimizer tensor
-checks also reject the removed tie projection bias, even with relabeled metadata.
+Initialization is now `scaled_uniform_zero_product_v3`. Original parameters
+retain their scales and seeded initial values, with zero B1/tie bias. N uses
+L/M's zero-mean uniform scale with standard deviation `1/sqrt(2D)`; b2 and
+w_tie_2 start at zero, so the added term initially vanishes. Adapter/head schema
+v2, frozen-head schema v1, warmup schema v5, configuration fields, architecture
+marker, and artifact namespaces remain unchanged. Earlier checkpoints, including
+v5 without the product branch, require rebuilding; the initialization version
+selects fresh warmup keys without editing or migrating historical artifacts.
+Exact head/optimizer tensor checks reject earlier layouts even with relabeled metadata.
 Token, adapter-free feature, and batch-plan caches retain their existing reuse
 rules. See the [current head definition](lora.md#swap-equivariant-head).
 
