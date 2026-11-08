@@ -1,0 +1,137 @@
+{
+  "embedding_combination": "cross_projected_linear_diff_penalized_harmonic",
+  "epochs": [
+    {
+      "epoch": 1,
+      "total_time": "00:00:01",
+      "training_loss": 0.9381793197546798,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9604628872798805,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 2,
+      "total_time": "00:00:01",
+      "training_loss": 0.9084800806177249,
+      "training_time": "00:00:00",
+      "validation_loss": 0.9339127934253854,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 3,
+      "total_time": "00:00:01",
+      "training_loss": 0.8979904474286615,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9239874748107193,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 4,
+      "total_time": "00:00:01",
+      "training_loss": 0.9053192462186302,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9292109200310427,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 5,
+      "total_time": "00:00:01",
+      "training_loss": 0.8965365592636726,
+      "training_time": "00:00:01",
+      "validation_loss": 0.9232817143344423,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 6,
+      "total_time": "00:00:01",
+      "training_loss": 0.8979222884847143,
+      "training_time": "00:00:00",
+      "validation_loss": 0.9246786216281195,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 7,
+      "total_time": "00:00:01",
+      "training_loss": 0.8825320952563127,
+      "training_time": "00:00:00",
+      "validation_loss": 0.9126656710245963,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 8,
+      "total_time": "00:00:01",
+      "training_loss": 0.8901861970465669,
+      "training_time": "00:00:00",
+      "validation_loss": 0.9184299477290568,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 9,
+      "total_time": "00:00:01",
+      "training_loss": 0.8800324956932281,
+      "training_time": "00:00:00",
+      "validation_loss": 0.912227346213707,
+      "validation_time": "00:00:00"
+    },
+    {
+      "epoch": 10,
+      "last_step_training_loss": 0.8972159294117438,
+      "total_time": "01:30:25",
+      "training_loss": 0.8900534434435344,
+      "training_time": "01:22:30",
+      "validation_loss": 0.8900125232246867,
+      "validation_time": "00:07:51"
+    },
+    {
+      "epoch": 11,
+      "last_step_training_loss": 0.8641844136536269,
+      "total_time": "01:30:20",
+      "training_loss": 0.838445322079379,
+      "training_time": "01:22:29",
+      "validation_loss": 0.8824524775335404,
+      "validation_time": "00:07:51"
+    },
+    {
+      "epoch": 12,
+      "last_step_training_loss": 0.798189403681011,
+      "total_time": "01:30:20",
+      "training_loss": 0.8004131189837093,
+      "training_time": "01:22:29",
+      "validation_loss": 0.8847100482291893,
+      "validation_time": "00:07:51"
+    }
+  ],
+  "generated_at": "2026-11-08T18:10:08+00:00",
+  "head_architecture": "swap_equivariant_penalized_harmonic_v4",
+  "model_name": "Skywork/Skywork-Reward-V2-Qwen3-4B",
+  "prediction_aggregation": "original_only",
+  "predictions": 11495,
+  "run_name": "SR2-Qwen3-4B-lora-20261108-181008",
+  "source_training_rows": 66032,
+  "total_time": "04:34:32",
+  "training_rows": 66032,
+  "training_time": "04:07:33",
+  "validation_fraction": 0.14827092496807565,
+  "validation_loss": 0.8847100482291893,
+  "validation_rows": 11495,
+  "validation_strategy": "holdout",
+  "validation_time": "00:23:34",
+  "config_total_time": "04:34:32",
+  "gpu_memory": {
+    "device": "cuda:0",
+    "peak_allocated_bytes": 99192833024,
+    "peak_reserved_bytes": 100417929216,
+    "stages": {
+      "training": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 99192833024,
+        "peak_reserved_bytes": 100417929216
+      },
+      "validation": {
+        "device": "cuda:0",
+        "peak_allocated_bytes": 84851606016,
+        "peak_reserved_bytes": 100417929216
+      }
+    }
+  }
+}

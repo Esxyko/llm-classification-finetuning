@@ -13,7 +13,7 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_penalized_harmonic_v4"
+SR2 = "swap_equivariant_abs_diff_v5"
 # Bump this version whenever the SR2 initialization policy changes.
 SR2_INITIALIZATION_VERSION = "scaled_uniform_v2"
 
@@ -161,12 +161,11 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 		return logits.float() + self.readout_bias[[0, 0, 1]]
 
 
-class SwapEquivariantPenalizedHarmonicClassificationHead(nn.Module):
-	"""Combine subtractive cross-projected wins with penalized harmonic ties."""
+class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
+	"""Combine subtractive cross-projected wins with absolute-difference ties."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_linear_diff_penalized_harmonic"
-	EPSILON = 1e-8
+	EMBEDDING_COMBINATION = "cross_projected_linear_abs_diff"
 
 	def __init__(
 		self,
@@ -185,10 +184,7 @@ class SwapEquivariantPenalizedHarmonicClassificationHead(nn.Module):
 		self.win_projection_bias = nn.Parameter(
 			torch.zeros(hidden_size, dtype=torch.float32)
 		)
-		self.tie_projection_bias = nn.Parameter(
-			torch.zeros(hidden_size, dtype=torch.float32)
-		)
-		# R and S have no output biases; only the tie has a scalar output bias.
+		# Both readouts are bias-free; only the tie has a scalar output bias.
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
 		self.tie_readout = nn.Linear(hidden_size, 1, bias=False)
 		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
@@ -209,7 +205,7 @@ class SwapEquivariantPenalizedHarmonicClassificationHead(nn.Module):
 
 	@classmethod
 	def embedding_combination(cls) -> str:
-		"""Return the marker for cross-projected wins and linear-difference ties."""
+		"""Return the marker for cross-projected wins and absolute-difference ties."""
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -233,24 +229,17 @@ class SwapEquivariantPenalizedHarmonicClassificationHead(nn.Module):
 			)
 			with torch.autocast(device_type=h_a.device.type, enabled=False):
 				l_weight, m_weight = self.input_projection.weight.chunk(2, dim=0)
-				# Subtract the FP32 parameters before autocast projects either branch.
+				# Form both differences in FP32 before the mixed-precision projection.
 				difference_weight = l_weight.float() - m_weight.float()
-			# X/Y have their own shared B3 and no activation or dropout.
-			tie_features = F.linear(
-				branches, difference_weight, self.tie_projection_bias
-			)
-			with torch.autocast(device_type=h_a.device.type, enabled=False):
-				x_fp32, y_fp32 = tie_features.float().unbind(dim=1)
-				denominator = x_fp32.abs() + y_fp32.abs() + self.EPSILON
-				fused = 4 * (x_fp32 * y_fp32 - (x_fp32 - y_fp32).square()) / denominator
+				input_difference = h_a.float() - h_b.float()
+			# |(A-B)(L-M)| needs one projection and feeds the tie readout directly.
+			tie_features = F.linear(input_difference, difference_weight).float().abs()
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
-			# The tie mask is independent of the shared win mask and stays FP32.
-			fused = self.dropout(fused)
 			win_logits = self.win_readout(wins).squeeze(-1).float()
-			tie_logits = self.tie_readout(fused).float()
+			tie_logits = self.tie_readout(tie_features).float()
 		tie = tie_logits + self.tie_bias
 		return torch.cat((win_logits, tie), dim=-1)
 
@@ -286,7 +275,7 @@ def create_classification_head(
 			compute_dtype=compute_dtype,
 		)
 	if head_architecture == SR2:
-		return SwapEquivariantPenalizedHarmonicClassificationHead(
+		return SwapEquivariantAbsoluteDifferenceClassificationHead(
 			backbone_hidden_size,
 			hidden_size,
 			dropout,

@@ -267,18 +267,17 @@ feature, and head entries. Existing cache files and schema v5 are preserved.
 
 Frozen SR2 builds, LoRA SR2, and standalone warmup write `SR2_Qwen3_4B_lora_warmup/<key>.pt` using
 Skywork features in the shipped presets. All use the
-`swap_equivariant_penalized_harmonic_v4` head architecture and warmup schema v5.
+`swap_equivariant_abs_diff_v5` head architecture and warmup schema v5.
 This head packs L/M into one projection for subtractive cross-projected wins and
-separately projects X/Y with the FP32 parameter difference L-M and a shared
-zero-initialized B3. Undropped X/Y feed the elementwise FP32 tie feature
-`H = 4 * (X * Y - (X - Y)^2) / (abs(X) + abs(Y) + 1e-8)`.
-Wins share one dropout mask; H has an independent mask. The q branch and its
-projection/readout are removed. Outputs are `[r_A, r_B, s + b]`, with one scalar
-output bias. The architecture marker selects new cache keys within the existing
-namespace; harmonic/discrepancy v1/v2/v3 and earlier tie-from-wins v1/v2 entries
-remain on disk and are not reused or migrated. Exact head/optimizer tensor names
-and shapes additionally reject earlier structures, including the removed
-discrepancy parameters, even if their metadata is relabeled.
+forms A-B and L-M in FP32 before one bias-free mixed-precision tie projection.
+The projected difference is converted to FP32 before elementwise absolute values
+form `d = abs((A-B)(L-M))`. Training and inference pass d directly into
+`tie_readout`, then add the FP32 scalar `tie_bias`. Only wins use dropout, with
+one shared mask. There is no tie projection bias. The architecture marker selects
+new cache keys within the existing namespace; earlier entries remain on disk and
+are not reused or migrated. Exact head/optimizer tensor names and shapes
+additionally reject earlier structures, including v4's removed tie projection
+bias, even if their metadata is relabeled.
 Warmup is regenerated for the new architecture.
 
 SR2 also includes `head_initialization_version` in its warmup metadata, currently
@@ -288,10 +287,10 @@ Xavier-initialized SR2 entries lack this field; harmonic/discrepancy heads use
 `scaled_uniform_zero_discrepancy_v1`. Both select different keys and remain on
 disk without reuse or migration. Initialization versioning
 does not change the head architecture, warmup schema v5, production-checkpoint
-compatibility, or other heads' cache identities. V4 retains the previous
-L/M and win/tie readout initialization scales, with zero B1/B3/b and no q branch.
-Compatible v4 entries remain shared by frozen SR2 builds and standalone/inline SR2 warmup
-when all identity fields match. Token, adapter-free feature, and batch-plan
+compatibility, or other heads' cache identities. V5 retains the previous
+L/M and win/tie readout initialization scales, with zero win projection bias and
+scalar tie bias. Compatible v5 entries remain shared by frozen SR2 builds and
+standalone/inline SR2 warmup when all identity fields match. Token, adapter-free feature, and batch-plan
 caches retain their own reuse rules because their representations are unchanged.
 
 With exponential decay (`warmup.build_min_lr < warmup.learning_rate`), lookup

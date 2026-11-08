@@ -24,9 +24,9 @@ and [configuration](configuration.md) for the complete fields and parser default
 | SR2 | `SR2_Qwen3_4B_lora` | `Skywork/Skywork-Reward-V2-Qwen3-4B` | `SR2_Qwen3_4B_lora` / `SR2_Qwen3_4B_lora_warmup` |
 
 SR2 loads Skywork's Transformer through `AutoModel`, omitting its scalar reward
-head. Its comparison head uses shared cross projections for wins and separate
-linear-difference projections for harmonic fusion with an elementwise squared-
-difference penalty. The implementation and public Python APIs now live in
+head. Its comparison head shares L/M projections across wins and a tie readout
+of the elementwise absolute difference `abs((A-B)(L-M))`.
+The implementation and public Python APIs now live in
 `models/SR2_Qwen3_4B_lora/`. Head size, rank, smoothing, rates, and epochs may
 differ between presets; read their actual values.
 
@@ -42,16 +42,15 @@ $$
 \begin{aligned}
 P_A &= \operatorname{GELU}(AL-BM+B_1),\\
 P_B &= \operatorname{GELU}(BL-AM+B_1),\\
-X &= A(L-M)+B_3,\\
-Y &= B(L-M)+B_3,\\
-H &= \frac{4\left(X\odot Y-(X-Y)^{\odot 2}\right)}{|X|+|Y|+10^{-8}},\\
+d &= |A(L-M)-B(L-M)| = |(A-B)(L-M)|,\\
 z_A &= (P_A\odot m_P)R,\\
 z_B &= (P_B\odot m_P)R,\\
-z_{\mathrm{tie}} &= (H\odot m_H)S+b.
+z_{\mathrm{tie}} &= d\,m_{\mathrm{tie}}+b_{\mathrm{tie}}.
 \end{aligned}
 $$
 
-Here $L,M\in\mathbb{R}^{D\times h}$ and $R,S\in\mathbb{R}^{h\times 1}$.
+Here $L,M\in\mathbb{R}^{D\times h}$ and
+$R,m_{\mathrm{tie}}\in\mathbb{R}^{h\times 1}$.
 PyTorch stores the transposed linear weights.
 The four matrices are sampled independently from zero-mean uniform
 distributions $U(-\sqrt{3}\sigma,\sqrt{3}\sigma)$ with these standard deviations:
@@ -59,22 +58,22 @@ distributions $U(-\sqrt{3}\sigma,\sqrt{3}\sigma)$ with these standard deviations
 | Matrices | Standard deviation $\sigma$ |
 | --- | --- |
 | $L,M$ (two `input_projection.weight` blocks) | $1/\sqrt{2D}$ |
-| $R,S$ (`win_readout`, `tie_readout`) | $0.1/\sqrt{h}$ |
+| $R,m_{\mathrm{tie}}$ (`win_readout`, `tie_readout`) | $0.1/\sqrt{h}$ |
 
 Each bound is computed from the corresponding layer's actual input dimension.
-$L$ and $M$ are shared across A/B branches. The hidden biases
-$B_1,B_3\in\mathbb{R}^h$ and the sole
-scalar output bias $b$ are trainable and initialized to zero. $B_1$ is
-`win_projection_bias`, and $B_3$ is `tie_projection_bias`.
-The head has $2Dh+4h+1$ trainable parameters; the former $q$ branch and its
-$N,B_2,T$ parameters are removed.
+$L$ and $M$ are shared across win and tie branches. The hidden bias
+$B_1\in\mathbb{R}^h$ (`win_projection_bias`) and the sole scalar output bias
+$b_{\mathrm{tie}}$ (`tie_bias`) are trainable and initialized to zero.
+$m_{\mathrm{tie}}$ is the `tie_readout` weight, stored transposed; it is not a
+dropout mask. There is no tie projection bias.
+The head has $2Dh+3h+1$ trainable parameters.
 Biases use the existing head learning rate and weight decay.
 
-Fusion multiplication/division, squaring, absolute values, and mask multiplication
-act elementwise. $X,Y$ have no GELU, and $H$ uses **undropped** $X,Y$.
-Each sample's win branches share $m_P$; the tie mask $m_H$ is independent of
-$m_P$. Both are standard dropout masks with $1/(1-p)$ scaling.
-Evaluation disables dropout.
+Absolute values and win mask multiplication act elementwise.
+Each sample's win branches share the standard dropout mask $m_P$ with
+$1/(1-p)$ scaling during training; evaluation disables it.
+Training and inference both pass $d$ directly into `tie_readout`, without GELU
+or dropout in the tie branch.
 Swapping inputs exchanges win logits and preserves the tie logit under the same
 masks.
 
@@ -84,35 +83,36 @@ projections for both inputs; M's branch axis is reversed before subtraction. $B_
 is added in the projection output dtype. GELU, shared-mask multiplication, and
 the R readout operate on both win branches together.
 
-Every forward computes $L-M$ from the FP32 parameter blocks before projecting
-$X,Y$ together with their shared $B_3$. The difference retains gradients to both
-blocks and is neither an independent parameter nor cached across forwards.
-This projection follows the existing mixed-precision policy; subtracting the
-low-precision L/M projection results is not equivalent. The head uses four
-linear calls: packed L/M, L-M, R, and S. It reuses the batched inputs and
-weight views without concatenating full L/M weights on each call.
+Every forward computes $L-M$ from the FP32 parameter blocks and $A-B$ from
+FP32 inputs with autocast disabled. One bias-free `F.linear` then projects
+the input difference using the existing head mixed-precision policy. Its output
+is converted to FP32 before elementwise absolute values form $d$. Gradients
+remain connected to both weight blocks and both inputs; the differences are
+neither independent parameters nor cached across forwards.
+This algebraic simplification halves the tie projection's input rows compared
+with projecting A/B separately, with possible floating-point rounding differences.
+The head uses four linear calls: packed L/M, L-M on A-B, shared win readout,
+and tie readout. Weight views avoid concatenating full L/M weights per call.
 
-Before computing $H$, $X,Y$ are converted to FP32 inside a region with
-autocast disabled. The entire formula, including multiplication, subtraction,
-squaring, absolute values, addition, the fixed epsilon $10^{-8}$, and division, stays FP32 through
-dropout. Other matrix multiplications retain the existing head precision policy.
-Both win readouts are converted to FP32 together; the tie readout is converted
-to FP32 before adding the sole FP32 scalar output bias $b$. Returned logits are
-FP32 in the order A-win, B-win, tie.
+Both readouts follow the existing head mixed-precision policy and are converted
+to FP32 before the sole FP32 scalar output bias $b_{\mathrm{tie}}$ is added.
+Returned logits are FP32 in the order A-win, B-win, tie. Swapping A/B preserves
+$d$; identical inputs give a tie logit of $b_{\mathrm{tie}}$.
 
 These weights are trained directly. The architecture marker is
-`swap_equivariant_penalized_harmonic_v4`; adapter/head checkpoint schema is v2
-and warmup schema is v5. The marker selects different warmup cache keys and
-rejects harmonic/discrepancy v1/v2/v3 and earlier tie-from-wins v1/v2 checkpoints
-without converting their weights. Exact parameter-name/shape checks additionally
-reject earlier layouts, including the removed discrepancy projection/readout.
+`swap_equivariant_abs_diff_v5`, with embedding combination
+`cross_projected_linear_abs_diff`; adapter/head checkpoint schema is v2,
+frozen-head schema is v1, and warmup schema is v5. The marker selects different
+warmup cache keys and rejects earlier checkpoints without converting their
+weights. Exact parameter-name/shape checks additionally reject earlier layouts,
+including v4's removed tie projection bias.
 Rebuild those checkpoints with the matching configuration; warmup is regenerated.
 The initialization policy is versioned separately as
-`scaled_uniform_v2` in the SR2 warmup identity. It retains the previous scales
-for $L,M,R,S$ and zero $B_1,B_3,b$, while removing all initialization of the
-deleted branch. The architecture and initialization markers isolate old warmup
-states; no storage schema change is required. See
-[warmup identity](caching.md#identity).
+`scaled_uniform_v2` in the SR2 warmup identity: the remaining weights retain
+their scales, and $B_1,b_{\mathrm{tie}}$ remain zero-initialized. The new
+architecture marker isolates old warmup states without a storage schema change.
+See [warmup identity](caching.md#identity) and the
+[archived v4 formula](migration.md#archived-sr2-v4-head-2026-11-09).
 There is no `A/B_swap` setting or orientation averaging for SR2.
 
 ## Hardware and input limits

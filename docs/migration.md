@@ -116,23 +116,89 @@ old layout even with relabeled metadata. Historical artifacts remain intact,
 and token, adapter-free feature, and batch-plan caches retain their existing
 compatibility rules.
 
-The current marker is `swap_equivariant_penalized_harmonic_v4`. Win branches now
-subtract the other input's M projection: `GELU(AL - BM + B1)` and
-`GELU(BL - AM + B1)`. X/Y still use L-M plus shared B3, without GELU. The tie
-feature changes to the elementwise FP32 formula
-`H = 4 * (X * Y - (X - Y)^2) / (abs(X) + abs(Y) + 1e-8)`.
-The q branch, discrepancy projection (N/B2), and discrepancy readout (T) are
-removed. Outputs are `[r_A, r_B, s + b]`; wins share one dropout mask and H uses
-an independent mask. The head now uses four linear calls and has
-`2Dh + 4h + 1` parameters. Frozen SR2, LoRA SR2, standalone warmup, and
-`submit.ipynb` all use this head. Initialization is versioned as
-`scaled_uniform_v2`, retaining the L/M/R/S scales and zero B1/B3/b.
-Adapter/head schema v2, frozen-head schema v1, warmup schema v5, configuration
-fields, and artifact namespaces remain unchanged. Earlier checkpoints require
-rebuilding; architecture/initialization identities select new warmup keys without
-editing historical artifacts. Exact head/optimizer tensor checks also reject the
-removed discrepancy parameters. Token, adapter-free feature, and batch-plan
-caches retain their existing compatibility rules.
+### Archived SR2 v4 head (2026-11-09)
+
+The historical architecture `swap_equivariant_penalized_harmonic_v4` used
+`cross_projected_linear_diff_penalized_harmonic` features. Its complete formula,
+for pooled row vectors $A,B\in\mathbb{R}^D$ and head width $h$, was:
+
+$$
+\begin{aligned}
+P_A &= \operatorname{GELU}(AL-BM+B_1),\\
+P_B &= \operatorname{GELU}(BL-AM+B_1),\\
+X &= A(L-M)+B_3,\\
+Y &= B(L-M)+B_3,\\
+H &= \frac{4\left(X\odot Y-(X-Y)^{\odot 2}\right)}{|X|+|Y|+10^{-8}},\\
+z_A &= (P_A\odot m_P)R,\\
+z_B &= (P_B\odot m_P)R,\\
+z_{\mathrm{tie}} &= (H\odot m_H)S+b.
+\end{aligned}
+$$
+
+All products, powers, absolute values, and masks within H were elementwise.
+The parameter mapping was:
+
+| Formula | Parameter and shape |
+| --- | --- |
+| $L,M\in\mathbb{R}^{D\times h}$ | Two contiguous transposed blocks of `input_projection.weight`, each `[h, D]` |
+| $B_1\in\mathbb{R}^h$ | `win_projection_bias` |
+| $B_3\in\mathbb{R}^h$ | `tie_projection_bias` |
+| $R,S\in\mathbb{R}^{h\times 1}$ | `win_readout.weight`, `tie_readout.weight`, each stored `[1, h]` |
+| $b\in\mathbb{R}$ | FP32 scalar `tie_bias` |
+
+The head had `2Dh + 4h + 1` trainable parameters and no q/discrepancy branch.
+Initialization version `scaled_uniform_v2` sampled L/M/R/S independently from
+zero-mean uniform distributions $U(-\sqrt{3}\sigma,\sqrt{3}\sigma)$, with
+$\sigma=1/\sqrt{2D}$ for L/M and $\sigma=0.1/\sqrt{h}$ for R/S, using actual
+layer input dimensions. B1, B3, and b started at zero. Biases used the existing
+head learning rate and weight decay.
+
+Each sample's wins shared the standard dropout mask m_P; H used an independent
+m_H. Both masks used `1/(1-p)` scaling during training and were disabled at
+evaluation. X/Y had no GELU or dropout, so H consumed their undropped values.
+Swapping A/B exchanged win logits and preserved the tie logit under the same masks.
+
+The implementation batched A/B as `[batch, 2, D]`, using one packed L/M
+projection, one L-M projection of both inputs with shared B3, one shared win
+readout, and one tie readout: four linear calls. L-M was computed from FP32
+parameter blocks with autocast disabled, retaining gradients, before the X/Y
+projection followed the head mixed-precision policy. B1 was added in the win
+projection output dtype. X/Y were then converted to FP32; all H arithmetic,
+including the fixed epsilon, ran with autocast disabled. Tie dropout preserved FP32.
+Readouts followed the head mixed-precision policy and were converted to FP32
+before b was added. Returned logits were FP32 `[A-win, B-win, tie]`.
+
+Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb` used this
+architecture. Its storage schemas were adapter/head v2, frozen-head v1, and
+warmup v5. This is a documentation-only archive of v4; historical artifacts
+remain intact.
+
+### Current SR2 v5 head
+
+The current marker is `swap_equivariant_abs_diff_v5`, with embedding combination
+`cross_projected_linear_abs_diff`. Wins retain the v4 branches and shared dropout
+mask. The tie now uses `d = abs((A-B)(L-M))` and
+`z_tie = tie_readout(d) + tie_bias` directly in both training and inference,
+without tie GELU or dropout. `tie_projection_bias` and the harmonic formula are
+removed, reducing the head to `2Dh + 3h + 1` parameters.
+
+The implementation forms A-B and L-M in FP32 with autocast disabled, then uses
+one bias-free mixed-precision projection and FP32 elementwise absolute values.
+This halves the tie projection's input rows, while retaining gradients and four
+linear calls overall. Algebraically equivalent separate projections may round
+differently. Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb`
+all use v5; the notebook computes the head entirely in FP32.
+
+Initialization remains `scaled_uniform_v2` for the remaining weights and zero
+B1/tie bias. Adapter/head schema v2, frozen-head schema v1, warmup schema v5,
+configuration fields, and artifact namespaces remain unchanged. Earlier
+checkpoints require rebuilding; the new architecture selects fresh warmup keys
+without editing or migrating historical artifacts. Exact head/optimizer tensor
+checks also reject the removed tie projection bias, even with relabeled metadata.
+Token, adapter-free feature, and batch-plan caches retain their existing reuse
+rules. See the [current head definition](lora.md#swap-equivariant-head).
+
+### Standalone SR2 warmup profile
 
 `model warmup --build` now uses the SR2 profile and writes
 `SR2_Qwen3_4B_lora_warmup/`. Current presets select
