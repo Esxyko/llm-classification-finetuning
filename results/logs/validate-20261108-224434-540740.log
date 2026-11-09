@@ -5,3 +5,75 @@ Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/dat
 Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json
 Processed data ready: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet; copied 3 files.
 Running holdout validation for 1.yaml: SR2-Qwen3-4B-lora
+Token cache: 153,983 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (holdout): 66,032 rows, 64 updates, 4,166 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/f261d74dc122a70e45d9aaaa3d5329b2545c1b9eec2b54bb2e0cb892df76a589.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:36).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 17,170,817 trainable parameters.
+Rebuilding LoRA head warmup (Validation run): completed_epochs=0, target_epochs=22, remaining_epochs=22; precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/f0ad8f7530a07ec4600ad42a968be7dd253ec8d72c1ec217f6734eab4607dcca.pt
+LoRA warmup feature cache: reused=153,983, missing=0 unique branches; /content/drive/Othercomputers/我的笔记本电脑/cache/embedding_cache/dbc4b8d7d756f7566afbe24dd16cc219895e69fc733b232ae2c54f6d66d1fdd1.sqlite3
+Validation run head warmup epoch 1/22 (total 1/25): train_loss=0.927663 validation_loss=0.947129
+Validation run head warmup epoch 2/22 (total 2/25): train_loss=0.911555 validation_loss=0.932778
+Validation run head warmup epoch 3/22 (total 3/25): train_loss=0.898726 validation_loss=0.922015
+Validation run head warmup epoch 4/22 (total 4/25): train_loss=0.901560 validation_loss=0.925683
+SR2_Qwen3_4B_lora validation Head warmup Validation run epoch 5/22 (total 5/25):
+progress: 20.0% work: 621.0/3,102.0 time: 00:00:03/00:00:14
+Validation run head warmup epoch 5/22 (total 5/25): train_loss=0.888932 validation_loss=0.913822
+Validation run head warmup epoch 6/22 (total 6/25): train_loss=0.884520 validation_loss=0.910636
+Validation run head warmup epoch 7/22 (total 7/25): train_loss=0.883611 validation_loss=0.911413
+Validation run head warmup epoch 8/22 (total 8/25): train_loss=0.877966 validation_loss=0.907569
+SR2_Qwen3_4B_lora validation Head warmup (head warmup training evaluation) Validation run epoch 9/22 (total 9/25):
+progress: 40.0% work: 1,241.0/3,102.0 time: 00:00:05/00:00:14
+Validation run head warmup epoch 9/22 (total 9/25): train_loss=0.875899 validation_loss=0.907812
+Validation run head warmup epoch 10/22 (total 10/25): train_loss=0.874174 validation_loss=0.906850
+Validation run head warmup epoch 11/22 (total 11/25): train_loss=0.871310 validation_loss=0.904322
+Validation run head warmup epoch 12/22 (total 12/25): train_loss=0.869705 validation_loss=0.902667
+Validation run head warmup epoch 13/22 (total 13/25): train_loss=0.886595 validation_loss=0.923795
+SR2_Qwen3_4B_lora validation Head warmup Validation run epoch 14/22 (total 14/25):
+progress: 60.0% work: 1,862.0/3,102.0 time: 00:00:08/00:00:13
+Validation run head warmup epoch 14/22 (total 14/25): train_loss=0.866752 validation_loss=0.902504
+Validation run head warmup epoch 15/22 (total 15/25): train_loss=0.864992 validation_loss=0.901328
+Validation run head warmup epoch 16/22 (total 16/25): train_loss=0.865132 validation_loss=0.903847
+Validation run head warmup epoch 17/22 (total 17/25): train_loss=0.874880 validation_loss=0.911951
+SR2_Qwen3_4B_lora validation Head warmup (head warmup training evaluation) Validation run epoch 18/22 (total 18/25):
+progress: 80.0% work: 2,482.0/3,102.0 time: 00:00:11/00:00:13
+Validation run head warmup epoch 18/22 (total 18/25): train_loss=0.862966 validation_loss=0.901147
+Validation run head warmup epoch 19/22 (total 19/25): train_loss=0.860801 validation_loss=0.900027
+Validation run head warmup epoch 20/22 (total 20/25): train_loss=0.859352 validation_loss=0.901093
+Validation run head warmup epoch 21/22 (total 21/25): train_loss=0.860931 validation_loss=0.903853
+SR2_Qwen3_4B_lora validation Head warmup Validation run epoch 22/22 (total 22/25):
+progress: 100.0% work: 3,102.0/3,102.0 time: 00:00:13/00:00:13
+Validation run head warmup epoch 22/22 (total 22/25): train_loss=0.858596 validation_loss=0.902109
+Saved LoRA head warmup (Validation run): source_precision=bf16; /content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/f0ad8f7530a07ec4600ad42a968be7dd253ec8d72c1ec217f6734eab4607dcca.pt
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/3 (total 23/25):
+progress: 10.0% work: 27.0/270.0 time: 00:34:02/05:40:22
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 1/3 (total 23/25):
+progress: 20.0% work: 54.0/270.0 time: 01:05:35/05:27:57
+SR2_Qwen3_4B_lora validation Joint training (joint validation) Validation run epoch 1/3 (total 23/25):
+progress: 30.0% work: 81.0/270.0 time: 01:30:38/05:02:08
+Validation run joint training epoch 1/3 (total 23/25): train_loss=0.863500 last_step_training_loss=0.879133 validation_loss=0.889350
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/3 (total 24/25):
+progress: 40.0% work: 108.0/270.0 time: 01:52:54/04:42:16
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 2/3 (total 24/25):
+progress: 50.0% work: 135.0/270.0 time: 02:25:23/04:50:47
+SR2_Qwen3_4B_lora validation Joint training (joint validation feature extraction) Validation run epoch 2/3 (total 24/25) branch batch 8/14:
+progress: 60.0% work: 162.0/270.0 time: 02:57:53/04:56:29
+Validation run joint training epoch 2/3 (total 24/25): train_loss=0.822071 last_step_training_loss=0.844906 validation_loss=0.884095
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 3/3 (total 25/25):
+progress: 70.0% work: 189.0/270.0 time: 03:09:19/04:30:26
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 3/3 (total 25/25):
+progress: 80.0% work: 216.0/270.0 time: 03:40:16/04:35:20
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 3/3 (total 25/25):
+progress: 90.0% work: 243.0/270.0 time: 04:17:14/04:45:49
+SR2_Qwen3_4B_lora validation Joint training Validation run epoch 3/3 (total 25/25):
+progress: 100.0% work: 270.0/270.0 time: 04:31:48/04:31:48
+Validation run joint training epoch 3/3 (total 25/25): train_loss=0.787374 last_step_training_loss=0.795653 validation_loss=0.890187
+Wrote validation results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-lora-20261109-031957
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0, training): allocated=92.38 GiB reserved=93.52 GiB
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0, validation): allocated=79.02 GiB reserved=93.52 GiB
+GPU memory peak (SR2-Qwen3-4B-lora, cuda:0, global): allocated=92.38 GiB reserved=93.52 GiB
+Model total time (SR2-Qwen3-4B-lora): 04:34:51
+Generated 11,495 predictions for the fixed validation set.
+Validation log loss: 0.890187
+Wrote model results: /content/drive/Othercomputers/我的笔记本电脑/results/SR2-Qwen3-4B-lora-20261109-031957
+Completed 1/1 tasks.

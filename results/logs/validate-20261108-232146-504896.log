@@ -5,3 +5,9 @@ Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/dat
 Copying processed data: /content/drive/MyDrive/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json -> /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet.manifest.json
 Processed data ready: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet; copied 3 files.
 Running holdout validation for 2.yaml: SR2-Qwen3-4B-lora
+Token cache: 153,983 reused, 0 encoded entries; /content/drive/Othercomputers/我的笔记本电脑/cache/token_cache
+Reused LoRA batch plan (holdout): 66,032 rows, 64 updates, 4,166 base micro-batches; /content/drive/Othercomputers/我的笔记本电脑/cache/adapter_batches/plans/f261d74dc122a70e45d9aaaa3d5329b2545c1b9eec2b54bb2e0cb892df76a589.pt
+Loading weights: Skywork/Skywork-Reward-V2-Qwen3-4B.
+Loaded weights: Skywork/Skywork-Reward-V2-Qwen3-4B (time: 00:01:27).
+Initialized LoRA Skywork/Skywork-Reward-V2-Qwen3-4B with 17,170,817 trainable parameters.
+Reused LoRA head warmup (Validation run): completed_epochs=22, target_epochs=22, remaining_epochs=0; source_precision=bf16, source_quantization=none, precision=bf16; source=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/f0ad8f7530a07ec4600ad42a968be7dd253ec8d72c1ec217f6734eab4607dcca.pt; target=/content/drive/Othercomputers/我的笔记本电脑/cache/SR2_Qwen3_4B_lora_warmup/f0ad8f7530a07ec4600ad42a968be7dd253ec8d72c1ec217f6734eab4607dcca.pt
