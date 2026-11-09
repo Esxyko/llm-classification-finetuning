@@ -1,6 +1,0 @@
-Saving validation log to /content/drive/Othercomputers/我的笔记本电脑/results/logs/validate-20261108-085511-438789.log
-Running holdout validation for lmsys33k.yaml: SR2-Qwen3-4B
-Error: Processed split data not found: /content/llm-classification-finetuning/data/processed/lmsys33k/train_validation.parquet. Run 'uv run preprocess' with the selected --config first.
-Failed holdout validation for lmsys33k.yaml: SR2-Qwen3-4B (exit code 1)
-Completed 0/1 tasks.
-Failed tasks: lmsys33k.yaml: SR2-Qwen3-4B
