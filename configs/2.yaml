@@ -30,11 +30,11 @@ SR2_Qwen3_4B:
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  build_epochs: 50
+  build_epochs: 49
   extraction_budget: 1081344
   training_batch_size: 1024
   learning_rate: 0.0001
-  build_min_lr: 0.095 ** 8
+  build_min_lr: 0.095 ** 4
   weight_decay: 0.01
   max_grad_norm: 1.0
   random_state: 42
@@ -46,7 +46,7 @@ warmup:
   max_length: 13866
   hidden_size: 128
   dropout: 0.1
-  build_epochs: 15
+  build_epochs: 22
   extraction_budget: 1081344
   training_batch_size: 1024
   learning_rate: 0.0001
@@ -68,7 +68,7 @@ SR2_Qwen3_4B_lora:
   epochs: 2
   extraction_budget: 778240
   learning_rate: 0.0001
-  min_lr_ratio: 0.5
+  min_lr_ratio: 0.0
   hidden_size: 128
   weight_decay: 0.01
   dropout: 0.1
