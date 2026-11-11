@@ -153,6 +153,22 @@ Standalone warmup and full-data builds use different training ID sets; see
 [cache reuse](caching.md#standalone-warmup-build). Build logs use
 `<RESULT_PATH>/logs/build-*.log`.
 
+Before launching a task, the build script loads its YAML and ensures the resolved
+`data.processed_path` using the same pipeline as
+[batch validation](#batch-validation). Complete local data is reused; pass an
+optional project mirror to fill missing processed-data files:
+
+```bash
+uv run python scripts/build.py --data-source-root /content/drive/MyDrive/llm-classification-finetuning
+```
+
+Paths beneath the mirror follow the selected YAML rather than a fixed dataset
+directory. Single Parquet files and manifest-plus-volume artifacts are supported,
+with only missing files or wrong-sized volumes copied. Successfully prepared
+paths are shared within the batch and checked again after a failed model task.
+Preparation failures are recorded in the build log, skip the affected task, and
+contribute to the failure summary. The script does not run `init` or `preprocess`.
+
 The batch script does not add `--checkpoint-tag`. Multiple configs for the same
 model replace the default `head.pt`, or `adapter.pt` and `merged/` outputs in sequence. Use the
 model CLI directly with tags when separate checkpoints are needed.

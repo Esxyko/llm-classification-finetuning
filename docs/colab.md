@@ -102,26 +102,26 @@ does not depend on them. Both use four cells:
 
 | Cell | Action |
 | --- | --- |
-| Settings | Define repository/branch, runtime project path, model/cache/result paths, endpoint, and `HF_HUB_OFFLINE=1`; export these settings before HF imports; validation also defines `DRIVE_DATA_ROOT`, and builds define `BUILD_OUTPUT_PATH` |
+| Settings | Define repository/branch, runtime project path, `DRIVE_DATA_ROOT`, model/cache/result paths, endpoint, and `HF_HUB_OFFLINE=1`; export environment settings before HF imports; builds also define `BUILD_OUTPUT_PATH` |
 | Drive | Mount `/content/drive` and create the model-cache directory |
 | Setup | Clone, or fetch and hard-reset the runtime checkout to the selected remote branch; write model/cache/result paths, endpoint, and `HF_HUB_OFFLINE=1` to runtime `.env`; install `uv`; synchronize dependencies |
-| Run and cleanup | Validation runs `scripts/validate.py --data-source-root DRIVE_DATA_ROOT`, then flushes/unmounts Drive and requests runtime release in `finally`; builds run `scripts/build.py`, save SR2 build outputs, then perform cleanup |
+| Run and cleanup | Validation runs `scripts/validate.py --data-source-root DRIVE_DATA_ROOT`, then flushes/unmounts Drive and requests runtime release in `finally`; builds run `scripts/build.py --data-source-root DRIVE_DATA_ROOT`, save SR2 build outputs, then perform cleanup |
 
 The setup cell's `git reset --hard` discards tracked edits in the **runtime
 checkout**. Preserve those edits before rerunning that cell. It does not upload
 local Windows project changes; the runtime obtains code from the configured
 remote branch.
 
-### How validation data is prepared
+### How validation and build data is prepared
 
-The validation notebook defaults `DRIVE_DATA_ROOT` to
+Both notebooks default `DRIVE_DATA_ROOT` to
 `/content/drive/MyDrive/llm-classification-finetuning`. This directory mirrors the
 project root: the prebuilt LMSYS33K artifact belongs at
 `<DRIVE_DATA_ROOT>/data/processed/lmsys33k/train_validation.parquet`, or its
 `.manifest.json` and referenced `.parts/` volumes. Change the settings cell to use
 a different mirror root.
 
-The batch script resolves every selected YAML's `data.processed_path` through the
+Both batch scripts resolve every selected YAML's `data.processed_path` through the
 existing configuration parser, from `PROJECT_DIR`. Complete local artifacts are
 used without accessing the Drive data mirror, so repository-backed configurations
 and `lmsys33k.yaml` can run in the same `MODEL_CONFIGS` batch. For example, a model
@@ -132,13 +132,13 @@ manifest determines the required volumes, including when Drive only contains the
 volumes still needed locally. When no local entrypoint exists, the script uses a
 Drive manifest before a Drive single Parquet and publishes a new local manifest
 only after its volumes are ready. Preparation checks manifest format and volume
-sizes; the model loader continues to check SHA-256 and table integrity. No
-preprocessing is run for the prebuilt LMSYS33K consumption configuration.
+sizes; the model loader continues to check SHA-256 and table integrity. Neither
+script runs `init` or `preprocess`.
 
 Missing source files, malformed manifests, and copy errors identify the task and
-paths in the validation log. Failed tasks are skipped while later tasks continue;
-the notebook still performs its existing `finally` cleanup. The runtime checkout
-must contain the matching updated script/package before using this notebook's
+paths in the corresponding batch log. Failed tasks are skipped while later tasks
+continue; the notebook still performs its existing `finally` cleanup. The runtime checkout
+must contain the matching updated script/package before using either notebook's
 new argument.
 
 ### When results are written

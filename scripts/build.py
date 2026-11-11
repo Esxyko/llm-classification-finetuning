@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
 import traceback
+from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,14 +42,19 @@ class _TeeStream:
 		self._console.flush()
 
 
-def _build() -> int:
+def _build(data_source_root: Path | None = None) -> int:
 	total_tasks = sum(len(configs) for configs in MODEL_CONFIGS.values())
 	if not total_tasks:
 		print("No configs selected in MODEL_CONFIGS.")
 		return 1
 
+	from llm_classification_finetuning.config import AppConfig
+	from llm_classification_finetuning.errors import DataPreparationError
+	from llm_classification_finetuning.pipeline import EnsureProcessedDataPipeline
+
 	config_dir = PROJECT_ROOT / CONFIG_DIR
 	failed_tasks: list[str] = []
+	prepared_paths: set[Path] = set()
 	for model, configs in MODEL_CONFIGS.items():
 		action = "head warmup" if model == "warmup" else "full-data build"
 		for filename in configs:
@@ -56,6 +63,35 @@ def _build() -> int:
 			if not config.is_file():
 				failed_tasks.append(task)
 				print(f"Config file not found for {task}: {config}", flush=True)
+				continue
+			try:
+				app_config = AppConfig.load(config)
+				processed_path = app_config.data.processed_path
+				if processed_path not in prepared_paths:
+					print(
+						f"Preparing processed data for {task} ({config}): {processed_path}",
+						flush=True,
+					)
+					copied = EnsureProcessedDataPipeline(
+						app_config,
+						project_root=PROJECT_ROOT,
+						source_root=data_source_root,
+					).run(
+						on_copy=lambda source, target: print(
+							f"Copying processed data: {source} -> {target}", flush=True
+						)
+					)
+					prepared_paths.add(processed_path)
+					print(
+						f"Processed data ready: {processed_path}; copied {len(copied)} files.",
+						flush=True,
+					)
+			except (DataPreparationError, OSError) as error:
+				failed_tasks.append(task)
+				print(
+					f"Failed data preparation for {task} ({config}): {error}",
+					flush=True,
+				)
 				continue
 			command = ["uv", "run", "model", model, "--config", str(config), "--build"]
 			print(f"Running {action} for {task}", flush=True)
@@ -69,17 +105,21 @@ def _build() -> int:
 					encoding="utf-8",
 					errors="replace",
 					bufsize=1,
-					env=os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+					env=os.environ
+					| {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
 				) as process:
 					assert process.stdout is not None
 					for line in process.stdout:
 						print(line, end="", flush=True)
 					returncode = process.wait()
 			except OSError as error:
+				prepared_paths.discard(processed_path)
 				failed_tasks.append(task)
 				print(f"Failed {action} for {task}: {error}", flush=True)
 				continue
 			if returncode:
+				# A failing loader can archive data; later tasks must check it again.
+				prepared_paths.discard(processed_path)
 				failed_tasks.append(task)
 				print(
 					f"Failed {action} for {task} (exit code {returncode})",
@@ -92,10 +132,16 @@ def _build() -> int:
 	return int(bool(failed_tasks))
 
 
-def main() -> int:
+def main(arguments: Sequence[str] | None = None) -> int:
+	parser = argparse.ArgumentParser(description=__doc__)
+	parser.add_argument(
+		"--data-source-root",
+		type=Path,
+		help="Optional project mirror used to fill missing processed-data files.",
+	)
+	parsed_arguments = parser.parse_args(arguments)
+	os.chdir(PROJECT_ROOT)
 	load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
-	# Keep package initialization from filling RESULT_PATH from another cwd's .env.
-	os.environ.setdefault("RESULT_PATH", "")
 	from llm_classification_finetuning.config import resolve_result_dir
 
 	log_dir = resolve_result_dir(PROJECT_ROOT) / "logs"
@@ -109,7 +155,7 @@ def main() -> int:
 	):
 		print(f"Saving build log to {log_path}", flush=True)
 		try:
-			return _build()
+			return _build(parsed_arguments.data_source_root)
 		except BaseException:
 			traceback.print_exc(file=log_file)
 			raise

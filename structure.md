@@ -71,8 +71,8 @@ Both own independent explicit model/config selection, sequential subprocesses,
 terminal/log streaming, and failure summaries. Usage belongs in
 [batch validation](docs/commands.md#batch-validation) and
 [batch builds](docs/commands.md#batch-builds).
-Validation additionally loads each selected config from the project-root cwd
-and ensures its processed data before launching the model child, optionally
+Both scripts load each selected config from the project-root cwd
+and ensure its processed data before launching the model child, optionally
 filling missing components from a project mirror via `--data-source-root`.
 Successful data preparations are shared by resolved path within the batch;
 preparation failures use the existing task log and failure summary.
@@ -82,7 +82,7 @@ their corresponding batch workflows. The build notebook additionally copies
 current SR2 outputs to timestamped Drive backups before runtime release,
 retaining the runtime if copying fails. Their behavior belongs in
 [Colab](docs/colab.md#local-notebook-behavior).
-The validation notebook passes its configurable `DRIVE_DATA_ROOT` project mirror
+Both notebooks pass their configurable `DRIVE_DATA_ROOT` project mirror
 to the batch script; complete local processed data bypasses that source.
 
 [submit.ipynb](submit.ipynb) is the tracked, self-contained Kaggle inference notebook (GPU
