@@ -18,7 +18,7 @@ def print_download_result(result: DownloadResult) -> None:
 
 def print_split_result(result: SplitPreparationResult) -> None:
 	print(f"Prepared {result.rows:,} rows across {result.groups:,} prompt groups.")
-	print("Split distribution (A/B augmented):")
+	print("Split distribution (original rows):")
 	print("split           rows     groups   model_a   model_b   tie")
 	for summary in result.splits:
 		class_percentages = tuple(
@@ -30,7 +30,7 @@ def print_split_result(result: SplitPreparationResult) -> None:
 			f"{class_percentages[1]:>7.2f}%  "
 			f"{class_percentages[2]:>6.2f}%"
 		)
-	print("Canonical inputs (before A/B augmentation):")
+	print("Input statistics (original rows):")
 	print(
 		"split       source_rows  model_a  model_b     tie     A+B tokens  row share  row deviation  token share  token deviation"
 	)

@@ -20,7 +20,7 @@ class TrainingInputs:
 
 
 class TrainingInputLoader:
-	"""Validate holdout membership and orientation pairs before serialization."""
+	"""Validate original rows and holdout membership before serialization."""
 
 	REQUIRED_COLUMNS = (
 		"id",
@@ -32,7 +32,6 @@ class TrainingInputLoader:
 		"group_id",
 		"is_swapped",
 	)
-	SWAPPED_LABELS = {0: 1, 1: 0, 2: 2}
 
 	def __init__(
 		self, processed_path: Path, *, validation_fraction: float | None = None
@@ -79,7 +78,7 @@ class TrainingInputLoader:
 	def validate(
 		data: pd.DataFrame, *, validation_fraction: float | None = None
 	) -> None:
-		"""Require complete, nonoverlapping train/validation orientation pairs."""
+		"""Require one original row per ID and nonoverlapping prompt groups."""
 		if data.empty:
 			raise ModelExecutionError("Processed split data contains no rows.")
 		if data.loc[:, list(TrainingInputLoader.REQUIRED_COLUMNS)].isna().any().any():
@@ -88,8 +87,15 @@ class TrainingInputLoader:
 			)
 		if not data["label"].isin((0, 1, 2)).all():
 			raise ModelExecutionError("Processed labels must be 0, 1, or 2.")
-		if not data["is_swapped"].isin((True, False)).all():
+		if not pd.api.types.is_bool_dtype(data["is_swapped"]):
 			raise ModelExecutionError("Processed is_swapped values must be boolean.")
+		if data["is_swapped"].any():
+			raise ModelExecutionError(
+				"Processed split data must contain original rows only. "
+				"Remove rows with is_swapped=True before loading it."
+			)
+		if data["id"].duplicated().any():
+			raise ModelExecutionError("Each ID must have exactly one original row.")
 		if set(data["split"].unique()) != {"train", "validation"}:
 			raise ModelExecutionError(
 				"Processed split data must contain nonempty 'train' and 'validation' partitions."
@@ -99,39 +105,13 @@ class TrainingInputLoader:
 				"A prompt group must not cross training and validation sets."
 			)
 
-		pairs = data.groupby("id", sort=False).agg(
-			rows=("id", "size"),
-			splits=("split", "nunique"),
-			groups=("group_id", "nunique"),
-			originals=("is_swapped", lambda values: int((~values).sum())),
-			swapped=("is_swapped", lambda values: int(values.sum())),
-		)
-		if (
-			pairs["rows"].ne(2)
-			| pairs["splits"].ne(1)
-			| pairs["groups"].ne(1)
-			| pairs["originals"].ne(1)
-			| pairs["swapped"].ne(1)
-		).any():
-			raise ModelExecutionError(
-				"Each ID must have one original and one swapped row in one split and prompt group."
-			)
-		originals = data.loc[~data["is_swapped"], ["id", "label"]].set_index("id")
 		if validation_fraction is not None:
-			original_rows = data.loc[~data["is_swapped"]]
-			share = float(original_rows["split"].eq("validation").mean())
+			share = float(data["split"].eq("validation").mean())
 			if abs(share / validation_fraction - 1) >= MAX_VALIDATION_ROW_DEVIATION:
 				raise ModelExecutionError(
 					"The saved validation row fraction does not match validation.validation_fraction. "
 					"Run 'uv run preprocess' with the selected --config."
 				)
-		swapped = data.loc[data["is_swapped"], ["id", "label"]].set_index("id")
-		swapped = swapped.loc[originals.index]
-		translated = swapped["label"].map(TrainingInputLoader.SWAPPED_LABELS)
-		if not translated.astype("int64").eq(originals["label"].astype("int64")).all():
-			raise ModelExecutionError(
-				"Swapped labels do not match their canonical labels."
-			)
 
 
 def _sha256(path: Path) -> str:

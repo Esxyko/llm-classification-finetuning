@@ -25,7 +25,7 @@ snapshots when updating current documentation or presets.
 
 ```mermaid
 flowchart TD
-    Raw["Raw training CSV"] --> Prep["Grouped split and augmentation"]
+    Raw["Raw training CSV"] --> Prep["Grouped original-only split"]
     Prep --> Data["Saved processed data"]
     Data --> Validate["Holdout validation"]
     Data --> Warmup["Train-only head-warmup cache"]
@@ -111,9 +111,8 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `timing.py` | Unbounded `HH:MM:SS` duration formatting with optional millisecond precision for fast validation logs |
 | `pipeline.py` | `PrepareDataPipeline`: download/preprocessing orchestration and optional download-progress callback; `EnsureProcessedDataPipeline`: local processed-data checks and optional project-mirror restoration without preprocessing |
 | `data/downloader.py` | Missing Kaggle training CSV download and single-file ZIP normalization |
-| `preprocess/splits.py` | Exact-response tie correction before labels/prompt hashes, grouped class quotas, balance orchestration, integrity summaries, and processed publication |
+| `preprocess/splits.py` | Exact-response tie correction before labels/prompt hashes, grouped class quotas, balance orchestration, original-only integrity summaries, and processed publication |
 | `preprocess/token_balance.py` | Canonical token counting and deterministic equal-class whole-group exchanges |
-| `preprocess/augmentation.py` | One swapped counterpart per original row |
 
 ### Profile registration and warmup
 
@@ -150,12 +149,12 @@ with the current SR2 head and warmup feature identities, rather than legacy MLP 
 | Module | Owns |
 | --- | --- |
 | `contracts.py` | Execution modes, pipeline interface, and validation/build/warmup result summaries, including optional executed warmup/joint epoch counts and merged-backbone path for builds |
-| `inputs.py` | Processed table loading, strict split/orientation/ID validation, multipart reads, and reconstructed source fingerprints |
+| `inputs.py` | Processed table loading, strict original-only split/ID validation, multipart reads, and reconstructed source fingerprints |
 | `data.py` | Tokenizer-injected official chat-template serialization and pairwise training repository |
 | `hardware.py` | CUDA/precision validation, single-GPU placement, isolated phase intervals with cross-epoch allocator maxima, and reset-safe global peaks |
 | `backbone.py` | Local weight/configuration content fingerprints for caches |
 | `compatibility.py` | Frozen embedding and head-checkpoint compatibility construction |
-| `cache_storage.py` | Locked file sessions, atomic/multipart publication, checksums, corruption archives, non-destructive component/size checks, and staged missing-component copies preserving authoritative manifests |
+| `cache_storage.py` | Locked file sessions, atomic/multipart publication with destination-directory permission inheritance on Windows, checksums, corruption archives, non-destructive component/size checks, and staged missing-component copies preserving authoritative manifests |
 | `token_cache.py` | Content-addressed text encodings, compact CPU views, canonical pair tokens, and context validation |
 | `cache.py` | Per-branch SQLite frozen/warmup embeddings, lossless FP16/BF16/FP32 storage, and rebinding to current rows |
 | `extraction_batching.py` | Deterministic branch extraction plans comparing contiguous DP with best-fit by batch count, then padded tokens; stable length/iteration behavior |
@@ -235,10 +234,10 @@ present in a fresh checkout.
 ## Invariants to preserve
 
 1. **Split integrity:** all models share one saved grouped holdout. Group exchanges
-   preserve canonical class/row counts, A/B counterparts stay together, and
+   preserve original class/row counts, each ID has one original row, and
    infeasible preparation leaves the previous dataset intact. See
    [data preparation](docs/data-preparation.md).
-2. **Input and output order:** validate complete processed orientation pairs
+2. **Input and output order:** validate unique original IDs with `is_swapped=False`
    before execution. Render alternating user/assistant turns with the tokenizer's official chat template, no system message, and no
    generation prompt; preserve its default reasoning block and trailing newline.
    Encode with the same tokenizer and `add_special_tokens=False`. Predictions

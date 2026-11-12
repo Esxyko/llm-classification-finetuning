@@ -152,7 +152,7 @@ class CacheStorage:
 					staged.append((working_manifest, self.manifest_path))
 				for working, target in staged:
 					target.parent.mkdir(parents=True, exist_ok=True)
-					os.replace(working, target)
+					self._replace_file(working, target)
 					copied.append(target)
 			return tuple(copied)
 
@@ -322,10 +322,29 @@ class CacheStorage:
 	def _valid_digest(cls, value: object) -> bool:
 		return isinstance(value, str) and cls._DIGEST.fullmatch(value) is not None
 
+	@staticmethod
+	def _replace_file(source: Path, destination: Path) -> None:
+		"""Publish atomically with destination-directory permissions on Windows."""
+		if os.name != "nt":
+			os.replace(source, destination)
+			return
+		# Windows moves retain the private TemporaryDirectory's restrictive ACL.
+		# Create the published file beside its destination so it inherits that ACL.
+		descriptor, name = tempfile.mkstemp(
+			prefix=".cache-publish-", suffix=".tmp", dir=destination.parent
+		)
+		staged = Path(name)
+		try:
+			with os.fdopen(descriptor, "wb") as output, source.open("rb") as input_file:
+				shutil.copyfileobj(input_file, output, length=CacheStorage.COPY_SIZE)
+			os.replace(staged, destination)
+		finally:
+			staged.unlink(missing_ok=True)
+
 	def _publish(self, source: Path) -> None:
 		size = source.stat().st_size
 		if size < self.SPLIT_THRESHOLD:
-			os.replace(source, self.path)
+			self._replace_file(source, self.path)
 			# Until this unlink succeeds, the old multipart generation is authoritative.
 			self.manifest_path.unlink(missing_ok=True)
 			self._cleanup_parts(set())
@@ -355,7 +374,7 @@ class CacheStorage:
 					)
 				checksum = part_digest.hexdigest()
 				name = f"{len(parts) + 1:06d}-{checksum}.part"
-				os.replace(part_file, self.parts_path / name)
+				self._replace_file(part_file, self.parts_path / name)
 				parts.append({"name": name, "size": part_size, "sha256": checksum})
 		manifest_file = source.with_name(f".{source.name}.manifest.tmp")
 		manifest_file.write_text(
@@ -374,7 +393,7 @@ class CacheStorage:
 		)
 		if manifest_file.stat().st_size >= self.SPLIT_THRESHOLD:
 			raise OSError("Cache manifest exceeds the file size limit.")
-		os.replace(manifest_file, self.manifest_path)
+		self._replace_file(manifest_file, self.manifest_path)
 		# Publication is complete. Cleanup failures must not invalidate that generation.
 		try:
 			self.path.unlink(missing_ok=True)

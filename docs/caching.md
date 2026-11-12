@@ -85,6 +85,11 @@ when `CACHE_PATH` points there.
 Windows/Linux sessions use a per-artifact process lock with a 30-second timeout.
 Updates work on private copies. Small files publish by atomic replacement;
 multipart writes publish volumes before replacing the authoritative manifest.
+On Windows, published files are first copied into a staging file beside their
+destination, then replaced atomically. This gives the published file the
+destination directory's inherited permissions instead of retaining a private
+temporary directory's restrictive ACL. Allow additional disk space for that
+staging file (one payload or volume at a time).
 Unchanged hits do not republish. A failed publication keeps the previous valid
 artifact authoritative. A successful later write cleans unreferenced volumes
 left by interrupted publication or cleanup.

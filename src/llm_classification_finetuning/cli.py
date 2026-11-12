@@ -20,8 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="init",
 		description=(
-			"Download competition data and generate holdout-split, A/B-augmented "
-			"training data."
+			"Download competition data and generate an original-only train/validation split."
 		),
 	)
 	add_config_argument(parser)

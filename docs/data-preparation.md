@@ -6,7 +6,7 @@ After [setup](getting-started.md), choose the operation you need:
 
 | Command / input | Behavior |
 | --- | --- |
-| Saved processed manifest and all volumes from this checkout | Start model validation directly; no raw download or preprocessing required |
+| Saved processed Parquet, or its manifest and all volumes | Start model validation directly; no raw download or preprocessing required |
 | `uv run init` | Download missing competition files, then rebuild processed training data |
 | `uv run data` | Download missing `train.csv` only |
 | `uv run preprocess` | Rebuild processed data from local `train.csv` |
@@ -26,8 +26,8 @@ case folding, or fuzzy matching; whitespace, newline, and case differences remai
 significant. The raw CSV is not modified.
 
 Preparation derives labels and canonical prompt hashes from the corrected table,
-then assigns whole prompt groups to train or validation. The root preset uses
-validation fraction `0.2` and seed `42`. Classes retain their corrected
+then assigns whole prompt groups to train or validation. The saved Kaggle baseline
+uses validation fraction `0.2` and seed `42`. Classes retain their corrected
 proportions; they are not resampled to equal sizes.
 
 Original-class quotas use the nearest total validation row count and largest
@@ -43,7 +43,7 @@ three-class count vectors are exchanged to meet the validation token target.
 This preserves initial row and class counts exactly; at most 1,000 improving
 exchanges are allowed.
 
-Both row and token shares are measured **before augmentation**. For validation
+Both row and token shares are measured on original rows. For validation
 fraction `f`, relative deviation is `abs(validation_share / f - 1)`:
 
 | Quantity | Required strict upper bound |
@@ -56,14 +56,17 @@ At `f = 0.2`, this means less than 0.5% relative error around a 20% target, not
 its own target. The tokenizer/revision used for balancing is independently
 configured under [validation](configuration.md#data-and-validation).
 
-One A/B-swapped counterpart is appended to each original after splitting.
-Only after balance and integrity checks succeed is the compressed Parquet
-published. Failure leaves the previous dataset in place.
+Each source ID is saved once in its original A/B order; preprocessing does not
+create swapped counterparts. Only after balance and integrity checks succeed
+is the compressed Parquet published. Failure leaves the previous dataset in place.
 
 ## Processed data
 
-The default logical path is `data/processed/train_validation.parquet`. Keep
-`data.processed_path` pointing there whether it is a single file or multipart:
+The repository-backed logical path is `data/processed/train_validation.parquet`.
+The current presets consume the prebuilt Kaggle + LMSYS dataset at
+`data/processed/lmsys33k/train_validation.parquet`, which is not included in Git.
+Keep `data.processed_path` pointing to the logical Parquet path whether it is a
+single file or multipart:
 
 - Below 100 MiB: the Zstandard-compressed `.parquet` file.
 - At least 100 MiB: `.parquet.manifest.json` plus `.parquet.parts/`, each volume
@@ -84,13 +87,18 @@ with these additions:
 | `label` | `0` = A wins, `1` = B wins, `2` = tie |
 | `group_id` | SHA-256 of canonical prompt JSON |
 | `split` | `train` or `validation` |
-| `is_swapped` | Whether this is the swapped counterpart |
+| `is_swapped` | Always `False`; retained for model batch and result metadata |
 
-Each ID has one original and one swapped row in the same group/partition.
-A/B fields and labels `0`/`1` swap; ties remain `2`. Originals precede swapped
-rows in source order. No original ID is dropped. Input loading rejects missing
-values, invalid labels, incomplete orientation pairs, swapped-label mismatches,
-and prompt groups crossing partitions.
+Each ID has exactly one original row, preserving source order. No original ID
+is dropped. Input loading rejects missing values, invalid labels, nonboolean
+`is_swapped` values, swapped rows, duplicate IDs, and prompt groups crossing
+partitions. Older augmented datasets must have their `is_swapped=True` rows
+removed before loading.
+
+The prebuilt Kaggle + LMSYS dataset freezes the Kaggle validation IDs before
+appending external rows to train. Its configuration consumes that saved artifact;
+do not run `init` or `preprocess` with it to recreate the combined dataset.
+Construction details and source statistics are in its local `summary.json`.
 
 ### Conversation serialization
 
@@ -165,8 +173,31 @@ so a future rebuild can assign different groups to the two partitions.
 | `1` (B wins) | 39,689 |
 | `2` (tie) | 35,576 |
 
-The current reconstructed Parquet SHA-256 is
+The reconstructed Parquet SHA-256 after that correction was
 `f5273191b6b442e24d559835fe51e73e0fe5caeddf27700f9e04ab57ec643922`.
+
+### A/B swap removal (2026-11-12)
+
+All swapped rows were removed in place from both saved datasets. Original values,
+row order, column types, prompt groups, and train/validation membership were
+preserved. The repository-backed snapshot includes additions made after the
+October baseline described above; this cleanup retained all of those original
+rows without rebuilding either split.
+
+| Dataset | Removed swapped rows | Remaining original rows | Train | Validation |
+| --- | ---: | ---: | ---: | ---: |
+| `data/processed/train_validation.parquet` | 59,533 | 59,533 | 47,626 | 11,907 |
+| `data/processed/lmsys33k/train_validation.parquet` | 77,527 | 77,527 | 66,032 | 11,495 |
+
+Both artifacts are now below 100 MiB and use a single Parquet file. Their current
+SHA-256 fingerprints are:
+
+- Repository-backed snapshot: `0591f630f6208081eeeffdd4776122ea3bb806a3aff7c9e0809e3eaedae38134`.
+- Kaggle + LMSYS snapshot: `0488ff2b22153bc5e1f05d0dad030906936ee0f3a8677e9ac646ebbb7ca33ecc`.
+
+Existing token and feature caches remain compatible when their branch content
+and other identities match. SR2 already trained and predicted on original rows;
+removing the stored counterparts does not change its training IDs or labels.
 
 ## Migration from five folds
 

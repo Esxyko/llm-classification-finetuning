@@ -13,7 +13,6 @@ import pandas as pd
 from ..config import MAX_VALIDATION_ROW_DEVIATION, ValidationConfig
 from ..errors import DataPreparationError
 from ..models.common import CacheStorage, TrainingInputLoader
-from .augmentation import ABAugmenter
 from .token_balance import SplitTokenBalancer
 
 
@@ -28,7 +27,6 @@ class SplitSummary:
 	source_rows: int
 	source_class_counts: tuple[int, int, int]
 	tokens_total: int
-	tokens_augmented: int
 	row_share_pct: float
 	row_deviation_pct: float
 	token_share_pct: float
@@ -46,7 +44,7 @@ class SplitPreparationResult:
 
 
 class SplitPreprocessor:
-	"""Stratify complete prompts, balance tokens, and create symmetric A/B rows."""
+	"""Stratify complete prompts, balance tokens, and retain original rows."""
 
 	MAX_ROW_DEVIATION = MAX_VALIDATION_ROW_DEVIATION
 
@@ -60,7 +58,6 @@ class SplitPreprocessor:
 	def __init__(self, config: ValidationConfig, *, cache_dir: Path) -> None:
 		self._config = config
 		self._cache_dir = cache_dir
-		self._augmenter = ABAugmenter()
 		self._token_balancer = SplitTokenBalancer(config)
 
 	def prepare(self, train_path: Path, output_path: Path) -> SplitPreparationResult:
@@ -89,7 +86,7 @@ class SplitPreprocessor:
 		data["split"] = self._assign_split(data)
 		balanced = self._token_balancer.balance(data, self._cache_dir / "token_cache")
 		data["split"] = balanced.splits
-		data = self._augmenter.augment(data)
+		data["is_swapped"] = False
 		TrainingInputLoader.validate(
 			data, validation_fraction=self._config.validation_fraction
 		)
@@ -210,7 +207,6 @@ class SplitPreprocessor:
 					source_rows=len(split_source),
 					source_class_counts=tuple(int(value) for value in source_counts),
 					tokens_total=tokens,
-					tokens_augmented=tokens * 2,
 					row_share_pct=len(split_source) / len(source) * 100,
 					row_deviation_pct=(len(split_source) / (len(source) * fraction) - 1)
 					* 100,

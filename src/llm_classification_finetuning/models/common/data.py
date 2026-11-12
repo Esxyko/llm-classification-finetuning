@@ -25,7 +25,7 @@ class PairwiseText:
 
 @dataclass(frozen=True, slots=True)
 class ModelData:
-	"""Validated augmented references and canonical model inputs."""
+	"""Validated original references and canonical model inputs."""
 
 	reference: pd.DataFrame
 	canonical_texts: tuple[PairwiseText, ...]
@@ -130,7 +130,6 @@ class ModelDataRepository:
 	"""Read and validate the processed holdout artifact for model training."""
 
 	REQUIRED_COLUMNS = TrainingInputLoader.REQUIRED_COLUMNS
-	SWAPPED_LABELS = TrainingInputLoader.SWAPPED_LABELS
 
 	def __init__(
 		self,
@@ -153,7 +152,6 @@ class ModelDataRepository:
 		"""Return validated references, canonical texts, and a file fingerprint."""
 		inputs = self._loader.load()
 		data = inputs.data
-		canonical = data.loc[~data["is_swapped"]]
 		canonical_texts = tuple(
 			self._serializer.serialize_pair(
 				row_id=int(row.id),
@@ -161,7 +159,7 @@ class ModelDataRepository:
 				response_a_value=row.response_a,
 				response_b_value=row.response_b,
 			)
-			for row in canonical.itertuples(index=False)
+			for row in data.itertuples(index=False)
 		)
 		fingerprint = inputs.fingerprint
 		return ModelData(

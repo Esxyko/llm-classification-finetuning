@@ -1,4 +1,4 @@
-"""Command-line interface for generating holdout-split, A/B-augmented data."""
+"""Command-line interface for generating original-only holdout-split data."""
 
 from __future__ import annotations
 
@@ -18,8 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="preprocess",
 		description=(
-			"Generate a grouped train/validation split and A/B augmentation from "
-			"raw training data."
+			"Generate a grouped train/validation split from original training rows."
 		),
 	)
 	add_config_argument(parser)

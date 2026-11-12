@@ -54,14 +54,14 @@ See [path rules](configuration.md#configuration-files-and-paths).
 
 | Starting point | Action |
 | --- | --- |
-| Use the saved split in this checkout | Keep the Parquet manifest and every referenced `.part` file; proceed directly to validation |
+| Use the saved split in this checkout | Keep the Parquet file, or its manifest and every referenced `.part` file; proceed directly to validation |
 | Download raw data and regenerate the split | Run `uv run init` after configuring Kaggle access |
 | Raw CSVs are already available | Run `uv run preprocess` |
 | Download CSVs without preprocessing | Run `uv run data` |
 
 The saved split's logical path is `data/processed/train_validation.parquet`.
-The single `.parquet` file need not exist: loaders reconstruct the versioned
-manifest and volumes automatically. Training still downloads the selected
+It is stored as a single Parquet file below 100 MiB; loaders reconstruct larger
+artifacts from their manifest and volumes automatically. Training still downloads the selected
 backbone and tokenizer when absent; their weights are not included in Git.
 
 Regenerating data replaces the saved logical artifact after successful checks.

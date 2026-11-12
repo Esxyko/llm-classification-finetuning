@@ -43,7 +43,7 @@ their historical artifacts are described in [migration](docs/migration.md).
 | [Kaggle submission](docs/kaggle-submission.md) | Prepare the model dataset, configure and run the offline T4 x2 submission notebook |
 | [Commands](docs/commands.md) | Select modes, checkpoints, cache refresh, and batch validation |
 | [Configuration](docs/configuration.md) | Look up YAML fields, defaults, paths, GPU settings, and token budgets |
-| [Data preparation](docs/data-preparation.md) | Understand grouping, balancing, augmentation, and the processed schema |
+| [Data preparation](docs/data-preparation.md) | Understand grouping, balancing, original-only rows, and the processed schema |
 | [Model workflows](docs/models.md) | Validate/build frozen or LoRA SR2, and inspect build outputs |
 | [LoRA training](docs/lora.md) | Understand the head, warmup, batching, checkpointing, and memory controls |
 | [Caching and Python APIs](docs/caching.md) | Check reuse conditions, multipart storage, and CPU preparation APIs |
