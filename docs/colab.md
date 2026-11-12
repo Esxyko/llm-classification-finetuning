@@ -124,8 +124,10 @@ a different mirror root.
 Both batch scripts resolve every selected YAML's `data.processed_path` through the
 existing configuration parser, from `PROJECT_DIR`. Complete local artifacts are
 used without accessing the Drive data mirror, so repository-backed configurations
-and `lmsys33k.yaml` can run in the same `MODEL_CONFIGS` batch. For example, a model
-selection can list both `"1.yaml"` and `"lmsys33k.yaml"` in order.
+can run in the same `MODEL_CONFIGS` batch. For example, a model
+selection can list both `"1.yaml"` and `"2.yaml"` in order. Model builds also
+restore the configured build supplement from the mirror; validation and
+standalone warmup require only the original dataset.
 
 Only missing files or wrong-sized volumes are copied into the runtime. A local
 manifest determines the required volumes, including when Drive only contains the

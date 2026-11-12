@@ -103,7 +103,7 @@ Validation logs use `<RESULT_PATH>/logs/validate-*.log`.
 Before each task starts, the script loads its YAML through `AppConfig` and checks
 the resolved `data.processed_path` from the project root. Complete local data is
 used directly. The same batch can mix repository-backed configurations and
-`lmsys33k.yaml`, whose prebuilt data is not included in Git. The script does not
+the current numbered presets, whose prebuilt data is not included in Git. The script does not
 download raw data or run preprocessing.
 
 To fill missing processed-data files from a mounted Drive or another project
@@ -154,13 +154,16 @@ Standalone warmup and full-data builds use different training ID sets; see
 `<RESULT_PATH>/logs/build-*.log`.
 
 Before launching a task, the build script loads its YAML and ensures the resolved
-`data.processed_path` using the same pipeline as
+`data.processed_path` and, for model builds, `data.build_supplement_path` using the same pipeline as
 [batch validation](#batch-validation). Complete local data is reused; pass an
 optional project mirror to fill missing processed-data files:
 
 ```bash
 uv run python scripts/build.py --data-source-root /content/drive/MyDrive/llm-classification-finetuning
 ```
+
+Standalone warmup prepares only the original dataset. Preparation reuse keys
+include both required paths, so a prior warmup does not skip supplement recovery.
 
 Paths beneath the mirror follow the selected YAML rather than a fixed dataset
 directory. Single Parquet files and manifest-plus-volume artifacts are supported,
@@ -176,8 +179,8 @@ model CLI directly with tags when separate checkpoints are needed.
 ### Shared batch behavior
 
 Each script selects work independently through its top-level `CONFIG_DIR` and
-`MODEL_CONFIGS` constants. Validation currently selects frozen `SR2-Qwen3-4B`
-with `lmsys33k.yaml`; builds select frozen and LoRA SR2 with `1.yaml` from
+`MODEL_CONFIGS` constants. Validation currently selects `SR2-Qwen3-4B-lora`
+with `1.yaml`; builds select frozen and LoRA SR2 with `1.yaml` from
 `configs/`. Edit these constants to choose other combinations;
 there are no script CLI selection flags. Dictionary keys are registered model
 selectors, with `warmup` additionally supported by the build script. Each list

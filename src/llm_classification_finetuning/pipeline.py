@@ -52,8 +52,11 @@ class EnsureProcessedDataPipeline:
 		*,
 		project_root: Path,
 		source_root: Path | None = None,
+		include_build_supplement: bool = False,
 	) -> None:
-		self._storage = CacheStorage(config.data.processed_path)
+		self._storages = [CacheStorage(config.data.processed_path)]
+		if include_build_supplement and config.data.build_supplement_path is not None:
+			self._storages.append(CacheStorage(config.data.build_supplement_path))
 		self._project_root = project_root.resolve()
 		# Resolve the source only after a local miss, avoiding access to Drive on hits.
 		self._source_root = source_root
@@ -61,36 +64,45 @@ class EnsureProcessedDataPipeline:
 	def run(
 		self, on_copy: Callable[[Path, Path], None] | None = None
 	) -> tuple[Path, ...]:
-		"""Ensure the selected artifact is complete and return copied local paths."""
+		"""Ensure all requested artifacts, without accessing build data on validation."""
+		return tuple(
+			path
+			for storage in self._storages
+			for path in self._ensure(storage, on_copy)
+		)
+
+	def _ensure(
+		self,
+		storage: CacheStorage,
+		on_copy: Callable[[Path, Path], None] | None,
+	) -> tuple[Path, ...]:
 		source_path: Path | None = None
 		try:
-			missing = self._storage.missing_components()
+			missing = storage.missing_components()
 			if not missing:
 				return ()
 			missing_paths = ", ".join(str(path) for path in missing)
 			if self._source_root is None:
 				raise DataPreparationError(
 					f"Missing or wrong-sized processed data: {missing_paths}. "
-					f"Expected {self._storage.path} or {self._storage.manifest_path}. "
+					f"Expected {storage.path} or {storage.manifest_path}. "
 					"No --data-source-root configured."
 				)
 			try:
-				relative_path = self._storage.path.relative_to(self._project_root)
+				relative_path = storage.path.relative_to(self._project_root)
 			except ValueError as error:
 				raise DataPreparationError(
 					f"Missing or wrong-sized processed data: {missing_paths}. "
-					f"Cannot map {self._storage.path} to the source root: "
+					f"Cannot map {storage.path} to the source root: "
 					f"it is outside the project root {self._project_root}."
 				) from error
 			source_root = self._source_root.expanduser()
 			if not source_root.is_absolute():
 				source_root = self._project_root / source_root
 			source_path = source_root / relative_path
-			return self._storage.copy_missing_from(
-				CacheStorage(source_path), on_copy=on_copy
-			)
+			return storage.copy_missing_from(CacheStorage(source_path), on_copy=on_copy)
 		except OSError as error:
 			source_detail = f" from {source_path}" if source_path is not None else ""
 			raise DataPreparationError(
-				f"Could not prepare processed data {self._storage.path}{source_detail}: {error}"
+				f"Could not prepare processed data {storage.path}{source_detail}: {error}"
 			) from error

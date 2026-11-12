@@ -7,6 +7,7 @@ data:
   competition: llm-classification-finetuning
   raw_dir: data/raw
   processed_path: data/processed/lmsys33k/train_validation.parquet
+  build_supplement_path: data/synthetic_tie/lmsys33k/synthetic_ties.parquet
 
 validation:
   validation_fraction: 0.14827092496807565

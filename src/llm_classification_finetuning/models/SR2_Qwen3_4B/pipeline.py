@@ -78,6 +78,7 @@ class SR2ModelPipeline:
 				profile=self._profile,
 				warmup_only=True,
 				head_only_config=head_config,
+				include_build_supplement=mode is ModelMode.BUILD,
 			)
 			training = None
 			if mode is ModelMode.BUILD:

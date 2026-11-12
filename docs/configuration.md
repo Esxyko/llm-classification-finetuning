@@ -26,7 +26,8 @@ This process-wide allocator setting requires a fresh process to take effect.
 | --- | --- | --- |
 | `--config PATH` | `./config.yaml` | Selected complete YAML file |
 | `data.raw_dir` | Required YAML path; root preset `data/raw` | Raw competition CSVs |
-| `data.processed_path` | Required YAML `.parquet` path; root preset `data/processed/train_validation.parquet` | Saved train/validation data, including multipart layout |
+| `data.processed_path` | Required YAML `.parquet` path; root preset `data/processed/lmsys33k/train_validation.parquet` | Saved train/validation data, including multipart layout |
+| `data.build_supplement_path` | Optional YAML path; current presets `data/synthetic_tie/lmsys33k/synthetic_ties.parquet` | Independent synthetic tie rows for model builds |
 | `MODEL_PATH` | Optional environment or `.env`; missing/blank uses native HF settings | Downloaded model/config/tokenizer cache |
 | `HF_HUB_OFFLINE` | Environment or `.env`; runtime template and Colab validation/build use `1` | Load required HF files locally without Hub requests; use `0` in a separate download process to fill missing files |
 | `CACHE_PATH` | Environment or `.env`; missing/blank uses `./cache` | Tokens, frozen/warmup features, LoRA batch plans, and head-warmup states |
@@ -79,6 +80,7 @@ Booleans. Unquoted strings such as `bf16`, `sdpa`, and `cuda:0` are valid.
 | `data.competition` | Nonempty string |
 | `data.raw_dir` | Nonempty path |
 | `data.processed_path` | Nonempty path ending in `.parquet` |
+| `data.build_supplement_path` | Separate `.parquet` path or `null`; default `null`. Appended only by model builds; ignored by validation and standalone warmup |
 | `validation.random_state` | Integer |
 | `validation.validation_fraction` | Number in `(0, 1)`; default `0.2` |
 | `validation.tokenizer_name` | Hub ID or local tokenizer directory with a chat template; default `Skywork/Skywork-Reward-V2-Qwen3-4B` |

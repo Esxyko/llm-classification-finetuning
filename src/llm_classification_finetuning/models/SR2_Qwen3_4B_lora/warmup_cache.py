@@ -38,6 +38,7 @@ class WarmupCacheContext:
 	local_weights_sha256: str | None
 	backbone_hidden_size: int
 	tokenizer_key: str
+	training_supplement_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +114,8 @@ class HeadWarmupCache:
 			"weight_decay": config.weight_decay,
 			"max_grad_norm": config.max_grad_norm,
 		}
+		if context.training_supplement_sha256 is None:
+			metadata.pop("training_supplement_sha256")
 		# Keep legacy fixed-rate keys while isolating endpoint-based exponential decay.
 		if config.warmup_build_min_lr != config.warmup_learning_rate:
 			metadata["warmup_lr_schedule"] = "exponential_endpoint_epoch_v2"

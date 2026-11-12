@@ -99,12 +99,23 @@ Build a tagged adapter/head checkpoint and merged backbone on all IDs:
 uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag experiment
 ```
 
+Both active model builds append `data.build_supplement_path` when configured.
+The current presets use 77,527 saved originals plus 3,822 audited synthetic ties;
+validation and standalone warmup use only the saved originals. Generate the
+[supplement](data-preparation.md#build-only-synthetic-ties) once before building:
+
+```shell
+uv run python scripts/generate_synthetic_tie.py --config config.yaml
+uv run model SR2-Qwen3-4B --config config.yaml --build
+uv run model SR2-Qwen3-4B-lora --config config.yaml --build
+```
+
 Build prepares the saved data, full conversation tokens, and full-data batch
 plan on CPU, then probes both output destinations before configuring CUDA
 or loading model weights. Every original ID from both partitions contributes
 one training row; there is no holdout evaluation during a build. Compatible token, batch,
 and frozen-feature caches are reused. The full-data head-warmup cache is keyed
-by all original IDs and their labels, so a train-partition-only head cache is not
+by all actual training IDs, their labels, and supplement content when enabled, so a train-partition-only head cache is not
 a complete hit.
 Exact warmup hits skip that stage. With `warmup.build_min_lr = warmup.learning_rate`, compatible
 lower-epoch hits execute only the remaining warmup epochs before joint training;

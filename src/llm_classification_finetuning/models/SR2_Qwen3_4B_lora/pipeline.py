@@ -165,7 +165,10 @@ class LoRAModelPipeline:
 	) -> ModelBuildResult:
 		"""Prepare full-data inputs and both output paths before configuring CUDA."""
 		batches = LoRATrainingBatchRepository.from_config(
-			self._config, refresh_cache=refresh_cache, profile=self._profile
+			self._config,
+			refresh_cache=refresh_cache,
+			profile=self._profile,
+			include_build_supplement=True,
 		)
 		training = batches.get_training(full_data=True)
 		self._checkpoint_store.check_writable()

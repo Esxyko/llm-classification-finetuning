@@ -100,6 +100,54 @@ appending external rows to train. Its configuration consumes that saved artifact
 do not run `init` or `preprocess` with it to recreate the combined dataset.
 Construction details and source statistics are in its local `summary.json`.
 
+## Build-only synthetic ties
+
+The current LMSYS33K presets specify `data.build_supplement_path` as
+`data/synthetic_tie/lmsys33k/synthetic_ties.parquet`. Generate it from the complete
+77,527-row original table, using the locally cached configured tokenizer:
+
+```powershell
+uv run python scripts/generate_synthetic_tie.py --config config.yaml
+```
+
+The generator never rebuilds the holdout. It groups complete normalized prompt
+JSON, excludes groups containing any tie, and merges identical normalized
+`(prompt, response)` candidates while retaining every source occurrence. A
+single original battle is sufficient. Historical win rates are exact fractions
+of wins over occurrences; selected unique candidates receive equal weight.
+
+Each selection minimizes the number already selected for its prompt, then the
+complete official-template branch token count, minimum source ID, and A before
+B. Counts start at zero. Full-loss/full-win replacements (with strictly longer
+added branches), followed by an exact adjustment involving a half-win candidate,
+preserve the initially covered prompts and make the mean exactly `1/2`.
+Infeasible adjustments fail with a diagnostic audit rather than changing rules.
+
+The independent supplement contains 3,822 unswapped self-response ties. A/B
+responses and models both come from the minimum-ID source occurrence (A wins a
+side tie). IDs start at the maximum original ID plus one, in token/source order.
+`split="build"` distinguishes supplemental membership; `source_original_id`,
+`source_side`, `source_split`, dataset provenance, historical wins/occurrences,
+and `candidate_id` retain traceability. Parquet metadata pins the original
+reconstructed SHA-256, generation algorithm, and tokenizer/template identity.
+
+Both model builds append these rows after the saved originals, including rows
+derived from validation prompts. Validation and standalone `warmup --build`
+ignore the supplement completely. Their partitions remain 66,032 train and
+11,495 validation rows; model builds and inline build warmup use 81,349 rows.
+The class totals change from `[27381, 26852, 23294]` to `[27381, 26852, 27116]`,
+and tie share changes from 30.04630645% to 33.33292358%.
+
+The output directory also contains `candidates.parquet` (all source occurrences
+in `sources_json`), `selection.jsonl`, `replacements.jsonl`, `prompt_counts.csv`
+(including zero counts), `summary.json`, and `checksums.sha256`. All files are
+staged and checked before directory promotion; failures preserve diagnostics
+and leave any previous successful output intact. Large Parquet outputs use the
+same manifest/parts storage policy. Keep the whole directory for audits; only
+the supplement Parquet and its components are required for training. Configured
+missing, corrupt, or source-mismatched supplements cause builds to fail before
+GPU setup. See [cache identities](caching.md#identity).
+
 ### Conversation serialization
 
 SR2 uses `sr2-qwen3-chat-template-v1`. Each A/B branch becomes one complete list

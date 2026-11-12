@@ -34,6 +34,7 @@ class DataConfig:
 	competition: str
 	raw_dir: Path
 	processed_path: Path
+	build_supplement_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +213,7 @@ class AppConfig:
 		data_section = _require_mapping(root.get("data"), "data")
 		_reject_unknown_keys(
 			data_section,
-			{"competition", "raw_dir", "processed_path"},
+			{"competition", "raw_dir", "processed_path", "build_supplement_path"},
 			"data",
 		)
 		validation_section = _require_mapping(root.get("validation"), "validation")
@@ -262,6 +263,24 @@ class AppConfig:
 		if processed_path.suffix.lower() != ".parquet":
 			raise ConfigurationError(
 				"data.processed_path must point to a .parquet file."
+			)
+		build_supplement_value = data_section.get("build_supplement_path")
+		build_supplement_path = (
+			None
+			if build_supplement_value is None
+			else _resolve_path(
+				working_dir,
+				_require_non_empty_string(
+					build_supplement_value, "data.build_supplement_path"
+				),
+			)
+		)
+		if build_supplement_path is not None and (
+			build_supplement_path.suffix.lower() != ".parquet"
+			or build_supplement_path == processed_path
+		):
+			raise ConfigurationError(
+				"data.build_supplement_path must be a separate .parquet path."
 			)
 
 		validation_fraction = _require_float(
@@ -319,6 +338,7 @@ class AppConfig:
 				competition=competition,
 				raw_dir=raw_dir,
 				processed_path=processed_path,
+				build_supplement_path=build_supplement_path,
 			),
 			validation=ValidationConfig(
 				validation_fraction=validation_fraction,

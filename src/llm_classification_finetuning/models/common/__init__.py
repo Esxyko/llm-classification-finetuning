@@ -20,7 +20,8 @@ from .data import (
 )
 from .extraction_batching import ExtractionBatchSampler
 from .hardware import GPUEnvironment, GPUMemoryMonitor, GPUMemoryPeak
-from .inputs import TrainingInputLoader
+from .inputs import TrainingInputLoader, TrainingInputs
+from .supplement import BuildSupplementLoader
 from .loss import ClassificationLoss
 from .model import PairwiseClassificationHead, PairwiseQwenClassifier
 from .orientation import ABSwapAverager
@@ -32,6 +33,7 @@ from .trainer import EpochMetrics, FinalEvaluationMetrics, ValidationTrainingRes
 
 __all__ = (
 	"ABSwapAverager",
+	"BuildSupplementLoader",
 	"CacheCorruptionError",
 	"CacheFileSession",
 	"CacheStorage",
@@ -64,6 +66,7 @@ __all__ = (
 	"TokenizationCache",
 	"TokenizedTexts",
 	"TrainingInputLoader",
+	"TrainingInputs",
 	"TrainingProgress",
 	"ValidationTrainingResult",
 	"WarmupBuildResult",

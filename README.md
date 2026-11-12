@@ -28,7 +28,10 @@ Selectors and YAML section names are case-sensitive.
 | `SR2-Qwen3-4B-lora` | `SR2_Qwen3_4B_lora` | Skywork reward-trained Qwen3-4B LoRA; swap-equivariant three-class head |
 
 Both profiles consume the saved train/validation split and train and predict on
-original rows only. `ALL` runs configured frozen SR2 before LoRA.
+original A/B orientations only. Model builds additionally append the configured
+[synthetic tie supplement](docs/data-preparation.md#build-only-synthetic-ties);
+validation and standalone warmup retain the saved original partitions. `ALL`
+runs configured frozen SR2 before LoRA.
 The frozen model has independent training settings and shares
 compatible head/feature caches with LoRA warmup and the separate `warmup --build`
 selector. Retired Qwen profiles and

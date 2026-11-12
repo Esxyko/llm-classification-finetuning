@@ -54,7 +54,7 @@ def _build(data_source_root: Path | None = None) -> int:
 
 	config_dir = PROJECT_ROOT / CONFIG_DIR
 	failed_tasks: list[str] = []
-	prepared_paths: set[Path] = set()
+	prepared_paths: set[tuple[Path, Path | None]] = set()
 	for model, configs in MODEL_CONFIGS.items():
 		action = "head warmup" if model == "warmup" else "full-data build"
 		for filename in configs:
@@ -67,7 +67,11 @@ def _build(data_source_root: Path | None = None) -> int:
 			try:
 				app_config = AppConfig.load(config)
 				processed_path = app_config.data.processed_path
-				if processed_path not in prepared_paths:
+				supplement_path = (
+					app_config.data.build_supplement_path if model != "warmup" else None
+				)
+				preparation_key = (processed_path, supplement_path)
+				if preparation_key not in prepared_paths:
 					print(
 						f"Preparing processed data for {task} ({config}): {processed_path}",
 						flush=True,
@@ -76,12 +80,13 @@ def _build(data_source_root: Path | None = None) -> int:
 						app_config,
 						project_root=PROJECT_ROOT,
 						source_root=data_source_root,
+						include_build_supplement=model != "warmup",
 					).run(
 						on_copy=lambda source, target: print(
 							f"Copying processed data: {source} -> {target}", flush=True
 						)
 					)
-					prepared_paths.add(processed_path)
+					prepared_paths.add(preparation_key)
 					print(
 						f"Processed data ready: {processed_path}; copied {len(copied)} files.",
 						flush=True,
@@ -113,13 +118,13 @@ def _build(data_source_root: Path | None = None) -> int:
 						print(line, end="", flush=True)
 					returncode = process.wait()
 			except OSError as error:
-				prepared_paths.discard(processed_path)
+				prepared_paths.clear()
 				failed_tasks.append(task)
 				print(f"Failed {action} for {task}: {error}", flush=True)
 				continue
 			if returncode:
 				# A failing loader can archive data; later tasks must check it again.
-				prepared_paths.discard(processed_path)
+				prepared_paths.clear()
 				failed_tasks.append(task)
 				print(
 					f"Failed {action} for {task} (exit code {returncode})",

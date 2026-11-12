@@ -565,6 +565,7 @@ class LoRATrainingBatchRepository:
 		profile: ModelProfile | None = None,
 		warmup_only: bool = False,
 		head_only_config: WarmupModelConfig | None = None,
+		include_build_supplement: bool = False,
 	) -> LoRATrainingBatchRepository:
 		"""Load data and canonical tokens once, preparing split plans on demand."""
 		profile = profile or PROFILE
@@ -572,6 +573,8 @@ class LoRATrainingBatchRepository:
 			raise ValueError(
 				"An explicit head-only configuration requires warmup_only=True."
 			)
+		if include_build_supplement and warmup_only and head_only_config is None:
+			raise ValueError("Standalone warmup cannot include build supplements.")
 		model_key = (
 			"warmup" if warmup_only and head_only_config is None else profile.config_key
 		)
@@ -612,8 +615,9 @@ class LoRATrainingBatchRepository:
 				config.data.processed_path,
 				serializer=ConversationSerializer(token_cache.tokenizer),
 				validation_fraction=config.validation.validation_fraction,
+				build_supplement_path=config.data.build_supplement_path,
 			)
-			data = repository.load()
+			data = repository.load(include_build_supplement=include_build_supplement)
 			return cls(
 				config=model,
 				data=data,
@@ -670,6 +674,8 @@ class LoRATrainingBatchRepository:
 			"threshold": config.gradient_checkpointing_threshold,
 			"group_size": group_size,
 		}
+		if full_data and self.data.supplement_fingerprint is not None:
+			metadata["training_supplement_sha256"] = self.data.supplement_fingerprint
 		key = self._cache.key(metadata)
 		payload = self._plans.get(key)
 		if payload is None and not self._refresh_cache:
@@ -739,6 +745,9 @@ class LoRATrainingBatchRepository:
 			local_weights_sha256=self._local_weights_sha256,
 			backbone_hidden_size=self._backbone_hidden_size,
 			tokenizer_key=self.token_cache.tokenizer_key,
+			training_supplement_sha256=self.data.supplement_fingerprint
+			if full_data
+			else None,
 		)
 
 	@staticmethod

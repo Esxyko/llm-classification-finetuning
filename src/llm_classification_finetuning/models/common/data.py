@@ -12,6 +12,7 @@ from transformers import PreTrainedTokenizerBase
 
 from ...errors import ModelExecutionError
 from .inputs import TrainingInputLoader
+from .supplement import BuildSupplementLoader
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,11 +26,12 @@ class PairwiseText:
 
 @dataclass(frozen=True, slots=True)
 class ModelData:
-	"""Validated original references and canonical model inputs."""
+	"""Validated original/build references and canonical model inputs."""
 
 	reference: pd.DataFrame
 	canonical_texts: tuple[PairwiseText, ...]
 	fingerprint: str
+	supplement_fingerprint: str | None = None
 
 
 class ConversationSerializer:
@@ -137,21 +139,35 @@ class ModelDataRepository:
 		*,
 		serializer: ConversationSerializer,
 		validation_fraction: float | None = None,
+		build_supplement_path: Path | None = None,
 	) -> None:
 		self._loader = TrainingInputLoader(
 			processed_path, validation_fraction=validation_fraction
 		)
 		self._serializer = serializer
+		self._build_supplement_path = build_supplement_path
 
 	@property
 	def serializer_version(self) -> str:
 		"""Return the cache-relevant conversation format identifier."""
 		return self._serializer.FORMAT_VERSION
 
-	def load(self) -> ModelData:
+	def load(self, *, include_build_supplement: bool = False) -> ModelData:
 		"""Return validated references, canonical texts, and a file fingerprint."""
 		inputs = self._loader.load()
 		data = inputs.data
+		fingerprint = inputs.fingerprint
+		supplement_fingerprint = None
+		if include_build_supplement and self._build_supplement_path is not None:
+			supplement = BuildSupplementLoader(self._build_supplement_path).load(inputs)
+			data = pd.concat(
+				[data, supplement.data.loc[:, list(self.REQUIRED_COLUMNS)]],
+				ignore_index=True,
+			)
+			supplement_fingerprint = supplement.fingerprint
+			fingerprint = BuildSupplementLoader.combined_fingerprint(
+				inputs.fingerprint, supplement.fingerprint
+			)
 		canonical_texts = tuple(
 			self._serializer.serialize_pair(
 				row_id=int(row.id),
@@ -161,11 +177,11 @@ class ModelDataRepository:
 			)
 			for row in data.itertuples(index=False)
 		)
-		fingerprint = inputs.fingerprint
 		return ModelData(
 			reference=data.loc[:, ["id", "label", "split", "is_swapped"]]
 			.copy()
 			.reset_index(drop=True),
 			canonical_texts=canonical_texts,
 			fingerprint=fingerprint,
+			supplement_fingerprint=supplement_fingerprint,
 		)

@@ -30,6 +30,8 @@ flowchart TD
     Data --> Validate["Holdout validation"]
     Data --> Warmup["Train-only head-warmup cache"]
     Data --> Build["Full-data build"]
+    Data --> Synthetic["Audited build-only synthetic ties"]
+    Synthetic --> Build
     Validate --> Run["Predictions, metrics, config"]
     Run --> Report["PNG and XLSX report"]
     Build --> Checkpoint["SR2 adapter/head checkpoint"]
@@ -40,7 +42,8 @@ flowchart TD
 The saved split included in Git can enter this flow without downloading raw data.
 Standalone warmup is optional; inline LoRA runs create/reuse their compatible
 warmup state. Validation does not save production checkpoints. Builds use IDs
-from both partitions. Frozen SR2 saves only its independent head; LoRA builds
+from both partitions and append the configured independent synthetic tie supplement.
+Validation and standalone warmup never load that supplement. Frozen SR2 saves only its independent head; LoRA builds
 also export the merged backbone with its tokenizer.
 
 Paths and `.env` resolve from the process working directory. The batch scripts
@@ -75,7 +78,9 @@ Both scripts load each selected config from the project-root cwd
 and ensure its processed data before launching the model child, optionally
 filling missing components from a project mirror via `--data-source-root`.
 Successful data preparations are shared by resolved path within the batch;
-preparation failures use the existing task log and failure summary.
+preparation failures use the existing task log and failure summary. Model builds
+also restore their configured supplement; preparation reuse identifies both paths.
+Standalone warmup and validation prepare only the saved original table.
 
 The ignored local `!validate.ipynb` and `!build.ipynb` provide Colab setup and
 their corresponding batch workflows. The build notebook additionally copies
@@ -112,6 +117,7 @@ Package `__init__.py` files expose intended public interfaces unless noted.
 | `pipeline.py` | `PrepareDataPipeline`: download/preprocessing orchestration and optional download-progress callback; `EnsureProcessedDataPipeline`: local processed-data checks and optional project-mirror restoration without preprocessing |
 | `data/downloader.py` | Missing Kaggle training CSV download and single-file ZIP normalization |
 | `preprocess/splits.py` | Exact-response tie correction before labels/prompt hashes, grouped class quotas, balance orchestration, original-only integrity summaries, and processed publication |
+| `preprocess/synthetic_tie.py` | Deterministic build-only self-response tie generation, exact rational win-rate adjustment, full source/selection/replacement audits, and staged publication; invoked by `scripts/generate_synthetic_tie.py` |
 | `preprocess/token_balance.py` | Canonical token counting and deterministic equal-class whole-group exchanges |
 
 ### Profile registration and warmup
@@ -149,6 +155,7 @@ with the current SR2 head and warmup feature identities, rather than legacy MLP 
 | Module | Owns |
 | --- | --- |
 | `contracts.py` | Execution modes, pipeline interface, and validation/build/warmup result summaries, including optional executed warmup/joint epoch counts and merged-backbone path for builds |
+| `supplement.py` | Independent build supplement loading, source fingerprint/count/provenance checks, uniqueness and exact-score validation, and composite build fingerprints |
 | `inputs.py` | Processed table loading, strict original-only split/ID validation, multipart reads, and reconstructed source fingerprints |
 | `data.py` | Tokenizer-injected official chat-template serialization and pairwise training repository |
 | `hardware.py` | CUDA/precision validation, single-GPU placement, isolated phase intervals with cross-epoch allocator maxima, and reset-safe global peaks |
@@ -209,6 +216,7 @@ defaults to `./results` and controls validation, report, and log roots.
 | `<MODEL_PATH>/models--*/` | Native HF downloads; outside training-cache multipart storage |
 | `data/raw/` | Downloaded `train.csv` |
 | `data/processed/train_validation.parquet` | Logical saved split; single file or manifest plus volumes |
+| `data/synthetic_tie/lmsys33k/` | Independent build supplement, all candidates/sources, selection/replacement logs, prompt counts, summary and checksums |
 | `<CACHE_PATH>/token_cache/`, `embedding_cache/`, `adapter_batches/plans/` | Shared token, frozen/warmup-feature, and LoRA base-plan stores |
 | `<CACHE_PATH>/SR2_Qwen3_4B_lora_warmup/` | Completed Skywork head state, shared by frozen SR2, LoRA SR2, and standalone warmup |
 | `models/SR2_Qwen3_4B/head[_TAG].pt` | Independent frozen SR2 head and encoding/training metadata |
@@ -339,9 +347,12 @@ present in a fresh checkout.
    do not traverse the model to change that policy. Evaluation disables gradient
    checkpointing. See [precision](docs/lora.md#hardware-and-input-limits).
 9. **Warmup state:** publish only completed compatible head/optimizer/scaler/RNG
-   states and validate them before restoration. Cache identity includes original
+   states and validate them before restoration. Cache identity includes actual
    training IDs and their labels, sorted by ID; holdout/standalone warmup exclude
-   validation-only labels, while full-data builds include both partitions. Each
+   validation-only labels, while full-data builds include both partitions and the
+   independent supplement (`split="build"`). Build fingerprints combine both
+   reconstructed Parquet digests; batch plans and head-warmup identities include
+   supplement content. Holdout/standalone cache identities remain compatible. Each
    executed warmup epoch evaluates its complete training set with
    final weights, dropout disabled, and warmup smoothing; validation remains
    unsmoothed. Publish head state only after these evaluations succeed.
