@@ -69,9 +69,10 @@ class TieCandidate:
 
 
 class SyntheticTieGenerator:
-	"""Publish one reproducible 3,822-row supplement without rewriting the holdout."""
+	"""Publish a reproducible build supplement matching the original Kaggle tie share."""
 
 	COUNT = BuildSupplementLoader.COUNT
+	TARGET_TIE_SHARE = Fraction(17788, 57477)
 	ALGORITHM_VERSION = "prompt_count_full_branch_v1"
 
 	def __init__(self, config: AppConfig) -> None:
@@ -220,6 +221,20 @@ class SyntheticTieGenerator:
 			"Original winner flags and labels are inconsistent.",
 		)
 		self.rows = list(self.data.itertuples(index=False))
+		ties = int(self.data.label.eq(2).sum())
+		share = Fraction(ties, len(self.data))
+		ideal_count = (self.TARGET_TIE_SHARE * len(self.data) - ties) / (
+			1 - self.TARGET_TIE_SHARE
+		)
+		lower = ideal_count.numerator // ideal_count.denominator
+		options = (max(0, lower), max(0, lower + 1))
+		errors = {
+			count: abs(
+				Fraction(ties + count, len(self.data) + count) - self.TARGET_TIE_SHARE
+			)
+			for count in options
+		}
+		nearest = min(options, key=lambda count: (errors[count], count))
 		self.report.update(
 			source_path=str(self.config.data.processed_path),
 			source_sha256=self.source_sha256,
@@ -228,8 +243,23 @@ class SyntheticTieGenerator:
 			class_counts_before={
 				str(i): int(self.data.label.eq(i).sum()) for i in range(3)
 			},
-			tie_share_before=str(Fraction(23294, 77527)),
-			tie_pct_before=23294 / 77527 * 100,
+			tie_share_before=str(share),
+			tie_pct_before=float(share * 100),
+			tie_share_target=str(self.TARGET_TIE_SHARE),
+			tie_pct_target=float(self.TARGET_TIE_SHARE * 100),
+			supplement_size_policy={
+				"ideal_count": str(ideal_count),
+				"integer_options": [
+					{"count": count, "absolute_share_error": str(errors[count])}
+					for count in options
+				],
+				"nearest_count": nearest,
+				"target_count": self.COUNT,
+			},
+		)
+		self._require(
+			self.COUNT == nearest,
+			f"Fixed supplement count {self.COUNT:,} is not the closest integer scheme ({nearest:,}).",
 		)
 
 	def _collect(self) -> None:
@@ -275,7 +305,7 @@ class SyntheticTieGenerator:
 		self.candidates = list(combinations.values())
 		self._require(
 			len(self.candidates) >= self.COUNT,
-			"Insufficient unique candidates for 3,822 ties.",
+			f"Insufficient unique candidates for {self.COUNT:,} ties.",
 		)
 		self.report["candidate_counts"] = {
 			"all_prompt_groups": len(groups),
@@ -591,6 +621,9 @@ class SyntheticTieGenerator:
 			)
 			rows.append(row)
 		data = pd.DataFrame(rows).astype(self.data.dtypes.to_dict())
+		total_rows = len(self.data) + len(data)
+		tie_rows = int(self.data.label.eq(2).sum()) + len(data)
+		share = Fraction(tie_rows, total_rows)
 		self.report.update(
 			new_ids={"first": start, "last": start + self.COUNT - 1},
 			source_splits=dict(Counter(data.source_split)),
@@ -600,9 +633,10 @@ class SyntheticTieGenerator:
 				+ (self.COUNT if i == 2 else 0)
 				for i in range(3)
 			},
-			total_rows_after=len(self.data) + self.COUNT,
-			tie_share_after=str(Fraction(27116, 81349)),
-			tie_pct_after=27116 / 81349 * 100,
+			total_rows_after=total_rows,
+			tie_share_after=str(share),
+			tie_pct_after=float(share * 100),
+			tie_share_error=str(share - self.TARGET_TIE_SHARE),
 		)
 		return data
 
@@ -612,7 +646,8 @@ class SyntheticTieGenerator:
 			"source_sha256": self.source_sha256,
 			"target_count": self.COUNT,
 			"algorithm_version": self.ALGORITHM_VERSION,
-			"historical_score_sum": "1911",
+			"historical_score_sum": str(Fraction(self.COUNT, 2)),
+			"target_tie_share": str(self.TARGET_TIE_SHARE),
 			"tokenizer": self.report["tokenizer"],
 		}
 		table = pa.Table.from_pandas(supplement, preserve_index=False)

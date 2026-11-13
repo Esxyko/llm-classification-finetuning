@@ -100,7 +100,7 @@ uv run model SR2-Qwen3-4B-lora --build --checkpoint-tag experiment
 ```
 
 Both active model builds append `data.build_supplement_path` when configured.
-The current presets use 77,527 saved originals plus 3,822 audited synthetic ties;
+The current presets use 77,527 saved originals plus 1,012 audited synthetic ties;
 validation and standalone warmup use only the saved originals. Generate the
 [supplement](data-preparation.md#build-only-synthetic-ties) once before building:
 

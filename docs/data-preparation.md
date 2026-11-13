@@ -119,11 +119,13 @@ of wins over occurrences; selected unique candidates receive equal weight.
 Each selection minimizes the number already selected for its prompt, then the
 complete official-template branch token count, minimum source ID, and A before
 B. Counts start at zero. Full-loss/full-win replacements (with strictly longer
-added branches), followed by an exact adjustment involving a half-win candidate,
-preserve the initially covered prompts and make the mean exactly `1/2`.
+added branches), followed when needed by an exact adjustment involving a
+half-win candidate, preserve the initially covered prompts and make the mean
+exactly `1/2`.
 Infeasible adjustments fail with a diagnostic audit rather than changing rules.
 
-The independent supplement contains 3,822 unswapped self-response ties. A/B
+The independent supplement contains 1,012 unswapped self-response ties, with an
+exact historical win-rate sum of `506` and equal-weight mean of `1/2`. A/B
 responses and models both come from the minimum-ID source occurrence (A wins a
 side tie). IDs start at the maximum original ID plus one, in token/source order.
 `split="build"` distinguishes supplemental membership; `source_original_id`,
@@ -134,9 +136,14 @@ reconstructed SHA-256, generation algorithm, and tokenizer/template identity.
 Both model builds append these rows after the saved originals, including rows
 derived from validation prompts. Validation and standalone `warmup --build`
 ignore the supplement completely. Their partitions remain 66,032 train and
-11,495 validation rows; model builds and inline build warmup use 81,349 rows.
-The class totals change from `[27381, 26852, 23294]` to `[27381, 26852, 27116]`,
-and tie share changes from 30.04630645% to 33.33292358%.
+11,495 validation rows; model builds and inline build warmup use 78,539 rows.
+The class totals change from `[27381, 26852, 23294]` to `[27381, 26852, 24306]`,
+and tie share changes from 30.0463064481% to 30.9476820433% (`24306/78539`).
+The target is the old Kaggle-only, nonsynthetic ratio `17788/57477`
+(30.9480313865%). Exact rational comparison of the adjacent integer schemes
+selects 1,012 additions: the ideal fractional count is `40181038/39689`, and
+1,012 produces a smaller share error than 1,013. The generator records this
+calculation and rejects a fixed count that is not the nearest integer scheme.
 
 The output directory also contains `candidates.parquet` (all source occurrences
 in `sources_json`), `selection.jsonl`, `replacements.jsonl`, `prompt_counts.csv`

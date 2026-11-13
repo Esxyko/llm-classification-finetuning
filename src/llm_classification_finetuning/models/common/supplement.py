@@ -18,7 +18,7 @@ from .inputs import TrainingInputs, TrainingInputLoader, _sha256
 class BuildSupplementLoader:
 	"""Keep build-only rows outside the saved holdout and its split validation."""
 
-	COUNT = 3822
+	COUNT = 1012
 	SCHEMA_VERSION = 1
 	METADATA_KEY = b"llm_classification_finetuning.synthetic_tie"
 	PROVENANCE_COLUMNS = (
@@ -76,7 +76,11 @@ class BuildSupplementLoader:
 					"supplement source SHA-256 does not match the processed dataset"
 				)
 			if identity.get("target_count") != self.COUNT:
-				raise ValueError("supplement target count must be 3,822")
+				raise ValueError(f"supplement target count must be {self.COUNT:,}")
+			if identity.get("historical_score_sum") != str(Fraction(self.COUNT, 2)):
+				raise ValueError(
+					f"supplement metadata historical score must be exactly {Fraction(self.COUNT, 2)}"
+				)
 			self.validate(data, original.data)
 			return TrainingInputs(data, fingerprint)
 		except Exception as error:
@@ -97,7 +101,7 @@ class BuildSupplementLoader:
 			"winner_tie",
 		]
 		if len(data) != cls.COUNT or data.loc[:, required].isna().any().any():
-			raise ValueError("supplement must contain 3,822 complete rows")
+			raise ValueError(f"supplement must contain {cls.COUNT:,} complete rows")
 		for name in (
 			"id",
 			"source_original_id",
@@ -154,7 +158,9 @@ class BuildSupplementLoader:
 			):
 				raise ValueError(f"source provenance mismatch for ID {row.id}")
 		if score != Fraction(cls.COUNT, 2):
-			raise ValueError(f"historical score must be exactly 1911, found {score}")
+			raise ValueError(
+				f"historical score must be exactly {Fraction(cls.COUNT, 2)}, found {score}"
+			)
 		for row in original.itertuples(index=False):
 			prompt = cls.canonical(row.prompt)
 			if prompt in prompts:
