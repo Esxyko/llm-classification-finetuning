@@ -40,15 +40,19 @@ Only `adapter.pt`'s `head_state_dict` is used; the LoRA weights are already merg
 Set `MODEL_DIR` in the configuration block **below the startup diagnostics in the first
 code cell**. If that path does not exist, `/kaggle/input` is searched for an `adapter.pt`
 beside a `merged/config.json`. The notebook requires the
-`swap_equivariant_abs_diff_v7` head marker, matching hidden sizes and base
+`swap_equivariant_abs_diff_v8` head marker, matching hidden sizes and base
 revisions, and an `export_metadata.json` checksum that matches `adapter.pt`.
-The v7 head uses subtractive cross-projected wins and the FP32 absolute-difference
-tie formula `d = abs((A-B)(L+M))`, read with
-`w_tie = -softplus(raw_w_tie)` plus `b_tie = softplus(raw_b_tie)`
+The v8 head uses subtractive cross-projected wins and the signed tie vector
+`d = (A-B)(L+M)`, followed by
+`z_tie = softplus(raw_b_tie) - abs(d @ u)`
 from the [shared head definition](lora.md#swap-equivariant-head). The loader
-strictly restores the raw parameters before inference; the notebook runs the
-entire head in FP32.
-Earlier checkpoints require rebuilding before use with this notebook.
+strictly restores `u` (`[1, h]`) and scalar `raw_b_tie` before inference; the
+notebook runs the entire head in FP32. The absolute value is applied only after
+the scalar readout, and the tie uses no GELU or dropout.
+Earlier checkpoints require rebuilding before use with this notebook. The v8
+marker and strict tensor-name/shape checks reject old heads, including v7's
+`raw_w_tie`, even if their metadata is relabeled. Checkpoint schema v2 and the
+merged-backbone pairing checks remain unchanged.
 
 ## Run
 
@@ -132,7 +136,7 @@ When project dependencies change, refresh `RuntimeDiagnostics.LOCKED_VERSIONS` f
 | Backbone | Merged Qwen3 safetensors shards streamed directly to `cuda:0` (embeddings + first half of layers) and `cuda:1` (second half + norm) in FP16 without materializing the 8 GB model in host RAM or installing accelerate hooks |
 | Pipelining | Up to `pipeline_depth` batches are enqueued before the oldest is synchronised, so GPU0 works on batch k+1 while GPU1 finishes batch k. Inputs and pooled outputs use pinned memory |
 | Attention | `use_gqa_in_sdpa` is patched (default `use_gqa="off"`: K/V heads are repeated), only Flash / memory-efficient / cuDNN kernels are allowed and math fallback is disabled. `"auto"` probes native `enable_gqa` and adopts it only if it works and is faster |
-| Pooling and head | Last real token pooled **before** `Qwen3RMSNorm` (avoiding a full-sequence FP32 norm buffer), FP32 features, SR2 v7 head in FP32, temperature scaling followed by softmax in the competition column order |
+| Pooling and head | Last real token pooled **before** `Qwen3RMSNorm` (avoiding a full-sequence FP32 norm buffer), FP32 features, SR2 v8 head in FP32, temperature scaling followed by softmax in the competition column order |
 | Output | `submission.csv` validated against `sample_submission.csv` (columns, ids, order, finite, rows sum to 1) |
 
 All patches are restored when the run ends.
@@ -168,6 +172,6 @@ startup diagnostics in the first code cell.
   main numerical risk of T4 inference.
 - **Very long inputs:** nothing is truncated; Qwen3's trained position limit is 40,960
   tokens, and the longest training branch is 13,866.
-- **Duplicated code.** The notebook copies the SR2 v7 head and the conversation serializer.
+- **Duplicated code.** The notebook copies the SR2 v8 head and the conversation serializer.
   When either changes in the package, change the notebook too.
 

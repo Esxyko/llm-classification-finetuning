@@ -133,7 +133,8 @@ cached-head evaluation summaries and empty epoch lists, remain unchanged.
 
 | Profile | `head_architecture` | `embedding_combination` |
 | --- | --- | --- |
-| SR2 | `swap_equivariant_abs_diff_v7` | `cross_projected_linear_abs_diff` |
+| SR2 | `swap_equivariant_abs_diff_v8` | `cross_projected_signed_diff_abs_readout` |
+| Historical SR2 with elementwise absolute differences and a negative softplus readout | `swap_equivariant_abs_diff_v7` | `cross_projected_linear_abs_diff` |
 | Historical SR2 with an L-M tie projection | `swap_equivariant_abs_diff_v6` | `cross_projected_linear_abs_diff` |
 | Historical SR2 with penalized harmonic features | `swap_equivariant_penalized_harmonic_v4` | `cross_projected_linear_diff_penalized_harmonic` |
 | Historical SR2 with linear-difference harmonic/discrepancy features | `swap_equivariant_harmonic_discrepancy_v3` | `cross_projected_linear_diff_harmonic_abs_diff` |
@@ -145,6 +146,9 @@ cached-head evaluation summaries and empty epoch lists, remain unchanged.
 
 These markers identify model behavior; historical results preserve their
 original values. Combination markers are metrics, not additional YAML options.
+The v8 markers apply to frozen and LoRA SR2 reports and identify
+`z_tie = softplus(raw_b_tie) - abs((A-B)(L+M)u)`, with a directly trained,
+unconstrained `u`. Historical report files are not rewritten.
 
 ## Timing metrics
 

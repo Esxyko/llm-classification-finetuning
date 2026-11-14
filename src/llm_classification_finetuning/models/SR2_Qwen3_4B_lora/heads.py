@@ -13,9 +13,9 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_abs_diff_v7"
+SR2 = "swap_equivariant_abs_diff_v8"
 # Bump this version whenever the SR2 initialization policy changes.
-SR2_INITIALIZATION_VERSION = "scaled_uniform_softplus_tie_v3"
+SR2_INITIALIZATION_VERSION = "scaled_uniform_signed_tie_readout_v4"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -162,10 +162,10 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 
 
 class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
-	"""Combine cross-projected wins with sign-constrained absolute-difference ties."""
+	"""Combine cross-projected wins with an absolute scalar tie readout."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_linear_abs_diff"
+	EMBEDDING_COMBINATION = "cross_projected_signed_diff_abs_readout"
 
 	def __init__(
 		self,
@@ -185,10 +185,8 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 			torch.zeros(hidden_size, dtype=torch.float32)
 		)
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
-		# Softplus constrains the effective tie weights and scalar bias each forward.
-		self.raw_w_tie = nn.Parameter(
-			torch.empty((1, hidden_size), dtype=torch.float32)
-		)
+		# The tie readout is unconstrained; only its scalar bias uses softplus.
+		self.u = nn.Parameter(torch.empty((1, hidden_size), dtype=torch.float32))
 		self.raw_b_tie = nn.Parameter(torch.empty((), dtype=torch.float32))
 		self.activation = nn.GELU()
 		self.dropout = nn.Dropout(dropout)
@@ -204,21 +202,14 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 				nn.init.zeros_(layer.bias)
 		tie_bound = 0.1 * math.sqrt(3.0 / hidden_size)
 		with torch.no_grad():
-			nn.init.uniform_(self.raw_w_tie, -tie_bound, tie_bound)
-			tie_magnitude = self.raw_w_tie.abs().clamp_min(
-				torch.finfo(torch.float32).eps
-			)
+			nn.init.uniform_(self.u, -tie_bound, tie_bound)
 			tie_bias = self.raw_b_tie.new_full((), 1e-4)
-			for raw_parameter, value in (
-				(self.raw_w_tie, tie_magnitude),
-				(self.raw_b_tie, tie_bias),
-			):
-				# Stable inverse softplus, including small effective initial values.
-				raw_parameter.copy_(value + torch.log(-torch.expm1(-value)))
+			# Stable inverse softplus for the small effective initial bias.
+			self.raw_b_tie.copy_(tie_bias + torch.log(-torch.expm1(-tie_bias)))
 
 	@classmethod
 	def embedding_combination(cls) -> str:
-		"""Return the marker for cross-projected wins and absolute-difference ties."""
+		"""Return the marker for signed tie features with an absolute scalar readout."""
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -245,17 +236,16 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 				# Form the weight sum and input difference in FP32 before projection.
 				weight_sum = l_weight.float() + m_weight.float()
 				input_difference = h_a.float() - h_b.float()
-				w_tie = -F.softplus(self.raw_w_tie)
 				b_tie = F.softplus(self.raw_b_tie)
-			# |(A-B)(L+M)| is the absolute difference of the win preactivations.
-			tie_features = F.linear(input_difference, weight_sum).float().abs()
+			# Preserve signs until the scalar readout, allowing feature cancellation.
+			tie_features = F.linear(input_difference, weight_sum)
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is reused only by the two wins.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
 			win_logits = self.win_readout(wins).squeeze(-1).float()
-			tie_logits = F.linear(tie_features, w_tie).float()
-		tie = tie_logits + b_tie
+			tie_readout = F.linear(tie_features, self.u).float()
+		tie = b_tie - tie_readout.abs()
 		return torch.cat((win_logits, tie), dim=-1)
 
 
