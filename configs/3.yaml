@@ -25,7 +25,7 @@ gpu:
 SR2_Qwen3_4B:
   factor: 0.85
   patience: 2
-  early_stopping: 7
+  early_stopping: 5
   label_smoothing: 0.0
   model_name: Skywork/Skywork-Reward-V2-Qwen3-4B
   max_length: 13866

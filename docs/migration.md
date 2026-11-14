@@ -232,42 +232,83 @@ The v7 marker selected fresh head warmup keys and required rebuilding v6 and
 earlier checkpoints. Its schemas remained adapter/head v2, frozen-head v1, and
 warmup v5. Historical artifacts remain intact.
 
-### Current SR2 v8 head (2026-11-14)
+### Archived SR2 v8 head (2026-11-14)
 
-`swap_equivariant_abs_diff_v8` retains the v7 win branches, shared win dropout,
-L/M/R initialization, and zero win projection bias. The tie now forms the signed
-vector `d = (A-B)(L+M)`, reads it with an unconstrained trainable `u`, and only
-then takes the scalar absolute value:
+`swap_equivariant_abs_diff_v8` retained the v7 win branches, shared win dropout,
+L/M/R initialization, and zero win projection bias. The tie formed the signed
+vector `d = (A-B)(L+M)`, read it with an unconstrained trainable `u`, and only
+then took the scalar absolute value:
 
 ```text
 v7: d = abs((A-B)(L+M)); z_tie = d @ (-softplus(raw_w_tie)) + softplus(raw_b_tie)
 v8: d =     (A-B)(L+M);  z_tie = softplus(raw_b_tie) - abs(d @ u)
 ```
 
-Components can cancel in the new signed readout. There is no tie GELU or
-dropout. A-B and L+M are constructed in FP32 with autocast disabled; both tie
-linear computations follow the existing head autocast policy. The scalar is
+Components could cancel in the signed readout. There was no tie GELU or
+dropout. A-B and L+M were constructed in FP32 with autocast disabled; both tie
+linear computations followed the head autocast policy. The scalar was
 converted to FP32 before its absolute value and subtraction from the FP32
-softplus bias. The submission notebook continues to run the entire head in FP32.
+softplus bias. The submission notebook ran the entire head in FP32.
 
-The new embedding combination is `cross_projected_signed_diff_abs_readout` and
-the initialization version is `scaled_uniform_signed_tie_readout_v4`. Parameter
-`u` replaces `raw_w_tie`, retains the `[1, h]` transposed readout shape, and keeps
-its direct samples from `U(-0.1*sqrt(3/h), 0.1*sqrt(3/h))`. It has no softplus
+The embedding combination was `cross_projected_signed_diff_abs_readout` and
+the initialization version was `scaled_uniform_signed_tie_readout_v4`. Parameter
+`u` replaced `raw_w_tie`, retained the `[1, h]` transposed readout shape, and kept
+its direct samples from `U(-0.1*sqrt(3/h), 0.1*sqrt(3/h))`. It had no softplus
 mapping, absolute-value initialization, or magnitude floor. The effective tie
-bias still starts at `1e-4`, encoded in scalar `raw_b_tie` with stable inverse
-softplus. All parameters remain FP32, the count stays `2Dh + 3h + 1`, and output
-order remains `[A-win, B-win, tie]`.
+bias started at `1e-4`, encoded in scalar `raw_b_tie` with stable inverse
+softplus. All parameters remained FP32, the count stayed `2Dh + 3h + 1`, and output
+order remained `[A-win, B-win, tie]`.
 
-Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb` use v8.
-Rebuild v7 and earlier checkpoints for the new head; no weights are converted.
-Architecture checks reject old checkpoint metadata, while exact parameter and
-optimizer-state checks also reject old layouts with relabeled metadata. The
-architecture and initialization version select fresh warmup keys within the
-existing namespace. Storage schemas, artifact paths, and old files are unchanged.
-Token, adapter-free frozen-feature, and batch-plan caches retain their existing
-identities and reuse rules. New reports use the v8 markers; historical reports
-keep their original metadata. See the [current head definition](lora.md#swap-equivariant-head).
+Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb` used v8.
+V7 and earlier checkpoints required rebuilding for v8; no weights were converted.
+Architecture checks rejected old checkpoint metadata, while exact parameter and
+optimizer-state checks also rejected old layouts with relabeled metadata. The
+architecture and initialization version selected fresh warmup keys within the
+existing namespace. Storage schemas, artifact paths, and old files were unchanged.
+Token, adapter-free frozen-feature, and batch-plan caches retained their existing
+identities and reuse rules. Reports from this version retain their v8 markers.
+
+### Current SR2 v9 head (2026-11-15)
+
+`swap_equivariant_abs_diff_v9` retains the cross-projected win branches, shared
+dropout, L/M/R initialization, and zero win projection bias. It removes the
+separate `(A-B)(L+M)` projection and derives tie features from the masked GELU
+win activations:
+
+```text
+C_A = clamp_min(W_A, 0); C_B = clamp_min(W_B, 0)
+u_eff = 0.01 * softplus(u / 0.01)
+t = 1 + softplus(raw_t)
+z_tie = tie_bias + (C_A + C_B - t * abs(C_A - C_B)) @ u_eff
+```
+
+The packed input projection is called once for both branches. Together with
+the shared win readout and the FP32 tie readout, this gives three linear calls.
+The entire tie calculation runs in FP32 with autocast disabled, including the
+clamp, sum, absolute difference, softplus transforms, and readout. It reuses the
+win dropout mask without adding another mask. Swapping A/B exchanges win logits
+and preserves the tie logit under the same mask.
+
+The embedding combination is `cross_projected_clamped_win_sum_diff` and the
+initialization version is `scaled_uniform_clamped_gelu_tie_v5`. Parameter `u`
+remains FP32 with shape `[1, h]`, but now stores the scaled inverse-softplus
+encoding of positive effective weights. With `s = 0.01` and
+`mean = 0.2 / (3h)`, sample `U_0 ~ U(0.5 * mean, 1.5 * mean)` and initialize
+`u = s * invsoftplus(U_0 / s)`. The stable inverse is
+`invsoftplus(x) = x + log(-expm1(-x))`. New FP32 scalar `raw_t` starts at
+`invsoftplus(2)`, giving `t = 3`. Unconstrained FP32 scalar `tie_bias` replaces
+`raw_b_tie` and starts at zero. The parameter count becomes `2Dh + 3h + 2`;
+the FP32 output order remains `[A-win, B-win, tie]`.
+
+Frozen SR2, LoRA SR2, standalone/inline warmup, and `submit.ipynb` use v9.
+Rebuild v8 and earlier checkpoints; their weights are not converted. Architecture
+and exact tensor-name/shape checks reject the older layouts, including
+`raw_b_tie`. The architecture and initialization version select fresh warmup
+keys within the same namespace. Adapter/head schema v2, frozen-head schema v1,
+warmup schema v5, artifact paths, and historical files remain unchanged. Token,
+adapter-free frozen-feature, and batch-plan caches retain their reuse rules.
+The publisher retains the historical v8 embedding mapping; new reports use v9
+markers. See the [current head definition](lora.md#swap-equivariant-head).
 
 ### Standalone SR2 warmup profile
 

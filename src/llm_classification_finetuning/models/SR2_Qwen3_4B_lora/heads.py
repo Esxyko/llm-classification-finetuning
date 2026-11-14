@@ -13,9 +13,9 @@ from ..common.model import PairwiseClassificationHead
 PAIRWISE_MLP = "pairwise_mlp"
 EXPT = "swap_equivariant_reparam_v2"
 EXPT2 = "swap_equivariant_tie_from_wins_v2"
-SR2 = "swap_equivariant_abs_diff_v8"
+SR2 = "swap_equivariant_abs_diff_v9"
 # Bump this version whenever the SR2 initialization policy changes.
-SR2_INITIALIZATION_VERSION = "scaled_uniform_signed_tie_readout_v4"
+SR2_INITIALIZATION_VERSION = "scaled_uniform_clamped_gelu_tie_v5"
 
 
 class _LoRAClassificationHead(PairwiseClassificationHead):
@@ -162,10 +162,10 @@ class SwapEquivariantTieFromWinsClassificationHead(nn.Module):
 
 
 class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
-	"""Combine cross-projected wins with an absolute scalar tie readout."""
+	"""Read symmetric sums and absolute differences of clamped win activations."""
 
 	head_architecture = SR2
-	EMBEDDING_COMBINATION = "cross_projected_signed_diff_abs_readout"
+	EMBEDDING_COMBINATION = "cross_projected_clamped_win_sum_diff"
 
 	def __init__(
 		self,
@@ -185,9 +185,10 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 			torch.zeros(hidden_size, dtype=torch.float32)
 		)
 		self.win_readout = nn.Linear(hidden_size, 1, bias=False)
-		# The tie readout is unconstrained; only its scalar bias uses softplus.
+		# Scaled softplus keeps the effective tie weights positive.
 		self.u = nn.Parameter(torch.empty((1, hidden_size), dtype=torch.float32))
-		self.raw_b_tie = nn.Parameter(torch.empty((), dtype=torch.float32))
+		self.raw_t = nn.Parameter(torch.empty((), dtype=torch.float32))
+		self.tie_bias = nn.Parameter(torch.zeros((), dtype=torch.float32))
 		self.activation = nn.GELU()
 		self.dropout = nn.Dropout(dropout)
 		for layer, bound in (
@@ -200,16 +201,18 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 			nn.init.uniform_(layer.weight, -bound, bound)
 			if layer.bias is not None:
 				nn.init.zeros_(layer.bias)
-		tie_bound = 0.1 * math.sqrt(3.0 / hidden_size)
+		mean = 0.2 / (3.0 * hidden_size)
 		with torch.no_grad():
-			nn.init.uniform_(self.u, -tie_bound, tie_bound)
-			tie_bias = self.raw_b_tie.new_full((), 1e-4)
-			# Stable inverse softplus for the small effective initial bias.
-			self.raw_b_tie.copy_(tie_bias + torch.log(-torch.expm1(-tie_bias)))
+			nn.init.uniform_(self.u, 0.5 * mean, 1.5 * mean)
+			initial_u = self.u / 0.01
+			# Stable inverse softplus: x + log(-expm1(-x)).
+			self.u.copy_(0.01 * (initial_u + torch.log(-torch.expm1(-initial_u))))
+			initial_t = self.raw_t.new_full((), 2.0)
+			self.raw_t.copy_(initial_t + torch.log(-torch.expm1(-initial_t)))
 
 	@classmethod
 	def embedding_combination(cls) -> str:
-		"""Return the marker for signed tie features with an absolute scalar readout."""
+		"""Return the marker for clamped win sums and absolute differences."""
 		return cls.EMBEDDING_COMBINATION
 
 	def forward(self, h_a: Tensor, h_b: Tensor) -> Tensor:
@@ -231,21 +234,18 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 				- cross_features.flip(1)
 				+ self.win_projection_bias.to(dtype=self_features.dtype)
 			)
-			with torch.autocast(device_type=h_a.device.type, enabled=False):
-				l_weight, m_weight = self.input_projection.weight.chunk(2, dim=0)
-				# Form the weight sum and input difference in FP32 before projection.
-				weight_sum = l_weight.float() + m_weight.float()
-				input_difference = h_a.float() - h_b.float()
-				b_tie = F.softplus(self.raw_b_tie)
-			# Preserve signs until the scalar readout, allowing feature cancellation.
-			tie_features = F.linear(input_difference, weight_sum)
 			if self.training and self.dropout.p:
-				# One standard, scaled mask per sample is reused only by the two wins.
+				# One standard, scaled mask per sample is shared by both win branches.
 				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
 				wins = wins * win_mask.unsqueeze(1)
 			win_logits = self.win_readout(wins).squeeze(-1).float()
-			tie_readout = F.linear(tie_features, self.u).float()
-		tie = b_tie - tie_readout.abs()
+		with torch.autocast(device_type=h_a.device.type, enabled=False):
+			tie_wins = wins.float().clamp_min(0)
+			tie_sum = tie_wins[:, 0] + tie_wins[:, 1]
+			tie_diff = (tie_wins[:, 0] - tie_wins[:, 1]).abs()
+			u_eff = 0.01 * F.softplus(self.u / 0.01)
+			t = 1.0 + F.softplus(self.raw_t)
+			tie = self.tie_bias + F.linear(tie_sum - t * tie_diff, u_eff)
 		return torch.cat((win_logits, tie), dim=-1)
 
 

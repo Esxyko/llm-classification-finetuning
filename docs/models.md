@@ -182,20 +182,23 @@ See [checkpoint flags](commands.md#model-selection-and-execution-modes),
 ## Checkpoint compatibility
 
 SR2 retains adapter/head schema v2 and uses the
-`swap_equivariant_abs_diff_v8` architecture with fused subtractive L/M win
-projections and the signed vector `d = (A-B)(L+M)`. The tie logit is
-`softplus(raw_b_tie) - abs(d @ u)`, with the scalar readout converted to FP32
-before its absolute value. Checkpoints store the unconstrained `u` (`[1, h]`)
-and scalar `raw_b_tie`. The tie vector starts at direct samples from
-`U(-0.1*sqrt(3/h), 0.1*sqrt(3/h))`; the effective bias starts at `1e-4`, encoded
-through inverse softplus. The tie has no projection bias, GELU, or dropout.
+`swap_equivariant_abs_diff_v9` architecture with fused subtractive L/M win
+projections. The tie reuses their GELU activations and shared dropout mask,
+clamps the masked wins to nonnegative `C_A` and `C_B`, and computes
+`tie_bias + (C_A + C_B - t * abs(C_A - C_B)) @ u_eff` in FP32 with autocast
+disabled. Here `u_eff = 0.01 * softplus(u / 0.01)` and
+`t = 1 + softplus(raw_t)`. Checkpoints store raw `u` (`[1, h]`) and scalars
+`raw_t` and `tie_bias`. Initial effective weights are sampled uniformly around
+`0.2 / (3h)` and encoded with scaled inverse softplus; `t` starts at `3` and
+the unconstrained `tie_bias` at zero. L/M/R initialization is unchanged.
+See the [head definition](lora.md#swap-equivariant-head) for the exact bounds.
 Frozen SR2 uses the same head. Artifact paths remain unchanged. The architecture
-marker requires v8 checkpoints. Exact head tensor checks enforce the current
+marker requires v9 checkpoints. Exact head tensor checks enforce the current
 parameter structure. Rebuild earlier checkpoints with the matching configuration. Existing
 warmup files are preserved; the new architecture selects new cache keys and
 regenerates warmup. Frozen-head schema v1 and warmup schema v5 also remain
 unchanged. Token and frozen-backbone feature caches remain reusable under their
-existing identities. See the [v8 migration](migration.md#current-sr2-v8-head-2026-11-14).
+existing identities. See the [v9 migration](migration.md#current-sr2-v9-head-2026-11-15).
 See [adapter/head checks](lora.md#checkpoints) for the enforced fields and pinned
 Hub revision. Historical Qwen checkpoints are not converted into SR2 checkpoints.
 

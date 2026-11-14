@@ -60,7 +60,9 @@ class ModelResultPublisher:
 			"generated_at": generated_at.isoformat(timespec="seconds"),
 			"model_name": model_config.model_name,
 			"head_architecture": profile.head_architecture,
-			"embedding_combination": "cross_projected_signed_diff_abs_readout"
+			"embedding_combination": "cross_projected_clamped_win_sum_diff"
+			if profile.head_architecture == "swap_equivariant_abs_diff_v9"
+			else "cross_projected_signed_diff_abs_readout"
 			if profile.head_architecture == "swap_equivariant_abs_diff_v8"
 			else "cross_projected_linear_abs_diff"
 			if profile.head_architecture
