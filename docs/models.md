@@ -40,15 +40,23 @@ serialization, and pooling follow head
 warmup. Training and inference use original rows only;
 the backbone stays in evaluation mode during feature extraction/head training.
 
-Validation starts a fresh head on the saved train partition and runs until
-`early_stopping` consecutive epochs fail to strictly lower the best unsmoothed
-validation log loss. Improvements reset the count; ties count as non-improvements.
-The first epoch establishes the best loss with count zero. `build_epochs` may be omitted
-and never caps validation. After each validation evaluation, ReduceLROnPlateau
-consumes that same unrounded loss, using configured `factor` and `patience` with
-fixed `threshold=0` and `min_lr=0`. The first epoch uses the initial learning rate;
-reductions apply to the next epoch. Scheduler patience is independent of early
-stopping, whose counter is not reset by a rate reduction. See
+Validation starts a fresh head on the saved train partition. After each
+validation evaluation, ReduceLROnPlateau consumes the unrounded, unsmoothed
+validation log loss once, using configured `factor` and the current `patience`
+with fixed `threshold=0` and `min_lr=0`. The first epoch uses the initial
+learning rate; reductions apply to the next epoch. The run then compares that
+same unrounded loss against the best validation loss so far. A strictly lower
+loss updates the best loss and predictions, resets the early-stopping counter to
+zero, and does not restore `patience`. Ties and higher losses increment the
+early-stopping counter; rate reductions alone do not reset it. When the
+early-stopping counter reaches `early_stopping` and current `patience > 0`,
+validation decrements `patience` by `1` in place, resets the early-stopping
+counter to zero, and continues with the existing model, optimizer, current
+learning rate, and remaining scheduler state. When the counter reaches
+`early_stopping` with `patience = 0`, training stops. For example, `patience: 2`
+and `early_stopping: 7` progress through `2 -> 1 -> 0`, stopping 21 epochs after
+the best epoch if no further improvement occurs. `build_epochs` may be omitted
+and never caps validation. See
 [configuration](configuration.md#model-fields) for scheduler parameters.
 The run publishes the best epoch's holdout predictions
 and loss, all executed epoch metrics, `best_epoch`, and the independent

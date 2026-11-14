@@ -313,10 +313,15 @@ cache identities store the minimum rate; only the scheduler derives its
 coefficient. `warmup.build_epochs: 0` skips the stage without creating a scheduler.
 
 Frozen SR2 validation uses ReduceLROnPlateau on the full unsmoothed validation
-loss after each epoch, with `factor: 0.95` and `patience: 2` as defaults and fixed
-`threshold=0` and `min_lr=0`. Reductions apply to the following epoch. Training
-continues until `early_stopping` consecutive epochs do not lower validation
-loss, independently of the scheduler's counter. It ignores the build schedule
+loss after each epoch, with `factor: 0.95` and initial `patience: 2` as defaults
+and fixed `threshold=0` and `min_lr=0`. Reductions apply to the following epoch.
+Whenever `early_stopping` consecutive epochs fail to strictly lower the overall
+best validation loss, `patience` decrements by `1` in place and the
+early-stopping counter resets while `patience > 0` (preserving model, optimizer,
+current rate, and all other scheduler state); training stops after a full
+`early_stopping` window at `patience = 0`. Strictly lower losses reset the
+early-stopping counter without restoring `patience`, and rate reductions alone
+do not reset early stopping. It ignores the build schedule
 and uses no head-state cache; see
 [frozen SR2 validation](models.md#frozen-skywork-reward-backbone).
 

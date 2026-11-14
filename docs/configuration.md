@@ -120,9 +120,9 @@ The following names apply independently inside each relevant section.
 | `learning_rate` | Frozen SR2, LoRA, and `warmup` | Positive finite number or a string power expression resolving to one; see below |
 | `epochs` | LoRA joint training | Required positive integer |
 | `build_epochs` | Frozen SR2 and `warmup` | Positive integer for frozen SR2 builds; optional or `null` for frozen SR2 validation; required non-negative integer for warmup, where `0` disables the inline stage |
-| `early_stopping` | Frozen SR2 validation | Positive integer; default `7`; stop after this many consecutive epochs without a strictly lower validation loss |
+| `early_stopping` | Frozen SR2 validation | Positive integer; default `7`; non-improving epoch window per `patience` stage before stepping `patience` down by `1` or stopping when `patience = 0` |
 | `factor` | Frozen SR2 validation | Finite number in `(0, 1)`; default `0.95`; multiply the learning rate by this factor when validation loss plateaus |
-| `patience` | Frozen SR2 validation | Non-negative integer; default `2`; ReduceLROnPlateau reduces the rate after more than this many consecutive non-improving epochs |
+| `patience` | Frozen SR2 validation | Non-negative integer; default `2`; initial ReduceLROnPlateau patience (reduces the rate after more than this many consecutive non-improving epochs); steps down by `1` toward `0` across consecutive `early_stopping` windows |
 | `head_inference_batch_size`, `gradient_accumulation_steps` | LoRA | Positive integers |
 | `min_lr_ratio` | LoRA | Number in `[0, 1]`; default `0.125`; minimum joint learning rate as a fraction of `learning_rate` |
 | `build_min_lr` | Frozen SR2 builds and `warmup` | Finite absolute learning rate in `(0, learning_rate]`, supplied as a number or string power expression; defaults to that head stage's `learning_rate / 5`; used by the final epoch when `build_epochs > 1` |
@@ -194,28 +194,39 @@ either section later does not modify the other. Compatible features and build
 training states share the [warmup caches](caching.md#frozen-sr2-head-training).
 
 Frozen SR2 validation ignores `build_epochs` as a training limit and starts a fresh
-head at epoch `1`. After each epoch it compares the full holdout's unsmoothed
-log loss with the lowest loss so far, using full precision rather than the
-rounded log value. A strictly lower loss resets the consecutive non-improvement
-count; an equal or higher loss increments it. The first epoch establishes the
-best loss with count `0`. Reaching `early_stopping` stops the run and publishes
-the best epoch's predictions and loss, retaining the earliest epoch on a tie.
-There is no fixed epoch cap or minimum improvement threshold. Boolean,
+head at epoch `1`. After each epoch, `ReduceLROnPlateau` first consumes the
+unrounded, unsmoothed holdout log loss with the current `patience`, then the run
+compares that same full-precision loss with the lowest loss so far (not the
+rounded log value). A strictly lower loss updates the best loss and predictions
+and resets the consecutive non-improvement count to `0` without restoring
+`patience`; an equal or higher loss increments the count. The first epoch
+establishes the best loss with count `0`. When the count reaches `early_stopping`
+while current `patience > 0`, `patience` decreases by `1` in place on the
+scheduler, the early-stopping count resets to `0`, and training continues while
+preserving the model, optimizer, current learning rate, and all other scheduler
+state (such as `best`, `num_bad_epochs`, and `cooldown_counter`). When the count
+reaches `early_stopping` at `patience = 0`, training stops and publishes the
+overall best epoch's predictions and loss, retaining the earliest epoch on a tie.
+For example, initial `patience: 2` and `early_stopping: 7` run stages
+`2 -> 1 -> 0` and stop 21 epochs after the best epoch if no further improvement
+occurs. There is no fixed epoch cap or minimum improvement threshold. Boolean,
 non-integer, and non-positive `early_stopping` values are rejected. A build requires
 positive `build_epochs` before input or GPU preparation and does not use early stopping.
 
 Validation uses PyTorch `ReduceLROnPlateau` with `mode="min"`, `factor` (default
-`0.95`), `patience` (default `2`), and fixed `threshold=0` and `min_lr=0`.
+`0.95`), initial `patience` (default `2`), and fixed `threshold=0` and `min_lr=0`.
 The first epoch uses `learning_rate`; after each complete validation evaluation,
 the scheduler consumes the unrounded, unsmoothed loss once and sets the rate for
-the next epoch. With `patience: 2`, the third consecutive non-improving epoch
-triggers a reduction. With `patience: 0`, the first non-improving epoch triggers
-one. Strictly lower losses count as improvements; ties do not. Scheduler and
-early-stopping counters are independent, so reducing the rate does not reset
-early stopping. Other scheduler parameters retain PyTorch defaults, including
-`cooldown=0`, `threshold_mode="rel"`, and `eps=1e-8`; a smaller proposed rate
-change is ignored. Boolean values are rejected for `factor` and `patience`.
-`threshold` and `min_lr` are not YAML fields. Validation does not apply
+the next epoch. At `patience: 2`, the third consecutive non-improving epoch
+triggers a reduction; at `patience: 1`, the second consecutive non-improving epoch
+triggers one; at `patience: 0`, every non-improving epoch triggers one. Strictly
+lower losses count as improvements; ties do not. Rate reductions do not reset the
+early-stopping counter, and early-stopping stage transitions preserve scheduler
+state other than decrementing `patience`. Other scheduler parameters retain
+PyTorch defaults, including `cooldown=0`, `threshold_mode="rel"`, and `eps=1e-8`;
+a smaller proposed rate change is ignored. Boolean values are rejected for `factor`
+and `patience`. `threshold` and `min_lr` are not YAML fields. Effective `config.yaml`
+snapshots record the configured initial `patience`. Validation does not apply
 `build_epochs` or `build_min_lr`; builds do not use `factor` or `patience`.
 
 Joint training uses `learning_rate` for both adapters and the classifier head.

@@ -337,9 +337,13 @@ present in a fresh checkout.
    fixed; joint training uses a minimum ratio of `1` for a fixed rate. Disabled
    warmup (`build_epochs: 0`) creates no head scheduler. Frozen SR2 validation
    steps ReduceLROnPlateau once after each complete unsmoothed validation loss,
-   with configurable factor/patience and fixed threshold/minimum rate of zero.
+   with configurable `factor`/initial `patience` and fixed threshold/minimum rate of zero.
    The next epoch retains the resulting rate without an exponential reset;
-   learning-rate reductions do not reset the early-stopping counter. See
+   learning-rate reductions do not reset the early-stopping counter, while each
+   completed `early_stopping` non-improving window with `patience > 0` decrements
+   `ReduceLROnPlateau.patience` by `1` in place and resets the early-stopping
+   counter without restoring `patience` on later improvements or resetting other
+   scheduler/optimizer/model state. See
    [batching](docs/lora.md#optional-token-budget-training-batches).
 8. **Precision:** trainable adapter/head parameters, gradients, and AdamW moments
    stay FP32. BF16 features/head autocast and FP32 logits retain the documented
@@ -381,9 +385,13 @@ present in a fresh checkout.
     owns locks/checksums/multipart policy; report promotion restores previous
     output where recoverable. Preserve explicit failures and backup paths.
 12. **Metrics and history:** frozen SR2 validation ignores fixed epoch counts,
-    stops after `early_stopping` consecutive epochs without a strictly lower
-    unsmoothed validation loss, and publishes best-epoch predictions with
-    `best_epoch` and every executed epoch. Its top-level `lr_reduction_count`
+    steps `ReduceLROnPlateau.patience` down by `1` and resets the early-stopping
+    counter whenever `early_stopping` consecutive epochs fail to strictly lower
+    the overall best unsmoothed validation loss while `patience > 0` (without
+    restoring `patience` on later improvements or resetting model, optimizer,
+    current rate, or other scheduler state), runs a full `early_stopping` window
+    at `patience = 0` before stopping, and publishes overall best-epoch predictions
+    with `best_epoch` and every executed epoch. Its top-level `lr_reduction_count`
     counts actual ReduceLROnPlateau rate reductions over the complete run,
     once per scheduler step even if multiple optimizer groups decrease.
     LoRA publishes final-epoch predictions.
@@ -394,7 +402,7 @@ present in a fresh checkout.
     `early_stopping` epochs, plus the stopping epoch without duplicate output.
     It keeps complete epoch metrics and has no intermediate epoch logs or
     fixed total epoch count; its configuration snapshot records effective
-    `factor`, `patience`, and `early_stopping` separately.
+    `factor`, initial `patience`, and `early_stopping` separately.
     Builds and standalone warmup report the
     same peak scopes in the terminal; monitoring starts after full-data build CPU
     preparation and write preflights. Progress remains CPU-only

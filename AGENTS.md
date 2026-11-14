@@ -2,6 +2,7 @@
 
 Follow the project structure and module responsibilities defined in structure.md.
 You may update this file when the project structure changes.
+You may split detailed documentation into /docs as the complexity grows.
 
 ## Code Style
 

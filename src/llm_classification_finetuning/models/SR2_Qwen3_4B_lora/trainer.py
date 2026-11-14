@@ -836,6 +836,14 @@ class LoRATrainer:
 						unimproved_epochs = 0
 					else:
 						unimproved_epochs += 1
+						if (
+							unimproved_epochs >= early_stopping
+							and plateau_lr_schedule is not None
+							and plateau_lr_schedule.patience > 0
+						):
+							# Step down patience across stages, keeping optimizer and scheduler state.
+							plateau_lr_schedule.patience -= 1
+							unimproved_epochs = 0
 			losses.append(loss)
 			if head_only:
 				executed_warmup_epochs += 1

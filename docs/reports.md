@@ -124,10 +124,14 @@ learning rate across all executed epochs, including epochs after `best_epoch`
 and the stopping epoch. A step counts once even if multiple groups decrease;
 changes skipped by `eps` or `min_lr` do not count. The value is `0` when no
 reduction occurs. Runs without this scheduler omit the field, and historical
-metrics remain unchanged. The effective YAML snapshot includes
-`factor`, `patience`, and `early_stopping`. The scheduler uses the unrounded
-per-epoch validation loss; rate reductions do not reset early-stopping patience
-or change best-epoch selection. Validation always trains a fresh head and does
+metrics remain unchanged. The effective YAML snapshot includes `factor`, the configured initial `patience`,
+and `early_stopping`. The scheduler uses the unrounded per-epoch validation loss;
+when `early_stopping` consecutive non-improving epochs occur while `patience > 0`,
+`patience` decrements by `1` and the early-stopping counter resets without altering
+best-epoch selection, and training stops after a full `early_stopping` window at
+`patience = 0`. Improvements reset the early-stopping counter without restoring
+`patience`, and rate reductions alone do not reset early-stopping counting or
+change best-epoch selection. Validation always trains a fresh head and does
 not publish a `cached_head_evaluation` section. Historical fixed-epoch result files, including
 cached-head evaluation summaries and empty epoch lists, remain unchanged.
 
