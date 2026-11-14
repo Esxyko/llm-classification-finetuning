@@ -1,0 +1,34 @@
+[13756:51128:1115/022318.410:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[13756:51128:1115/022318.410:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[13756:51128:1115/022318.411:WARNING:t_skinfilemap.cpp(61)] SGRenderLog:CheckUpdate newMem.OpenMem failed, szNewMem:Local\sgime_skin.v3.filemap.sogouime err:系统错误2: 系统找不到指定的文件。  
+打开Filemap失败: Local\sgime_skin.v3.filemap.sogouime6093be49687
+[13756:51128:1115/022318.411:WARNING:t_skinfilemap.cpp(70)] SGRenderLog:CheckUpdate finish: old version:1
+[13756:51128:1115/022318.411:WARNING:t_skinfilemap.cpp(72)] SGRenderLog:CheckUpdate finish: new version:3
+[13756:51128:1115/022318.443:WARNING:t_skinfilemap.cpp(68)] SGRenderLog:CheckUpdate newMem.OpenMem Suc, szNewMem:Local\sgime_skin.Dpi144.v3.filemap.sogouime
+[13756:51128:1115/022318.443:WARNING:t_skinfilemap.cpp(70)] SGRenderLog:CheckUpdate finish: old version:3
+[13756:51128:1115/022318.443:WARNING:t_skinfilemap.cpp(72)] SGRenderLog:CheckUpdate finish: new version:3
+[13756:51128:1115/022318.472:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=2
+[13756:32264:1115/022318.472:WARNING:task_producer.cpp(447)] [TaskProducer] SendMessageTimeout failed, drop current task
+[13756:51128:1115/022318.477:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[13756:51128:1115/022318.477:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[13756:51128:1115/022318.885:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=2
+[13756:32264:1115/022318.885:WARNING:task_producer.cpp(447)] [TaskProducer] SendMessageTimeout failed, drop current task
+[13756:51128:1115/022318.954:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=2
+[13756:32264:1115/022318.954:WARNING:task_producer.cpp(447)] [TaskProducer] SendMessageTimeout failed, drop current task
+[22080:24672:1115/022401.709:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[22080:24672:1115/022401.709:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[22080:24672:1115/022401.709:WARNING:t_skinfilemap.cpp(61)] SGRenderLog:CheckUpdate newMem.OpenMem failed, szNewMem:Local\sgime_skin.v3.filemap.sogouime err:系统错误2: 系统找不到指定的文件。  
+打开Filemap失败: Local\sgime_skin.v3.filemap.sogouime6093be49687
+[22080:24672:1115/022401.709:WARNING:t_skinfilemap.cpp(70)] SGRenderLog:CheckUpdate finish: old version:1
+[22080:24672:1115/022401.709:WARNING:t_skinfilemap.cpp(72)] SGRenderLog:CheckUpdate finish: new version:3
+[22080:24672:1115/022401.728:WARNING:t_skinfilemap.cpp(68)] SGRenderLog:CheckUpdate newMem.OpenMem Suc, szNewMem:Local\sgime_skin.Dpi144.v3.filemap.sogouime
+[22080:24672:1115/022401.728:WARNING:t_skinfilemap.cpp(70)] SGRenderLog:CheckUpdate finish: old version:3
+[22080:24672:1115/022401.728:WARNING:t_skinfilemap.cpp(72)] SGRenderLog:CheckUpdate finish: new version:3
+[22080:24672:1115/022401.745:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=2
+[22080:5992:1115/022401.745:WARNING:task_producer.cpp(447)] [TaskProducer] SendMessageTimeout failed, drop current task
+[22080:24672:1115/022401.749:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[22080:24672:1115/022401.749:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=1
+[22080:24672:1115/022402.155:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=2
+[22080:5992:1115/022402.155:WARNING:task_producer.cpp(447)] [TaskProducer] SendMessageTimeout failed, drop current task
+[22080:24672:1115/022402.200:WARNING:kernel_service_proxy.cpp(703)] [KernelServiceProxy] NotifyLifecycleEvent called when not connected, event=2
+[22080:5992:1115/022402.200:WARNING:task_producer.cpp(447)] [TaskProducer] SendMessageTimeout failed, drop current task
