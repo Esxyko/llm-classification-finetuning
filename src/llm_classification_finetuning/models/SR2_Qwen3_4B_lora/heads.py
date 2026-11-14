@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from contextlib import nullcontext
 
 import torch
 from torch import Tensor, nn
@@ -219,33 +220,48 @@ class SwapEquivariantAbsoluteDifferenceClassificationHead(nn.Module):
 		"""Return FP32 A-win, B-win, and tie logits with shared win dropout."""
 		if h_a.shape != h_b.shape or h_a.ndim != 2:
 			raise ValueError("h_a and h_b must have the same [batch, hidden] shape.")
-		with torch.autocast(
-			device_type=h_a.device.type,
-			dtype=torch.bfloat16,
-			enabled=self._compute_dtype == torch.bfloat16,
-		):
-			# One linear call covers both branches and both L/M weight blocks.
-			branches = torch.stack((h_a, h_b), dim=1)
-			self_features, cross_features = self.input_projection(branches).chunk(
-				2, dim=-1
-			)
+		device_type = h_a.device.type
+		# One linear call covers both branches and both L/M weight blocks.
+		branches = torch.stack((h_a, h_b), dim=1)
+		if self._compute_dtype == torch.bfloat16:
+			branches = branches.to(dtype=torch.bfloat16)
+			w_in = self.input_projection.weight.bfloat16()
+			b1 = self.win_projection_bias.bfloat16()
+			w_out = self.win_readout.weight.bfloat16()
+		else:
+			w_in = self.input_projection.weight
+			b1 = self.win_projection_bias
+			w_out = self.win_readout.weight
+		autocast_guard = (
+			torch.autocast(device_type=device_type, enabled=False)
+			if device_type in {"cuda", "cpu"} and torch.is_autocast_enabled(device_type)
+			else nullcontext()
+		)
+		with autocast_guard:
+			self_features, cross_features = F.linear(branches, w_in).chunk(2, dim=-1)
 			wins = self.activation(
 				self_features
 				- cross_features.flip(1)
-				+ self.win_projection_bias.to(dtype=self_features.dtype)
+				+ (
+					b1
+					if b1.dtype == self_features.dtype
+					else b1.to(dtype=self_features.dtype)
+				)
 			)
 			if self.training and self.dropout.p:
 				# One standard, scaled mask per sample is shared by both win branches.
-				win_mask = self.dropout(torch.ones_like(wins[:, 0]))
-				wins = wins * win_mask.unsqueeze(1)
-			win_logits = self.win_readout(wins).squeeze(-1).float()
-		with torch.autocast(device_type=h_a.device.type, enabled=False):
-			tie_wins = wins.float().clamp_min(0)
-			tie_sum = tie_wins[:, 0] + tie_wins[:, 1]
-			tie_diff = (tie_wins[:, 0] - tie_wins[:, 1]).abs()
-			u_eff = 0.01 * F.softplus(self.u / 0.01)
+				win_mask = self.dropout(
+					wins.new_ones((wins.shape[0], 1, wins.shape[2]))
+				)
+				wins = wins * win_mask
+			win_logits = F.linear(wins, w_out).squeeze(-1).float()
+			c_a, c_b = wins.float().clamp_min(0).unbind(dim=1)
+			tie_sum = c_a + c_b
+			tie_diff = (c_a - c_b).abs()
+			u_eff = F.softplus(self.u, beta=100.0)
 			t = 1.0 + F.softplus(self.raw_t)
-			tie = self.tie_bias + F.linear(tie_sum - t * tie_diff, u_eff)
+			tie_features = torch.addcmul(tie_sum, tie_diff, t, value=-1.0)
+			tie = F.linear(tie_features, u_eff, self.tie_bias.unsqueeze(0))
 		return torch.cat((win_logits, tie), dim=-1)
 
 
